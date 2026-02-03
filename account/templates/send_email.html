@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>YOUR OTP CODE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 40px 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .email-container {
+            max-width: 700px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+        
+        .email-header {
+            background: linear-gradient(135deg, #007ED6 0%, #005A9E 100%);
+            padding: 30px 20px;
+            text-align: center;
+            color: white;
+        }
+        
+        .email-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .email-body {
+            padding: 40px 30px;
+        }
+        
+        .greeting {
+            font-size: 18px;
+            margin-bottom: 25px;
+            color: #444;
+        }
+        
+        .otp-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .otp-code {
+            display: inline-block;
+            background: linear-gradient(135deg, #f1f4f7 0%, #bec7ce 100%);
+            color: rgb(29, 61, 201);
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            padding: 10px 200px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 126, 214, 0.3);
+        }
+        
+        .validity {
+            font-size: 16px;
+            color: #666;
+            margin: 20px 0 30px;    
+            text-align: center;
+        }
+        
+        .security-note {
+            background-color: #f8f9fa;
+            border-left: 4px solid #007ED6;
+            padding: 25px 30px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .security-note p {
+            font-size: 14px;
+            color: #413f3f;
+            margin: 0;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 30px;
+            border-top: 1px solid #eee;
+            color: #888;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 20px 10px;
+            }
+            
+            .email-body {
+                padding: 30px 20px;
+            }
+            
+            .otp-code {
+                font-size: 24px;
+                letter-spacing: 6px;
+                padding: 15px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h1>YOUR OTP CODE </h1>
+        </div>
+        
+        <div class="email-body">
+            <p class="greeting">Hello {{ user.Fullname }},</p>
+            
+            <p style="color: #555; font-size: 16px; margin-bottom: 20px;">
+               Your One-Time Password (OTP) for account verification is:
+            </p>
+            
+            <div class="otp-container">
+                <div class="otp-code">{{ otp }}</div>
+            </div>
+            
+            <p class="validity">This code is valid for 3 minutes.</p>
+            
+            <div class="security-note">
+                <p><strong>Security Notice:</strong> For your protection, do not share this code with anyone. If you didn't request this code, please ignore this email.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This is an automated message. Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>
