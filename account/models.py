@@ -38,7 +38,6 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255)
     address = models.TextField(blank=True, null=True)
-    membership_expiry = models.DateTimeField(default=get_expiry)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
