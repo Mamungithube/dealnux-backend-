@@ -29,7 +29,31 @@ SECRET_KEY = 'django-insecure-z!bskcn@d^#vufyq^vg&%kyywi4c&vv49u#d5if&&##@*yl2cv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8001",
+    "http://127.0.0.1:3000",
+]
+
+
+# Session settings
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # or 'cache'
+SESSION_COOKIE_SAMESITE = 'Lax'  # or None for cross-origin
+SESSION_COOKIE_SECURE = False  # True in production with HTTPS
+SESSION_COOKIE_HTTPONLY = True
+SESSION_SAVE_EVERY_REQUEST = True
+
+
+ALLOWED_HOSTS = [
+    '*',
+    '74.208.158.27',
+    'localhost',
+    '127.0.0.1',
+    '10.10.10.46',
+]
+
+CSRF_TRUSTED_ORIGINS = ['https://*.127.0.0.1']
 
 
 # Application definition
