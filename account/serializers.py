@@ -22,14 +22,14 @@ def generate_otp():
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User 
-        fields = ['id', 'full_name', 'email', 'is_active', 'is_staff']
+        fields = ['id', 'Fullname', 'email', 'is_active', 'is_staff']
         extra_kwargs = {
-            'full_name': {'required': True},
+            'Fullname': {'required': True},
             'email': {'required': True},
         }
 
     def update(self, instance, validated_data):
-        instance.full_name = validated_data.get('full_name', instance.full_name)
+        instance.Fullname = validated_data.get('Fullname', instance.Fullname)
         instance.email = validated_data.get('email', instance.email)
         instance.save()
         return instance
@@ -42,7 +42,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['full_name', 'email', 'password']
+        fields = ['Fullname', 'email', 'password']
         extra_kwargs = {
             'password': {'write_only': True},
         }
@@ -57,7 +57,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         # Send email with OTP
         subject = 'Your OTP Code - Email Verification Your Account'
         html_content = render_to_string(
-            'send_email.html', {'otp': otp , 'user': user}
+            'send_code.html', {'otp': otp , 'user': user}
         )
         # send_email(user.email, subject, message)
         try:
@@ -124,4 +124,6 @@ class UserLoginSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['email', 'tokens']
+
+
 

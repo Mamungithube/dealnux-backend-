@@ -36,7 +36,7 @@ class UserManager(BaseUserManager):
 class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
-    full_name = models.CharField(max_length=255)
+    Fullname = models.CharField(max_length=255)
     address = models.TextField(blank=True, null=True)
 
     USERNAME_FIELD = 'email'
@@ -45,7 +45,7 @@ class User(AbstractUser):
     objects = UserManager()
 
     def __str__(self):
-        return self.full_name or self.email
+        return self.Fullname or self.email
     
 
 """---------Profile Model---------"""
@@ -58,7 +58,7 @@ class Profile(models.Model):
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
 
     def __str__(self):
-        return f"Profile of {self.user.full_name}"
+        return f"Profile of {self.user.Fullname}"
     
 
 

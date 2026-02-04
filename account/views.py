@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny,IsAuthenticated
 from django.contrib.auth import authenticate, login
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404   
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.template.loader import render_to_string
@@ -24,7 +24,7 @@ def generate_otp():
 
 # Create your views here.
 
-class UserApiView(viewsets.ModelViewSet):
+class UserAPIView(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'delete']
     permission_classes = [IsAdminUser]
     queryset = User.objects.all()
@@ -37,7 +37,7 @@ class UserApiView(viewsets.ModelViewSet):
 """--------------------Register View---------------------"""
 
 
-class RegisterApiview(APIView):
+class RegisterApiView(APIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
 
@@ -370,8 +370,7 @@ class LoginAPIView(APIView):
                         'id': user.id,
                         'email': user.email,
                         'Fullname': user.Fullname,
-                        'is_staff': user.is_staff,
-                        "role": user.role
+                        'is_staff': user.is_staff
                     }
                 }, status=status.HTTP_200_OK)
 
