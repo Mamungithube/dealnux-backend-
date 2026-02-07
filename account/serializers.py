@@ -4,9 +4,8 @@ from django.contrib.auth import get_user_model , password_validation
 from django.template.loader import render_to_string
 from django.core.mail import EmailMessage
 from django.conf import settings
-from django.http import HttpResponse
-from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
+import json
 
 User = get_user_model()
 
@@ -127,3 +126,60 @@ class UserLoginSerializer(serializers.ModelSerializer):
 
 
 
+# ==================== Profile Serializer (Read-Only/Response) ====================
+class ProfileSerializer(serializers.ModelSerializer):
+    fullname = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    interests = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Profile
+        fields = ['fullname', 'email', 'profile_picture', 'address', 'interests']
+
+    def get_fullname(self, obj):
+        return getattr(obj.user, 'Fullname', '') if obj.user else ''
+
+    def get_email(self, obj):
+        return getattr(obj.user, 'email', '') if obj.user else ''
+
+    def get_interests(self, obj):
+        # ডাটাবেস থেকে স্ট্রিং এনে লিস্টে রূপান্তর করে ফ্রন্টএন্ডে পাঠানো
+        if obj.interests:
+            try:
+                return json.loads(obj.interests)
+            except (ValueError, TypeError):
+                return []
+        return []
+
+# ==================== Profile Update Serializer (Write) ====================
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    fullname = serializers.CharField(source='user.Fullname', required=True)
+    interests = serializers.ListField(
+        child=serializers.CharField(), 
+        required=False
+    )
+
+    class Meta:
+        model = Profile
+        fields = ['fullname', 'profile_picture', 'address', 'interests']
+
+    def update(self, instance, validated_data):
+        # ১. ইউজার ডাটা (Fullname) হ্যান্ডলিং
+        user_data = validated_data.pop('user', {})
+        if user_data and instance.user:
+            fullname = user_data.get('Fullname')
+            if fullname:
+                instance.user.Fullname = fullname
+                instance.user.save()
+        
+        # ২. Interests লিস্টকে JSON স্ট্রিং বানিয়ে ডাটাবেসে রাখা
+        interests_list = validated_data.pop('interests', None)
+        if interests_list is not None:
+            instance.interests = json.dumps(interests_list)
+        
+        # ৩. বাকি সাধারণ ফিল্ডগুলো (address, profile_picture) আপডেট
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+            
+        instance.save()
+        return instance

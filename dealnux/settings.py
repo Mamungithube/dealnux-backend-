@@ -32,7 +32,7 @@ DEBUG = True
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8001",
+    "http://localhost:8000",
     "http://127.0.0.1:3000",
 ]
 
@@ -53,7 +53,7 @@ ALLOWED_HOSTS = [
     '10.10.10.46',
 ]
 
-CSRF_TRUSTED_ORIGINS = ['https://*.127.0.0.1']
+CSRF_TRUSTED_ORIGINS = ['https://*.127.0.0.1','http://10.10.10.46:8000']
 
 
 # Application definition
@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'account',
 
     # Third-party apps
+    'corsheaders',
     'rest_framework',
     'drf_spectacular',
     

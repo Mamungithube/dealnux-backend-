@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
-from .serializers import UserSerializer, RegisterSerializer, UserLoginSerializer, ChangePasswordSerializer, ResetPasswordSerializer, LoginSerializer
+from .serializers import UserSerializer, RegisterSerializer, UserLoginSerializer, ChangePasswordSerializer, ResetPasswordSerializer, LoginSerializer , ProfileSerializer , ProfileUpdateSerializer
 from .models import User,Profile
 from rest_framework.response import Response
 from rest_framework import status
@@ -14,7 +14,7 @@ from django.shortcuts import get_object_or_404
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.template.loader import render_to_string
-
+from rest_framework import generics, permissions
 
 import random
 
@@ -413,3 +413,39 @@ class DeleteAccountView(APIView):
             {"message": "Account deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
+    
+
+
+"""------------------------Profile Detail View-----------------------------------"""
+
+class ProfileDetailsView(generics.RetrieveAPIView):
+    serializer_class = ProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        profile, created = Profile.objects.get_or_create(
+            user=self.request.user)
+        return profile
+
+
+""" ------------------------Profile UpdateView view--------------------------- """
+
+class ProfileUpdateView(generics.UpdateAPIView):
+    serializer_class = ProfileUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        # Get or create profile for the current user
+        profile, created = Profile.objects.get_or_create(user=self.request.user)
+        return profile  
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Return full profile data after update
+        profile_serializer = ProfileSerializer(instance, context=self.get_serializer_context())
+        return Response(profile_serializer.data)
