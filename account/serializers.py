@@ -21,14 +21,14 @@ def generate_otp():
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User 
-        fields = ['id', 'Fullname', 'email', 'is_active', 'is_staff']
+        fields = ['id', 'name', 'email', 'is_active', 'is_staff']
         extra_kwargs = {
-            'Fullname': {'required': True},
+            'name': {'required': True},
             'email': {'required': True},
         }
 
     def update(self, instance, validated_data):
-        instance.Fullname = validated_data.get('Fullname', instance.Fullname)
+        instance.name = validated_data.get('name', instance.name)
         instance.email = validated_data.get('email', instance.email)
         instance.save()
         return instance
@@ -41,7 +41,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['Fullname', 'email', 'password']
+        fields = ['name', 'email', 'password']
         extra_kwargs = {
             'password': {'write_only': True},
         }
@@ -128,16 +128,16 @@ class UserLoginSerializer(serializers.ModelSerializer):
 
 # ==================== Profile Serializer (Read-Only/Response) ====================
 class ProfileSerializer(serializers.ModelSerializer):
-    fullname = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
     interests = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
-        fields = ['fullname', 'email', 'profile_picture', 'address', 'interests']
+        fields = ['name', 'email', 'profile_picture', 'address', 'interests']
 
-    def get_fullname(self, obj):
-        return getattr(obj.user, 'Fullname', '') if obj.user else ''
+    def get_name(self, obj):
+        return getattr(obj.user, 'name', '') if obj.user else ''
 
     def get_email(self, obj):
         return getattr(obj.user, 'email', '') if obj.user else ''
@@ -153,7 +153,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 # ==================== Profile Update Serializer (Write) ====================
 class ProfileUpdateSerializer(serializers.ModelSerializer):
-    fullname = serializers.CharField(source='user.Fullname', required=True)
+    name = serializers.CharField(source='user.name', required=True)
     interests = serializers.ListField(
         child=serializers.CharField(), 
         required=False
@@ -161,15 +161,15 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['fullname', 'profile_picture', 'address', 'interests']
+        fields = ['name', 'profile_picture', 'address', 'interests']
 
     def update(self, instance, validated_data):
-        # ১. ইউজার ডাটা (Fullname) হ্যান্ডলিং
+        # ১. ইউজার ডাটা (name) হ্যান্ডলিং
         user_data = validated_data.pop('user', {})
         if user_data and instance.user:
-            fullname = user_data.get('Fullname')
-            if fullname:
-                instance.user.Fullname = fullname
+            name = user_data.get('name')
+            if name:
+                instance.user.name = name
                 instance.user.save()
         
         # ২. Interests লিস্টকে JSON স্ট্রিং বানিয়ে ডাটাবেসে রাখা

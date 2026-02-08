@@ -538,7 +538,7 @@ class LoginAPIView(APIView):
                         "user": {
                             "id": user.id,
                             "email": user.email,
-                            "Fullname": user.Fullname,
+                            "name": user.name,
                             "is_staff": user.is_staff
                         }
                     }

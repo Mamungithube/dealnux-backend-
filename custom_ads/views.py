@@ -105,7 +105,8 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
             )
 
 
-# ২. Create Ad (Only for approved advertisers)
+"""----------------------Create Ad (Only for approved advertisers)-----------------------"""
+
 class CreateAdView(generics.CreateAPIView):
     """
     Approved advertisers can create ads
@@ -179,7 +180,9 @@ class CreateAdView(generics.CreateAPIView):
             )
 
 
-# ৩. Public Ad List (Weighted Algorithm)
+"""--------------------Public Ad List (Weighted Algorithm)-----------------------"""
+
+
 class AdListView(generics.ListAPIView):
     """
     Get weighted ads for display
@@ -223,7 +226,7 @@ class AdListView(generics.ListAPIView):
             )
 
 
-# ৪. Ad Click Tracker
+"""--------------------Ad Click Tracker-----------------------"""
 class AdClickTrackerView(APIView):
     """
     Track ad clicks and update budget
@@ -302,7 +305,7 @@ class AdClickTrackerView(APIView):
             )
 
 
-# ৫. Advertiser Dashboard (Own Ads)
+"""----------------------Advertiser Dashboard (Own Ads)-----------------------"""
 class AdvertiserAdDashboardView(generics.ListAPIView):
     """
     Advertiser can view their own ads
@@ -358,7 +361,7 @@ class AdvertiserAdDashboardView(generics.ListAPIView):
             )
 
 
-# ৬. Ad Detail View
+"""--------------------Ad Details (Public)-----------------------"""
 class AdDetailView(generics.RetrieveAPIView):
     """
     Get single ad details
@@ -406,7 +409,7 @@ class AdDetailView(generics.RetrieveAPIView):
             )
 
 
-# ৭. Update Ad (Only advertiser's own ad)
+"""--------------------Update Ad (Only advertiser's own ad)-----------------------"""
 class UpdateAdView(generics.UpdateAPIView):
     """
     Update own ad
@@ -471,7 +474,8 @@ class UpdateAdView(generics.UpdateAPIView):
             )
 
 
-# ৮. Delete Ad (Only advertiser's own ad)
+"""--------------------Delete Ad (Only advertiser's own ad)-----------------------"""
+
 class DeleteAdView(generics.DestroyAPIView):
     """
     Delete own ad
@@ -520,7 +524,8 @@ class DeleteAdView(generics.DestroyAPIView):
             )
 
 
-# ৯. Advertiser Request Status Check
+"""--------------------Advertiser Request Status Check-----------------------"""
+
 class CheckAdvertiserStatusView(APIView):
     """
     Check advertiser application status
@@ -587,7 +592,7 @@ class CheckAdvertiserStatusView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+"""--------------------Ad Configuration Options-----------------------"""
 class AdConfigView(APIView):
     """
     Configuration options for ad creation form
@@ -636,7 +641,7 @@ class AdConfigView(APIView):
             )
 
 
-# ==================== ADMIN - ADVERTISER REQUEST MANAGEMENT ====================
+"""==================== ADMIN - ADVERTISER REQUEST MANAGEMENT ===================="""
 
 class AdminAdvertiserRequestListView(generics.ListAPIView):
     """
@@ -689,7 +694,7 @@ class AdminAdvertiserRequestListView(generics.ListAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+"""--------------------Admin Approve Advertiser Request-----------------------"""
 class AdminApproveAdvertiserView(APIView):
     """
     Admin approves advertiser request
@@ -751,7 +756,7 @@ class AdminApproveAdvertiserView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+"""--------------------Admin Reject Advertiser Request-----------------------"""
 class AdminRejectAdvertiserView(APIView):
     """
     Admin rejects advertiser request
@@ -832,7 +837,7 @@ class AdminRejectAdvertiserView(APIView):
             )
 
 
-# ==================== ADMIN - AD MANAGEMENT ====================
+"""==================== ADMIN - AD MANAGEMENT ===================="""
 
 class AdminAdListView(generics.ListAPIView):
     """
@@ -885,6 +890,7 @@ class AdminAdListView(generics.ListAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+"""--------------------Admin Approve Ad-----------------------"""
 
 class AdminApproveAdView(APIView):
     """
@@ -957,6 +963,7 @@ class AdminApproveAdView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+"""--------------------Admin Reject Ad-----------------------"""
 
 class AdminRejectAdView(APIView):
     """
@@ -1049,7 +1056,7 @@ class AdminRejectAdView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+"""--------------------Admin Pause/Unpause Ad-----------------------"""
 class AdminPauseAdView(APIView):
     """
     Admin can pause/unpause an approved ad
@@ -1117,7 +1124,7 @@ class AdminPauseAdView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+"""==================== ADMIN - DASHBOARD STATS ===================="""
 class AdminDashboardStatsView(APIView):
     """
     Admin dashboard statistics
@@ -1189,7 +1196,7 @@ class AdminDashboardStatsView(APIView):
             )
 
 
-# ==================== BULK ACTIONS ====================
+"""==================== BULK ACTIONS ===================="""
 
 class AdminBulkApproveAdsView(APIView):
     """
@@ -1265,6 +1272,7 @@ class AdminBulkApproveAdsView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+"""--------------------Bulk Reject Ads-----------------------"""
 
 class AdminBulkRejectAdsView(APIView):
     """
