@@ -56,8 +56,8 @@ class RegisterApiView(APIView):
             return Response(
                 {
                     "success": False,
-                    "message": "Validation failed.",
-                    "errors": serializer.errors,
+                    "message": "user already exists.",
+                    # "errors": serializer.errors,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )

@@ -69,6 +69,7 @@ INSTALLED_APPS = [
 
     # Local apps
     'account',
+    'custom_ads',
 
     # Third-party apps
     'corsheaders',

@@ -38,6 +38,9 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     Fullname = models.CharField(max_length=255)
     address = models.TextField(blank=True, null=True)
+    ads_provided = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=False)
+
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []

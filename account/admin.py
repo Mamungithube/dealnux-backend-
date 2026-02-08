@@ -6,7 +6,8 @@ from .models import User,Profile
 
 
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('email', 'Fullname', 'is_staff', 'is_active')
+    list_display = ('email', 'Fullname', 'ads_provided', 'is_staff', 'is_active')
+    list_editable = ('ads_provided',)
     search_fields = ('email', 'Fullname')
     ordering = ('email',)
 
