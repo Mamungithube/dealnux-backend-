@@ -6,7 +6,7 @@ from decimal import Decimal
 @admin.register(AdvertiserRequest)
 class AdvertiserRequestAdmin(admin.ModelAdmin):
     list_display = (
-        'business_name', 'user_email', 'website', 
+        'id','business_name', 'user_email', 'website', 
         'is_reviewed', 'applied_at', 'action_buttons'
     )
     list_filter = ('is_reviewed', 'applied_at')
@@ -43,6 +43,7 @@ class AdvertiserRequestAdmin(admin.ModelAdmin):
 @admin.register(CustomAd)
 class CustomAdAdmin(admin.ModelAdmin):
     list_display = (
+        'id',
         'title',
         'advertiser',
         'status',
@@ -123,7 +124,7 @@ class CustomAdAdmin(admin.ModelAdmin):
 
 @admin.register(AdReview)
 class AdReviewAdmin(admin.ModelAdmin):
-    list_display = ('ad','reviewed_at', 'status', 'feedback')
+    list_display = ('id', 'ad','reviewed_at', 'status', 'feedback')
     list_filter = ('reviewed_at', 'status')
     search_fields = ('ad__title', 'reviewer__email')
     readonly_fields = ('reviewed_at',)
