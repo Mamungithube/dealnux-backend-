@@ -70,6 +70,8 @@ INSTALLED_APPS = [
     # Local apps
     'account',
     'custom_ads',
+    'policy',
+    
 
     # Third-party apps
     'corsheaders',
@@ -98,7 +100,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=10),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=20),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=365 * 100),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,

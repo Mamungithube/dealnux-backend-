@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils import timezone
 from datetime import timedelta 
+import uuid
 
 # Create your models here.
 
@@ -38,9 +39,14 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255)
     address = models.TextField(blank=True, null=True)
+    referral_code = models.CharField(max_length=12, unique=True, blank=True, null=True)
+    has_claimed_referral = models.BooleanField(default=False)
+    referred_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals')
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     ads_provided = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
-
+    otp = models.CharField(max_length=4, blank=True, null=True)  # ✅ এখানে OTP যোগ করুন
+    profile_setup_completed = models.BooleanField(default=False)  # ✅ প্রোফাইল সেটআপ ট্র্যাক করার জন্য
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -50,18 +56,22 @@ class User(AbstractUser):
     def __str__(self):
         return self.name or self.email
     
+    def save(self, *args, **kwargs):
+        if not self.referral_code:
+            self.referral_code = uuid.uuid4().hex[:8].upper()
+            while User.objects.filter(referral_code=self.referral_code).exists():
+                self.referral_code = uuid.uuid4().hex[:8].upper()
+        super().save(*args, **kwargs)
 
-"""---------Profile Model---------"""
+"""----------------------Profile Model----------------------------------"""
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    otp = models.CharField(max_length=4, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     interests = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
 
     def __str__(self):
         return f"Profile of {self.user.name}"
-    
 
 

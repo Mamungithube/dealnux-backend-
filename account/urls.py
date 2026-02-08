@@ -1,14 +1,15 @@
 from .views import (
-    UserAPIView, 
-    RegisterApiView,  
-    LoginAPIView, 
-    ResendOTPApiView, 
-    VerifyOTPApiView, 
-    ForgotPasswordAPIView, 
-    ChangePasswordViewSet, 
-    ProfileDetailsView, 
-    ProfileUpdateView, 
-    DeleteAccountView
+    UserAPIView,
+    RegisterApiView,
+    LoginAPIView,
+    ResendOTPApiView,
+    VerifyOTPApiView,
+    ForgotPasswordAPIView,
+    ChangePasswordViewSet,
+    ProfileDetailsView,
+    ProfileUpdateView,
+    DeleteAccountView,
+    ProfileSetupView
 )
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -30,8 +31,10 @@ urlpatterns = [
     path('delete-account/', DeleteAccountView.as_view(), name='delete-account'),
 
     # profile part urls
+    path('profile/setup/', ProfileSetupView.as_view(), name='profile-setup'),
     path('profile/',
          ProfileDetailsView.as_view(), name='profile'),
     path('profile/update/',
          ProfileUpdateView.as_view(), name='profile-detail'),
+
 ]
