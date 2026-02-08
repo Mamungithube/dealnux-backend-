@@ -15,6 +15,7 @@ from django.core.mail import EmailMessage
 from django.conf import settings
 from django.template.loader import render_to_string
 from rest_framework import generics, permissions
+import time
 
 import random
 
@@ -45,19 +46,27 @@ class RegisterApiView(APIView):
         # ১. ইনপুট খালি কি না চেক
         if not request.data:
             return Response(
-                {"success": False, "message": "Request body cannot be empty."},
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Request body cannot be empty.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ২. ভ্যালিডেশন (এখানেই ইমেইল এক্সিস্ট কি না চেক হয়ে যাবে)
+        # ২. ভ্যালিডেশন (এখানেই ইমেইল এক্সিস্ট কি না চেক হয়ে যাবে)
         serializer = self.serializer_class(data=request.data)
         if not serializer.is_valid():
             # যদি ইমেইল আগে থেকেই থাকে, ডিজেঙ্গো অটোমেটিক errors এর মধ্যে সেটা বলে দিবে
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
                     "message": "user already exists.",
-                    # "errors": serializer.errors,
+                    "timestamp": int(time.time()),
+                    "data": serializer.errors,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -68,7 +77,9 @@ class RegisterApiView(APIView):
             return Response(
                 {
                     "success": True,
+                    "code": status.HTTP_201_CREATED,
                     "message": "Registration successful! OTP sent to your email.",
+                    "timestamp": int(time.time()),
                     "data": {
                         "user_id": user.id,
                         "email": user.email,
@@ -77,12 +88,14 @@ class RegisterApiView(APIView):
                 status=status.HTTP_201_CREATED,
             )
         except Exception as e:
-            # যদি সেভ করার পর অন্য কোনো টেকনিক্যাল এরর হয় (ডাটাবেজ কানেকশন ইত্যাদি)
+            # যদি সেভ করার পর অন্য কোনো টেকনিক্যাল এরর হয় (ডাটাবেজ কানেকশন ইত্যাদি)
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                     "message": "Something went wrong on the server.",
-                    "errors": {"detail": [str(e)]},
+                    "timestamp": int(time.time()),
+                    "data": {"detail": [str(e)]},
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -103,7 +116,13 @@ class VerifyOTPApiView(APIView):
         # Validate request body is not empty
         if not request.data:
             return Response(
-                {"success": False, "message": "Request body cannot be empty."},
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Request body cannot be empty.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -113,8 +132,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
                     "message": "Email is required.",
-                    "errors": {"email": ["Email field cannot be empty."]},
+                    "timestamp": int(time.time()),
+                    "data": {"email": ["Email field cannot be empty."]},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -125,8 +146,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
                     "message": "OTP is required.",
-                    "errors": {"otp": ["OTP field cannot be empty."]},
+                    "timestamp": int(time.time()),
+                    "data": {"otp": ["OTP field cannot be empty."]},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -138,8 +161,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_404_NOT_FOUND,
                     "message": "No account found with this email address.",
-                    "errors": {"email": ["User not registered."]},
+                    "timestamp": int(time.time()),
+                    "data": {"email": ["User not registered."]},
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
@@ -149,8 +174,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
                     "message": "This account is already activated.",
-                    "errors": {"detail": ["Account already verified."]},
+                    "timestamp": int(time.time()),
+                    "data": {"detail": ["Account already verified."]},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -162,8 +189,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                     "message": "User profile not found. Please contact support.",
-                    "errors": {"detail": ["Profile does not exist."]},
+                    "timestamp": int(time.time()),
+                    "data": {"detail": ["Profile does not exist."]},
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -173,8 +202,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
                     "message": "No OTP found for this account. Please request a new OTP.",
-                    "errors": {"otp": ["OTP has expired or not set."]},
+                    "timestamp": int(time.time()),
+                    "data": {"otp": ["OTP has expired or not set."]},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -184,8 +215,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
                     "message": "The OTP you entered is incorrect.",
-                    "errors": {"otp": ["Invalid OTP. Please try again."]},
+                    "timestamp": int(time.time()),
+                    "data": {"otp": ["Invalid OTP. Please try again."]},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -201,7 +234,9 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": True,
+                    "code": status.HTTP_200_OK,
                     "message": "Account activated successfully. You can now log in.",
+                    "timestamp": int(time.time()),
                     "data": {
                         "user_id": user.id,
                         "email": user.email,
@@ -214,8 +249,10 @@ class VerifyOTPApiView(APIView):
             return Response(
                 {
                     "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                     "message": "Failed to activate account. Please try again later.",
-                    "errors": {"detail": [str(e)]},
+                    "timestamp": int(time.time()),
+                    "data": {"detail": [str(e)]},
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -225,9 +262,37 @@ class VerifyOTPApiView(APIView):
 
 
 class ResendOTPApiView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request, *args, **kwargs):
         email = request.data.get('email')
-        user = get_object_or_404(User, email=email)
+        
+        if not email:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Email is required.",
+                    "timestamp": int(time.time()),
+                    "data": {"email": ["Email field cannot be empty."]}
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_404_NOT_FOUND,
+                    "message": "No account found with this email address.",
+                    "timestamp": int(time.time()),
+                    "data": {"email": ["User not registered."]}
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         otp_code = generate_otp()
         user.profile.otp = otp_code
         user.profile.save()
@@ -245,34 +310,81 @@ class ResendOTPApiView(APIView):
             msg.content_subtype = "html"
             msg.send()
 
-            return Response({'Message': "OTP has been Resend To Your email. please check your email inbox"}, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "success": True,
+                    "code": status.HTTP_200_OK,
+                    "message": "OTP has been resent to your email. Please check your email inbox.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
+                status=status.HTTP_200_OK
+            )
 
         except Exception as e:
-            return Response({"Error": f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    "message": "Failed to send email.",
+                    "timestamp": int(time.time()),
+                    "data": {"detail": [str(e)]}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 """ ----------------Forgot Password view------------------- """
 
 class ForgotPasswordAPIView(APIView):
     serializer_class = ResetPasswordSerializer
+    permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data['email']
-            password = serializer.validated_data['password']
+        
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Invalid input.",
+                    "timestamp": int(time.time()),
+                    "data": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            try:
-                user = User.objects.get(email=email)
-            except User.DoesNotExist:
-                return Response({'detail': 'Email not registered. Please sign up.'}, status=status.HTTP_404_NOT_FOUND)
+        email = serializer.validated_data['email']
+        password = serializer.validated_data['password']
 
-            user.set_password(password)
-            user.save()
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_404_NOT_FOUND,
+                    "message": "Email not registered. Please sign up.",
+                    "timestamp": int(time.time()),
+                    "data": {"email": ["User not found."]}
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-            return Response({'detail': 'Password has been reset successfully'}, status=status.HTTP_200_OK)
+        user.set_password(password)
+        user.save()
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "success": True,
+                "code": status.HTTP_200_OK,
+                "message": "Password has been reset successfully.",
+                "timestamp": int(time.time()),
+                "data": {}
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 """ -------------------Change Password view----------------------- """
@@ -284,7 +396,13 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         if not request.user or not request.user.is_authenticated:
             return Response(
-                {"success": False, "message": "Authentication required."},
+                {
+                    "success": False,
+                    "code": status.HTTP_401_UNAUTHORIZED,
+                    "message": "Authentication required.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -294,7 +412,13 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
             serializer.is_valid(raise_exception=True)
         except Exception as exc:
             return Response(
-                {"success": False, "message": "Invalid input.", "errors": serializer.errors},
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Invalid input.",
+                    "timestamp": int(time.time()),
+                    "data": serializer.errors
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -304,19 +428,29 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
 
         if not user.check_password(old_password):
             return Response(
-                {"success": False, "message": "The provided current password is incorrect.", "errors": {"old_password":"Incorrect password.please try again."}},
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "The provided current password is incorrect.",
+                    "timestamp": int(time.time()),
+                    "data": {"old_password": ["Incorrect password. Please try again."]}
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Validate the new password against Django validators
         try:
             from django.contrib.auth import password_validation
-
             password_validation.validate_password(new_password, user)
         except Exception as exc:
-            # password_validation raises ValidationError with a list of messages
             return Response(
-                {"success": False, "message": "New password did not meet requirements.", "errors": exc.messages if hasattr(exc, 'messages') else [str(exc)]},
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "New password did not meet requirements.",
+                    "timestamp": int(time.time()),
+                    "data": {"new_password": exc.messages if hasattr(exc, 'messages') else [str(exc)]}
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -326,12 +460,24 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
             user.save()
         except Exception as exc:
             return Response(
-                {"success": False, "message": "Failed to update password. Please try again later."},
+                {
+                    "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    "message": "Failed to update password. Please try again later.",
+                    "timestamp": int(time.time()),
+                    "data": {"detail": [str(exc)]}
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return Response(
-            {"success": True, "message": "Password changed successfully."},
+            {
+                "success": True,
+                "code": status.HTTP_200_OK,
+                "message": "Password changed successfully.",
+                "timestamp": int(time.time()),
+                "data": {}
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -345,57 +491,91 @@ class LoginAPIView(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
 
-        if serializer.is_valid():
-            email = serializer.validated_data['email']
-            password = serializer.validated_data['password']
-
-            user = authenticate(email=email, password=password)
-
-            if user:
-                if not user.is_active:
-                    return Response(
-                        {'error': 'Account not activated. Verify OTP first!'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-
-                login(request, user)
-
-                # Generate JWT tokens
-                refresh = RefreshToken.for_user(user)
-
-                return Response({
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh),
-                    'user': {
-                        'id': user.id,
-                        'email': user.email,
-                        'Fullname': user.Fullname,
-                        'is_staff': user.is_staff
-                    }
-                }, status=status.HTTP_200_OK)
-
+        if not serializer.is_valid():
             return Response(
-                {'error': 'Email and password do not match'},
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Invalid input.",
+                    "timestamp": int(time.time()),
+                    "data": serializer.errors
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        email = serializer.validated_data['email']
+        password = serializer.validated_data['password']
+
+        user = authenticate(email=email, password=password)
+
+        if user:
+            if not user.is_active:
+                return Response(
+                    {
+                        "success": False,
+                        "code": status.HTTP_403_FORBIDDEN,
+                        "message": "Account not activated. Verify OTP first!",
+                        "timestamp": int(time.time()),
+                        "data": {}
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            login(request, user)
+
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+
+            return Response(
+                {
+                    "success": True,
+                    "code": status.HTTP_200_OK,
+                    "message": "Login successful.",
+                    "timestamp": int(time.time()),
+                    "data": {
+                        "access": str(refresh.access_token),
+                        "refresh": str(refresh),
+                        "user": {
+                            "id": user.id,
+                            "email": user.email,
+                            "Fullname": user.Fullname,
+                            "is_staff": user.is_staff
+                        }
+                    }
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(
+            {
+                "success": False,
+                "code": status.HTTP_400_BAD_REQUEST,
+                "message": "Email and password do not match.",
+                "timestamp": int(time.time()),
+                "data": {}
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class BaseResponseMixin:
     def success_response(self, message, data=None, status_code=status.HTTP_200_OK):
         response = {
             "success": True,
+            "code": status_code,
             "message": message,
-            "data": data
+            "timestamp": int(time.time()),
+            "data": data if data is not None else {}
         }
         return Response(response, status=status_code)
 
     def error_response(self, message, data=None, status_code=status.HTTP_400_BAD_REQUEST):
         response = {
             "success": False,
+            "code": status_code,
             "message": message,
-            "data": data
+            "timestamp": int(time.time()),
+            "data": data if data is not None else {}
         }
         return Response(response, status=status_code)
 
@@ -410,8 +590,14 @@ class DeleteAccountView(APIView):
         user = request.user
         user.delete()
         return Response(
-            {"message": "Account deleted successfully."},
-            status=status.HTTP_204_NO_CONTENT
+            {
+                "success": True,
+                "code": status.HTTP_200_OK,
+                "message": "Account deleted successfully.",
+                "timestamp": int(time.time()),
+                "data": {}
+            },
+            status=status.HTTP_200_OK
         )
     
 
@@ -426,6 +612,20 @@ class ProfileDetailsView(generics.RetrieveAPIView):
         profile, created = Profile.objects.get_or_create(
             user=self.request.user)
         return profile
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(
+            {
+                "success": True,
+                "code": status.HTTP_200_OK,
+                "message": "Profile retrieved successfully.",
+                "timestamp": int(time.time()),
+                "data": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 """ ------------------------Profile UpdateView view--------------------------- """
@@ -443,9 +643,30 @@ class ProfileUpdateView(generics.UpdateAPIView):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
+        
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Invalid input.",
+                    "timestamp": int(time.time()),
+                    "data": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         self.perform_update(serializer)
 
         # Return full profile data after update
         profile_serializer = ProfileSerializer(instance, context=self.get_serializer_context())
-        return Response(profile_serializer.data)
+        return Response(
+            {
+                "success": True,
+                "code": status.HTTP_200_OK,
+                "message": "Profile updated successfully.",
+                "timestamp": int(time.time()),
+                "data": profile_serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
