@@ -1,16 +1,16 @@
 from rest_framework import serializers
-from account.models import Profile ,User
-from django.contrib.auth import get_user_model , password_validation
+from account.models import Profile, User
+from django.contrib.auth import get_user_model, password_validation
 from django.template.loader import render_to_string
 from django.core.mail import EmailMessage
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 import json
 from django.db import transaction
+import random
 
 User = get_user_model()
 
-import random
 
 def generate_otp():
     return str(random.randint(1000, 9999))
@@ -21,7 +21,7 @@ def generate_otp():
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User 
+        model = User
         fields = ['id', 'name', 'email', 'is_active', 'is_staff']
         extra_kwargs = {
             'name': {'required': True},
@@ -46,18 +46,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'password': {'write_only': True},
         }
-    
+
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
         user.is_active = False
-        
+
         # ✅ OTP সরাসরি User মডেলে সেভ করুন
         otp = generate_otp()
-        user.otp = otp  
+        user.otp = otp
         user.save()
-
-        # ❌ Profile তৈরি করবেন না এখানে
-        # Profile.objects.create(user=user, otp=otp)  # এটা মুছে দিন
 
         # Send email with OTP
         subject = 'Your OTP Code - Email Verification Your Account'
@@ -73,7 +70,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             )
             msg.content_subtype = 'html'
             msg.send()
-        except Exception as e:         
+        except Exception as e:
             print(f"Failed to send email to {user.email}: {str(e)}")
 
         return user
@@ -81,7 +78,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 # ==================== Reset Password Serializer ====================
 class ResetPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField() 
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True, min_length=8)
 
@@ -103,7 +100,8 @@ class ChangePasswordSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data["new_password"] != data["confirm_password"]:
-            raise serializers.ValidationError({"confirm_password": "New password and confirm password do not match."})
+            raise serializers.ValidationError(
+                {"confirm_password": "New password and confirm password do not match."})
         return data
 
 
@@ -129,17 +127,20 @@ class UserLoginSerializer(serializers.ModelSerializer):
         fields = ['email', 'tokens']
 
 
-
 # ==================== Profile Serializer (Read-Only/Response) ====================
 class ProfileSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
     refaradal_code = serializers.SerializerMethodField()
     interests = serializers.SerializerMethodField()
+    balance = serializers.SerializerMethodField()
+    has_claimed_referral = serializers.SerializerMethodField()
+    referred_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
-        fields = ['name', 'email', 'profile_picture', 'address', 'interests', 'refaradal_code']
+        fields = ['name', 'email', 'profile_picture', 'address', 'interests', 
+                  'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by']
 
     def get_name(self, obj):
         return getattr(obj.user, 'name', '') if obj.user else ''
@@ -148,10 +149,24 @@ class ProfileSerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'email', '') if obj.user else ''
 
     def get_refaradal_code(self, obj):
-        return getattr(obj.user, 'refarral_code', '') if obj.user else ''
+        return getattr(obj.user, 'referral_code', '') if obj.user else ''
+    
+    def get_balance(self, obj):
+        return float(getattr(obj.user, 'balance', 0)) if obj.user else 0
+    
+    def get_has_claimed_referral(self, obj):
+        return getattr(obj.user, 'has_claimed_referral', False) if obj.user else False
+    
+    def get_referred_by(self, obj):
+        if obj.user and obj.user.referred_by:
+            return {
+                'name': obj.user.referred_by.name,
+                'email': obj.user.referred_by.email,
+                'referral_code': obj.user.referred_by.referral_code
+            }
+        return None
 
     def get_interests(self, obj):
-        # ডাটাবেস থেকে স্ট্রিং এনে লিস্টে রূপান্তর করে ফ্রন্টএন্ডে পাঠানো
         if obj.interests:
             try:
                 return json.loads(obj.interests)
@@ -160,70 +175,55 @@ class ProfileSerializer(serializers.ModelSerializer):
         return []
 
 
+"""==================== Profile Setup Serializer (Write) ===================="""
+
 
 class ProfileSetupSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=True)  # ✅ Email দিয়ে user identify করবে
+    email = serializers.EmailField(required=True)
     address = serializers.CharField(required=False, allow_blank=True)
     interests = serializers.ListField(
-        child=serializers.CharField(), 
+        child=serializers.CharField(),
         required=False,
         allow_empty=True
     )
     profile_picture = serializers.ImageField(required=False, allow_null=True)
     referred_by_code = serializers.CharField(
-        required=False, 
-        allow_blank=True, 
+        required=False,
+        allow_blank=True,
         allow_null=True
     )
 
+
 # ==================== Profile Update Serializer (Write) ====================
 class ProfileUpdateSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(source='user.name', required=True)
-    referred_by_code = serializers.CharField(write_only=True, required=False, allow_null=True)
-    interests = serializers.ListField(child=serializers.CharField(), required=False)
+    name = serializers.CharField(source='user.name', required=False)
+    interests = serializers.ListField(
+        child=serializers.CharField(), 
+        required=False,
+        allow_empty=True
+    )
 
     class Meta:
         model = Profile
-        fields = ['name', 'profile_picture', 'address', 'interests', 'referred_by_code']
+        fields = ['name', 'profile_picture', 'address', 'interests']
 
     def update(self, instance, validated_data):
-        referred_by_code = validated_data.pop('referred_by_code', None)
+        user_data = validated_data.pop('user', {})
         user = instance.user
 
-        # ১. রেফারাল লজিক
-        if referred_by_code:
-            try:
-                # যার কোড ব্যবহার করা হচ্ছে তাকে খোঁজা
-                referrer = User.objects.get(referral_code=referred_by_code)
-                
-                # নিজের কোড নিজে ব্যবহার করা যাবে না
-                if referrer == user:
-                    raise serializers.ValidationError({"referred_by_code": "You cannot use your own referral code."})
-                
-                # এক ইউজার একবারই রেফারাল বোনাস পাবে (যদি আগে ব্যালেন্স ০ থাকে বা নির্দিষ্ট কোনো চেক)
-                # এখানে একটি flag ব্যবহার করা ভালো (যেমন: is_referred = BooleanField) যাতে বারবার বোনাস না নেয়
-                
-                with transaction.atomic():
-                    referrer.balance += 10
-                    referrer.save()
-                    
-                    user.balance += 10
-                    user.save()
-            except User.DoesNotExist:
-                raise serializers.ValidationError({"referred_by_code": "Invalid referral code."})
-
-        # ২. বাকি আপডেট লজিক (আপনার আগের কোড অনুযায়ী)
-        user_data = validated_data.pop('user', {})
-        if user_data:
-            user.name = user_data.get('name', user.name)
+        # ১. User এর নাম আপডেট
+        if user_data and 'name' in user_data:
+            user.name = user_data.get('name')
             user.save()
 
+        # ২. Interests আপডেট (JSON format এ)
         interests_list = validated_data.pop('interests', None)
         if interests_list is not None:
             instance.interests = json.dumps(interests_list)
 
+        # ৩. বাকি ফিল্ডগুলো আপডেট
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-            
+
         instance.save()
         return instance

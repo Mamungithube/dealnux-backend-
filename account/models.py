@@ -45,8 +45,8 @@ class User(AbstractUser):
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     ads_provided = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
-    otp = models.CharField(max_length=4, blank=True, null=True)  # ✅ এখানে OTP যোগ করুন
-    profile_setup_completed = models.BooleanField(default=False)  # ✅ প্রোফাইল সেটআপ ট্র্যাক করার জন্য
+    otp = models.CharField(max_length=4, blank=True, null=True) 
+    profile_setup_completed = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []

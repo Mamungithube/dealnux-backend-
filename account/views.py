@@ -1,16 +1,17 @@
 from django.shortcuts import render
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
-from .serializers import UserSerializer, RegisterSerializer, UserLoginSerializer, ChangePasswordSerializer, ResetPasswordSerializer, LoginSerializer , ProfileSerializer , ProfileUpdateSerializer, ProfileSetupSerializer
-from .models import User,Profile
+from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer, 
+                         ChangePasswordSerializer, ResetPasswordSerializer, 
+                         LoginSerializer, ProfileSerializer, ProfileUpdateSerializer, 
+                         ProfileSetupSerializer)
+from .models import User, Profile
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import RegisterSerializer
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny,IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import authenticate, login
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.shortcuts import get_object_or_404   
 from django.core.mail import EmailMessage
 from django.conf import settings
 from django.template.loader import render_to_string
@@ -18,9 +19,8 @@ from rest_framework import generics, permissions
 import time
 import json
 from django.db import transaction
-
-
 import random
+
 
 def generate_otp():
     return str(random.randint(1000, 9999))
@@ -36,7 +36,7 @@ class UserAPIView(viewsets.ModelViewSet):
 
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
-    
+
 
 """--------------------Register View---------------------"""
 
@@ -46,7 +46,6 @@ class RegisterApiView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        # ১. ইনপুট খালি কি না চেক
         if not request.data:
             return Response(
                 {
@@ -59,10 +58,8 @@ class RegisterApiView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ২. ভ্যালিডেশন (এখানেই ইমেইল এক্সিস্ট কি না চেক হয়ে যাবে)
         serializer = self.serializer_class(data=request.data)
         if not serializer.is_valid():
-            # যদি ইমেইল আগে থেকেই থাকে, ডিজেঙ্গো অটোমেটিক errors এর মধ্যে সেটা বলে দিবে
             return Response(
                 {
                     "success": False,
@@ -74,7 +71,6 @@ class RegisterApiView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ৩. ইউজার সেভ করা
         try:
             user = serializer.save()
             return Response(
@@ -91,7 +87,6 @@ class RegisterApiView(APIView):
                 status=status.HTTP_201_CREATED,
             )
         except Exception as e:
-            # যদি সেভ করার পর অন্য কোনো টেকনিক্যাল এরর হয় (ডাটাবেজ কানেকশন ইত্যাদি)
             return Response(
                 {
                     "success": False,
@@ -102,10 +97,10 @@ class RegisterApiView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        
 
 
 """ ----------------verify OTP API view------------------- """
+
 
 class VerifyOTPApiView(APIView):
     permission_classes = [AllowAny]
@@ -152,7 +147,6 @@ class VerifyOTPApiView(APIView):
                 "data": {}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # ✅ User মডেল থেকে OTP চেক করুন
         if not user.otp:
             return Response({
                 "success": False,
@@ -173,7 +167,7 @@ class VerifyOTPApiView(APIView):
 
         try:
             user.is_active = True
-            user.otp = None  # ✅ OTP ক্লিয়ার করুন
+            user.otp = None
             user.save()
 
             return Response({
@@ -206,7 +200,7 @@ class ResendOTPApiView(APIView):
 
     def post(self, request, *args, **kwargs):
         email = request.data.get('email')
-        
+
         if not email:
             return Response({
                 "success": False,
@@ -228,7 +222,7 @@ class ResendOTPApiView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         otp_code = generate_otp()
-        user.otp = otp_code  # ✅ User মডেলে OTP সেভ করুন
+        user.otp = otp_code
         user.save()
 
         html_content = render_to_string(
@@ -261,7 +255,9 @@ class ResendOTPApiView(APIView):
                 "data": {"detail": [str(e)]}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 """ ----------------Forgot Password view------------------- """
+
 
 class ForgotPasswordAPIView(APIView):
     serializer_class = ResetPasswordSerializer
@@ -269,7 +265,7 @@ class ForgotPasswordAPIView(APIView):
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
-        
+
         if not serializer.is_valid():
             return Response(
                 {
@@ -316,6 +312,7 @@ class ForgotPasswordAPIView(APIView):
 
 """ -------------------Change Password view----------------------- """
 
+
 class ChangePasswordViewSet(viewsets.GenericViewSet):
     serializer_class = ChangePasswordSerializer
     permission_classes = [IsAuthenticated]
@@ -333,7 +330,8 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer = self.get_serializer(
+            data=request.data, context={"request": request})
 
         try:
             serializer.is_valid(raise_exception=True)
@@ -365,7 +363,6 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Validate the new password against Django validators
         try:
             from django.contrib.auth import password_validation
             password_validation.validate_password(new_password, user)
@@ -381,7 +378,6 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Everything OK — change the password
         try:
             user.set_password(new_password)
             user.save()
@@ -410,6 +406,7 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
 
 
 """ ----------------Login view------------------- """
+
 
 class LoginAPIView(APIView):
     serializer_class = LoginSerializer
@@ -449,8 +446,6 @@ class LoginAPIView(APIView):
                 )
 
             login(request, user)
-
-            # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
 
             return Response(
@@ -485,28 +480,6 @@ class LoginAPIView(APIView):
         )
 
 
-class BaseResponseMixin:
-    def success_response(self, message, data=None, status_code=status.HTTP_200_OK):
-        response = {
-            "success": True,
-            "code": status_code,
-            "message": message,
-            "timestamp": int(time.time()),
-            "data": data if data is not None else {}
-        }
-        return Response(response, status=status_code)
-
-    def error_response(self, message, data=None, status_code=status.HTTP_400_BAD_REQUEST):
-        response = {
-            "success": False,
-            "code": status_code,
-            "message": message,
-            "timestamp": int(time.time()),
-            "data": data if data is not None else {}
-        }
-        return Response(response, status=status_code)
-
-
 """========================= deleted account/views.py code========================="""
 
 
@@ -526,13 +499,17 @@ class DeleteAccountView(APIView):
             },
             status=status.HTTP_200_OK
         )
-    
+
+
+"""========================= Profile Setup View ========================="""
+
+
 class ProfileSetupView(APIView):
-    permission_classes = [AllowAny]  # ✅ কোনো authentication লাগবে না
+    permission_classes = [AllowAny]
 
     def post(self, request):
         email = request.data.get('email')
-        
+
         if not email:
             return Response({
                 "success": False,
@@ -574,7 +551,7 @@ class ProfileSetupView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = ProfileSetupSerializer(data=request.data)
-        
+
         if not serializer.is_valid():
             return Response({
                 "success": False,
@@ -586,8 +563,9 @@ class ProfileSetupView(APIView):
 
         try:
             with transaction.atomic():
+                # Profile তৈরি বা আপডেট
                 profile, created = Profile.objects.get_or_create(user=user)
-                
+
                 address = serializer.validated_data.get('address')
                 interests = serializer.validated_data.get('interests')
                 profile_picture = serializer.validated_data.get('profile_picture')
@@ -595,21 +573,42 @@ class ProfileSetupView(APIView):
 
                 if address:
                     profile.address = address
-                
+
                 if interests:
                     profile.interests = json.dumps(interests)
-                
+
                 if profile_picture:
                     profile.profile_picture = profile_picture
 
                 profile.save()
 
-                # ✅ রেফারাল বোনাস প্রসেস
+                # ✅ রেফারাল বোনাস প্রসেস (শুধুমাত্র একবার)
+                print(f"[DEBUG] referred_by_code from request: {referred_by_code}")
+                print(f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
+                
                 if referred_by_code and not user.has_claimed_referral:
+                    # রেফারাল কোড ট্রিম করুন
+                    referred_by_code = referred_by_code.strip()
+                    print(f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
+
+                    if not referred_by_code:
+                        print("[DEBUG] Referral code is empty after trim")
+                        return Response({
+                            "success": False,
+                            "code": status.HTTP_400_BAD_REQUEST,
+                            "message": "Referral code cannot be empty.",
+                            "timestamp": int(time.time()),
+                            "data": {"referred_by_code": ["Invalid referral code."]}
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
                     try:
+                        # যার কোড ব্যবহার করা হচ্ছে তাকে খোঁজা
                         referrer = User.objects.get(referral_code=referred_by_code)
-                        
+                        print(f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
+
+                        # নিজের কোড নিজে ব্যবহার করা যাবে না
                         if referrer == user:
+                            print(f"[DEBUG] User trying to use own code")
                             return Response({
                                 "success": False,
                                 "code": status.HTTP_400_BAD_REQUEST,
@@ -618,7 +617,11 @@ class ProfileSetupView(APIView):
                                 "data": {"referred_by_code": ["Invalid referral code."]}
                             }, status=status.HTTP_400_BAD_REQUEST)
 
-                        # বোনাস দিন
+                        # ✅ বোনাস দিন (atomic transaction এ আছে)
+                        print(f"[DEBUG] Adding bonus to referrer and new user")
+                        print(f"[DEBUG] Referrer old balance: {referrer.balance}")
+                        print(f"[DEBUG] New user old balance: {user.balance}")
+                        
                         referrer.balance += 10
                         referrer.save()
 
@@ -626,7 +629,12 @@ class ProfileSetupView(APIView):
                         user.referred_by = referrer
                         user.has_claimed_referral = True
                         
+                        print(f"[DEBUG] Referrer new balance: {referrer.balance}")
+                        print(f"[DEBUG] New user new balance: {user.balance}")
+                        print(f"[DEBUG] Referral bonus applied successfully!")
+
                     except User.DoesNotExist:
+                        print(f"[DEBUG] Referral code not found in database")
                         return Response({
                             "success": False,
                             "code": status.HTTP_400_BAD_REQUEST,
@@ -658,7 +666,9 @@ class ProfileSetupView(APIView):
                 "data": {"detail": [str(e)]}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 """------------------------Profile Detail View-----------------------------------"""
+
 
 class ProfileDetailsView(generics.RetrieveAPIView):
     serializer_class = ProfileSerializer
@@ -686,20 +696,23 @@ class ProfileDetailsView(generics.RetrieveAPIView):
 
 """ ------------------------Profile UpdateView view--------------------------- """
 
+
 class ProfileUpdateView(generics.UpdateAPIView):
     serializer_class = ProfileUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         # Get or create profile for the current user
-        profile, created = Profile.objects.get_or_create(user=self.request.user)
-        return profile  
+        profile, created = Profile.objects.get_or_create(
+            user=self.request.user)
+        return profile
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
+
         if not serializer.is_valid():
             return Response(
                 {
@@ -715,7 +728,8 @@ class ProfileUpdateView(generics.UpdateAPIView):
         self.perform_update(serializer)
 
         # Return full profile data after update
-        profile_serializer = ProfileSerializer(instance, context=self.get_serializer_context())
+        profile_serializer = ProfileSerializer(
+            instance, context=self.get_serializer_context())
         return Response(
             {
                 "success": True,
