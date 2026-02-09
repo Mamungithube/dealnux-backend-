@@ -463,14 +463,14 @@ class LoginAPIView(APIView):
             return Response(
                 {
                     "success": False,
-                    "code": status.HTTP_403_FORBIDDEN,
+                    "code": status.HTTP_401_UNAUTHORIZED,
                     "message": "Account not activated. Please verify OTP first!",
                     "timestamp": int(time.time()),
                     "data": {
                         "email": user.email
                     }
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         # Profile setup complete করা নাই
@@ -480,7 +480,7 @@ class LoginAPIView(APIView):
             return Response(
                 {
                     "success": False,
-                    "code": status.HTTP_403_FORBIDDEN,
+                    "code": status.HTTP_402_PAYMENT_REQUIRED,
                     "message": "Profile setup not completed. Please complete your profile first!",
                     "timestamp": int(time.time()),
                     "data": {
@@ -491,7 +491,7 @@ class LoginAPIView(APIView):
                         "refresh": str(refresh)
                     }
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_402_PAYMENT_REQUIRED
             )
         
         # সফল Login - manually set backend

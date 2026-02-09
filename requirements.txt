@@ -29,9 +29,11 @@ Django==5.2.10
 django-allauth==65.14.0
 django-anymail==14.0
 django-celery-beat==2.8.1
+django-cors-headers==4.9.0
 django-elasticsearch-dsl==9.0
 django-filter==25.2
 django-oauth-toolkit==3.2.0
+django-swagger-ui==0.1.11
 django-timezone-field==7.2.1
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
@@ -90,6 +92,7 @@ pyOpenSSL==25.3.0
 python-barcode==0.16.1
 python-crontab==3.3.0
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.1
 PyYAML==6.0.3
 pyzbar==0.1.9
 queuelib==1.9.0
