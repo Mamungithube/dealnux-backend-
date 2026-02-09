@@ -138,14 +138,14 @@ class VerifyOTPApiView(APIView):
                 "data": {}
             }, status=status.HTTP_404_NOT_FOUND)
 
-        if user.is_active:
-            return Response({
-                "success": False,
-                "code": status.HTTP_400_BAD_REQUEST,
-                "message": "This account is already activated.",
-                "timestamp": int(time.time()),
-                "data": {}
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # if user.is_active:
+        #     return Response({
+        #         "success": False,
+        #         "code": status.HTTP_400_BAD_REQUEST,
+        #         "message": "This account is already activated.",
+        #         "timestamp": int(time.time()),
+        #         "data": {}
+        #     }, status=status.HTTP_400_BAD_REQUEST)
 
         if not user.otp:
             return Response({
@@ -173,7 +173,7 @@ class VerifyOTPApiView(APIView):
             return Response({
                 "success": True,
                 "code": status.HTTP_200_OK,
-                "message": "Account activated successfully. Please complete your profile setup.",
+                "message": "Account verification successfully.",
                 "timestamp": int(time.time()),
                 "data": {
                     "user_id": user.id,

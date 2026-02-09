@@ -128,6 +128,7 @@ class UserLoginSerializer(serializers.ModelSerializer):
 
 
 # ==================== Profile Serializer (Read-Only/Response) ====================
+
 class ProfileSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
