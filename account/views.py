@@ -411,10 +411,10 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
 class LoginAPIView(APIView):
     serializer_class = LoginSerializer
     permission_classes = [AllowAny]
-
+    
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
-
+        
         if not serializer.is_valid():
             return Response(
                 {
@@ -426,59 +426,100 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+        
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
-
-        user = authenticate(email=email, password=password)
-
-        if user:
-            if not user.is_active:
-                return Response(
-                    {
-                        "success": False,
-                        "code": status.HTTP_403_FORBIDDEN,
-                        "message": "Account not activated. Verify OTP first!",
-                        "timestamp": int(time.time()),
-                        "data": {}
-                    },
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
-            login(request, user)
-            refresh = RefreshToken.for_user(user)
-
+        
+        # ইউজার খুঁজুন
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
             return Response(
                 {
-                    "success": True,
-                    "code": status.HTTP_200_OK,
-                    "message": "Login successful.",
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Email and password do not match.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Password verify করুন (manual authentication)
+        if not user.check_password(password):
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Email and password do not match.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Account activate করা নাই
+        if not user.is_active:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_403_FORBIDDEN,
+                    "message": "Account not activated. Please verify OTP first!",
                     "timestamp": int(time.time()),
                     "data": {
-                        "access": str(refresh.access_token),
-                        "refresh": str(refresh),
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "name": user.name,
-                            "is_staff": user.is_staff
-                        }
+                        "email": user.email
                     }
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_403_FORBIDDEN
             )
-
+        
+        # Profile setup complete করা নাই
+        if not user.profile_setup_completed:
+            refresh = RefreshToken.for_user(user)
+            
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_403_FORBIDDEN,
+                    "message": "Profile setup not completed. Please complete your profile first!",
+                    "timestamp": int(time.time()),
+                    "data": {
+                        "requires_profile_setup": True,
+                        "user_id": user.id,
+                        "email": user.email,
+                        "access": str(refresh.access_token),
+                        "refresh": str(refresh)
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # সফল Login - manually set backend
+        user.backend = 'django.contrib.auth.backends.ModelBackend'
+        login(request, user)
+        
+        refresh = RefreshToken.for_user(user)
+        
         return Response(
             {
-                "success": False,
-                "code": status.HTTP_400_BAD_REQUEST,
-                "message": "Email and password do not match.",
+                "success": True,
+                "code": status.HTTP_200_OK,
+                "message": "Login successful.",
                 "timestamp": int(time.time()),
-                "data": {}
+                "data": {
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "user": {
+                        "id": user.id,
+                        "email": user.email,
+                        "name": user.name,
+                        "is_staff": user.is_staff,
+                        "profile_setup_completed": user.profile_setup_completed
+                    }
+                }
             },
-            status=status.HTTP_400_BAD_REQUEST
+            status=status.HTTP_200_OK
         )
-
 
 """========================= deleted account/views.py code========================="""
 
