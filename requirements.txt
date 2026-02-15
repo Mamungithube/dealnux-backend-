@@ -35,6 +35,7 @@ django-filter==25.2
 django-oauth-toolkit==3.2.0
 django-swagger-ui==0.1.11
 django-timezone-field==7.2.1
+django-unfold==0.79.0
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
 drf-spectacular==0.29.0

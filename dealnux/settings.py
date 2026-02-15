@@ -59,6 +59,9 @@ CSRF_TRUSTED_ORIGINS = ['https://*.127.0.0.1','http://10.10.10.46:8000']
 # Application definition
 
 INSTALLED_APPS = [
+    "unfold",
+    "unfold.contrib.filters",
+    "unfold.contrib.forms",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -71,6 +74,7 @@ INSTALLED_APPS = [
     'account',
     'custom_ads',
     'policy',
+    'api_integration',
     
 
     # Third-party apps
@@ -141,6 +145,48 @@ TEMPLATES = [
         },
     },
 ]
+
+UNFOLD = {
+    "SITE_TITLE": "Your Site Admin",
+    "SITE_HEADER": "Administration",
+    "SITE_URL": "/",
+    
+    "COLORS": {
+        "primary": {
+            "50": "239 245 255",   # Very light blue
+            "100": "219 234 254",  # Lighter blue
+            "200": "191 219 254",  # Light blue
+            "300": "147 197 253",  # Medium light blue
+            "400": "96 165 250",   # Medium blue
+            "500": "35 85 182",    # Your main color #2355B6
+            "600": "28 68 146",    # Darker shade
+            "700": "23 56 120",    # More darker
+            "800": "18 45 94",     # Even darker
+            "900": "14 35 73",     # Darkest shade
+            "950": "10 25 52",     # Ultra dark
+        },
+    },
+
+    # Sidebar customization
+    "SIDEBAR": {
+        "show_search": True,  # Search box sidebar-এ
+        "show_all_applications": True,
+        # "navigation": [
+        #     {
+        #         "title": "Navigation",
+        #         "separator": True,
+        #         "items": [
+        #             {
+        #                 "title": "Dashboard",
+        #                 "icon": "dashboard",
+        #                 "link": "/admin/",
+        #             },
+        #         ],
+        #     },
+        # ],
+    },
+}
+
 
 WSGI_APPLICATION = 'dealnux.wsgi.application'
 

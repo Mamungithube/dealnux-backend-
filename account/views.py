@@ -16,10 +16,8 @@ from django.core.mail import EmailMessage
 from django.conf import settings
 from django.template.loader import render_to_string
 from rest_framework import generics, permissions
-import time
-import json
 from django.db import transaction
-import random
+import random, json, time
 
 
 def generate_otp():
