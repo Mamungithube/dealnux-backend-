@@ -46,7 +46,7 @@ class ProfileAdmin(ModelAdmin):
     # Unfold specific
     list_filter_submit = True
 
-    @display(description='Profile Picture', header=True)
+    @display(description='Profile Picture')
     def display_profile_picture(self, obj):
         if obj.profile_picture:
             return format_html(
