@@ -14,6 +14,9 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 import os
+import os
+from pathlib import Path
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -257,6 +260,12 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
 EMAIL_HOST = os.getenv('EMAIL_HOST')
@@ -275,3 +284,22 @@ GOOGLE_OAUTH2_REDIRECT_URI = os.getenv('GOOGLE_OAUTH2_REDIRECT_URI')
 # revinewcat credential 
 REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
 REVENUECAT_WEBHOOK_AUTH_HEADER = os.getenv('REVENUECAT_WEBHOOK_AUTH_HEADER')
+
+# eBay API Configuration
+EBAY_ENV = config('EBAY_ENV', default='SANDBOX')
+EBAY_APP_ID = config('EBAY_APP_ID')
+EBAY_CERT_ID = config('EBAY_CERT_ID')
+EBAY_DEV_ID = config('EBAY_DEV_ID', default='')
+
+if EBAY_ENV == 'SANDBOX':
+    EBAY_BASE_URL = 'https://api.sandbox.ebay.com'
+else:
+    EBAY_BASE_URL = 'https://api.ebay.com'
+
+# Amazon API Configuration (future)
+AMAZON_ACCESS_KEY = config('AMAZON_ACCESS_KEY', default='')
+AMAZON_SECRET_KEY = config('AMAZON_SECRET_KEY', default='')
+
+# AliExpress API Configuration (future)
+ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')
+ALIEXPRESS_APP_SECRET = config('ALIEXPRESS_APP_SECRET', default='')
