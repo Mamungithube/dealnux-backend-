@@ -453,21 +453,159 @@ def api_root(request):
         'version': '1.0',
         'endpoints': {
             'products': {
-                'list': '/api/products/',
-                'detail': '/api/products/{slug}/',
-                'compare_prices': '/api/products/{slug}/compare_prices/',
+                'list': '/products/',
+                'detail': '/products/{slug}/',
+                'compare_prices': '/products/{slug}/compare_prices/',
             },
             'listings': {
-                'list': '/api/listings/',
-                'detail': '/api/listings/{id}/',
+                'list': '/listings/',
+                'detail': '/listings/{id}/',
             },
             'platforms': {
-                'list': '/api/platforms/',
-                'detail': '/api/platforms/{code}/',
+                'list': '/platforms/',
+                'detail': '/platforms/{code}/',
             },
             'sync': {
-                'search_and_sync': '/api/search-and-sync/?q={query}&limit=10',
-                'bulk_sync': '/api/bulk-sync/ (POST)',
+                'search_and_sync': '/search-and-sync/?q={query}&limit=10',
+                'bulk_sync': '/bulk-sync/ (POST)',
             }
+        }
+    })
+
+
+@api_view(['POST'])
+def sync_from_search_results(request):
+    """
+    POST /api/sync-from-search/
+    Body: {"query": "laptop", "limit": 10, "platform": "ebay"}
+    """
+    query = request.data.get('query', '')
+    limit = min(int(request.data.get('limit', 10)), 50)
+    platform_code = request.data.get('platform', 'ebay')
+    
+    if not query:
+        return Response({'error': 'Query is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        platform = Platform.objects.get(code=platform_code)
+    except Platform.DoesNotExist:
+        return Response({'error': f'Platform "{platform_code}" not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    ebay_service = EbayService()
+    search_results = ebay_service.search_products(query, limit=limit)
+    
+    if not search_results:
+        return Response({'error': 'Failed to search eBay'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    items = search_results.get('itemSummaries', [])
+    
+    result = {
+        'query': query,
+        'platform': platform_code,
+        'total_found': search_results.get('total', 0),
+        'items_fetched': len(items),
+        'synced': 0,
+        'updated': 0,
+        'skipped': 0,
+        'failed': 0,
+        'products': [],
+        'external_ids': []
+    }
+    
+    for item in items:
+        external_id = item.get('itemId')
+        result['external_ids'].append(external_id)
+        
+        try:
+            existing = ProductListing.objects.filter(platform=platform, external_id=external_id).first()
+            
+            if existing:
+                result['skipped'] += 1
+                result['products'].append({
+                    'product_id': existing.product.id,
+                    'listing_id': existing.id,
+                    'external_id': external_id,
+                    'title': existing.product.title,
+                    'price': float(existing.price),
+                    'currency': existing.currency,
+                    'status': 'already_exists'
+                })
+                continue
+            
+            with transaction.atomic():
+                product, listing, created = save_ebay_product_to_db(item, platform)
+                
+                if product and listing:
+                    if created:
+                        result['synced'] += 1
+                        status_text = 'created'
+                    else:
+                        result['updated'] += 1
+                        status_text = 'updated'
+                    
+                    result['products'].append({
+                        'product_id': product.id,
+                        'listing_id': listing.id,
+                        'external_id': external_id,
+                        'title': product.title,
+                        'slug': product.slug,
+                        'price': float(listing.price),
+                        'currency': listing.currency,
+                        'seller': listing.seller_username,
+                        'condition': listing.condition,
+                        'status': status_text
+                    })
+                else:
+                    result['failed'] += 1
+        except Exception as e:
+            result['failed'] += 1
+            print(f"Failed to sync {external_id}: {str(e)}")
+    
+    return Response(result)
+
+
+@api_view(['GET'])
+def get_external_ids(request):
+    """
+    GET /api/get-external-ids/?q=laptop&limit=10
+    """
+    query = request.GET.get('q', '')
+    limit = min(int(request.GET.get('limit', 10)), 50)
+    
+    if not query:
+        return Response({'error': 'Query parameter "q" is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    ebay_service = EbayService()
+    search_results = ebay_service.search_products(query, limit=limit)
+    
+    if not search_results:
+        return Response({'error': 'Failed to search eBay'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    items = search_results.get('itemSummaries', [])
+    external_ids = []
+    items_detail = []
+    
+    for item in items:
+        item_id = item.get('itemId')
+        external_ids.append(item_id)
+        
+        items_detail.append({
+            'external_id': item_id,
+            'title': item.get('title'),
+            'price': item.get('price', {}).get('value'),
+            'currency': item.get('price', {}).get('currency'),
+            'condition': item.get('condition'),
+            'url': item.get('itemWebUrl')
+        })
+    
+    return Response({
+        'query': query,
+        'total_found': search_results.get('total', 0),
+        'items_returned': len(items),
+        'external_ids': external_ids,
+        'items': items_detail,
+        'bulk_sync_body': {
+            'platform': 'ebay',
+            'product_ids': external_ids
         }
     })
