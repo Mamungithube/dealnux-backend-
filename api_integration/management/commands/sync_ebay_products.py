@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from api_integration.models import Product, ProductListing, Platform, ProductImage, ProductSpecification, PriceHistory
-from .ebay_service import EbayService
+from ...services.ebay_service import EbayService
 from django.utils.text import slugify
 
 

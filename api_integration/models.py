@@ -60,7 +60,7 @@ class Product(models.Model):
     model_number = models.CharField(max_length=200, blank=True)
     
     # Images
-    main_image = models.URLField(max_length=1000, blank=True)
+    main_image = models.URLField(max_length=1000, blank=True ,default='')
     
     # Meta
     is_active = models.BooleanField(default=True)

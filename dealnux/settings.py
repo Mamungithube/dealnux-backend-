@@ -296,6 +296,12 @@ if EBAY_ENV == 'SANDBOX':
 else:
     EBAY_BASE_URL = 'https://api.ebay.com'
 
+
+# ClickBank API Configuration
+CLICKBANK_API_KEY = os.environ.get('CLICKBANK_API_KEY', '')
+CLICKBANK_DEVELOPER_KEY = os.environ.get('CLICKBANK_DEVELOPER_KEY', '')
+CLICKBANK_CLERK_KEY = os.environ.get('CLICKBANK_CLERK_KEY', '')
+
 # Amazon API Configuration (future)
 AMAZON_ACCESS_KEY = config('AMAZON_ACCESS_KEY', default='')
 AMAZON_SECRET_KEY = config('AMAZON_SECRET_KEY', default='')

@@ -21,4 +21,9 @@ urlpatterns = [
     # ✨ নতুন 2টা endpoint add করুন
     path('sync-from-search/', views.sync_from_search_results, name='sync_from_search'),
     path('get-external-ids/', views.get_external_ids, name='get_external_ids'),
+
+    # ClickBank Endpoints
+    # path('clickbank/search-and-sync/', views.search_and_sync_clickbank, name='clickbank_search_sync'),
+    # path('clickbank/categories/', views.get_clickbank_categories, name='clickbank_categories'),
+    # path('clickbank/products/<str:product_id>/', views.clickbank_product_details, name='clickbank_product_details'),
 ]
