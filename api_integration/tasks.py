@@ -6,7 +6,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 @shared_task
 def sync_ebay_task(query, limit=10):
     """Background এ eBay sync"""
@@ -62,13 +61,56 @@ def sync_clickbank_task(query, limit=10):
 @shared_task
 def sync_all_platforms_task(query, limit=10):
     """সব platform একসাথে parallel এ sync"""
-    # group দিয়ে সব task একসাথে চালাও
     job = group(
         sync_ebay_task.s(query, limit),
         sync_clickbank_task.s(query, limit),
-        # ভবিষ্যতে আরো platform:
-        # sync_amazon_task.s(query, limit),
-        # sync_aliexpress_task.s(query, limit),
     )
     result = job.apply_async()
-    return result.id  # task_id return করো
+    return result.id
+
+
+@shared_task
+def hourly_fixed_category_sync():
+    """সবগুলো ই-কমার্স ক্যাটাগরির ডাটা প্রতি ঘণ্টায় নিয়ে আসবে"""
+    
+    FIXED_CATEGORIES = [
+        "Smartphones", "Laptops", "Desktop Computers", "Tablets", 
+        "Audio & Headphones", "Cameras & Photo", "Smartwatches", 
+        "TV & Home Theater", "Video Games & Consoles", "Computer Accessories",
+        "Printers & Ink", "Drones & RC", "Wearable Technology",
+        "Men's Clothing", "Men's Shoes", "Men's Watches", 
+        "Men's Accessories & Belts", "Men's Sunglasses", "Men's Grooming",
+        "Women's Clothing", "Women's Shoes", "Handbags & Wallets", 
+        "Women's Watches", "Fine Jewelry", "Fashion Accessories", 
+        "Lingerie & Sleepwear", "Beauty & Makeup",
+        "Furniture", "Home Decor", "Kitchen & Dining", "Bedding & Bath", 
+        "Garden & Outdoor", "Tools & Home Improvement", "Lighting & Ceiling Fans", 
+        "Smart Home Devices", "Pet Supplies",
+        "Skincare", "Hair Care", "Fragrances & Perfumes", 
+        "Vitamins & Dietary Supplements", "Personal Care & Hygiene", 
+        "Medical Supplies & Equipment", "Oral Care",
+        "Exercise & Fitness Equipment", "Cycling & Bicycles", "Camping & Hiking", 
+        "Fishing Equipment", "Water Sports", "Team Sports", "Golf Equipment",
+        "Baby Products & Accessories", "Toys & Games", "Kids Clothing", 
+        "Action Figures & Collectibles", "Puzzles & Board Games", "Baby Gear & Strollers",
+        "Car Electronics & GPS", "Car Interior Accessories", "Car Exterior Accessories", 
+        "Motorcycle Parts & Accessories", "Automotive Tools & Equipment",
+        "Fiction Books", "Non-Fiction & Educational Books", "Movies & TV Shows", 
+        "Music & Vinyl Records", "Musical Instruments",
+        "Snack Foods", "Beverages & Coffee", "Pantry Staples", "Household Cleaning Supplies",
+        "E-Business & E-Marketing", "Self-Help & Personal Development", 
+        "Software & Services", "Online Courses"
+    ]
+    
+    limit_per_category = 10 
+    
+    for index, category_name in enumerate(FIXED_CATEGORIES):
+        delay_seconds = index * 30  
+        
+        sync_all_platforms_task.apply_async(
+            args=[category_name, limit_per_category],
+            countdown=delay_seconds
+        )
+        
+    logger.info(f"Scheduled sync for {len(FIXED_CATEGORIES)} massive e-commerce categories.")
+    return f"Scheduled sync for {len(FIXED_CATEGORIES)} massive e-commerce categories."

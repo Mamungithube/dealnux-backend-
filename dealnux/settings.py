@@ -123,6 +123,7 @@ SIMPLE_JWT = {
 }
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -190,8 +191,18 @@ UNFOLD = {
     },
 }
 
+# Add this to settings.py
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 
-WSGI_APPLICATION = 'dealnux.wsgi.application'
+# WSGI_APPLICATION = 'dealnux.wsgi.application'
+ASGI_APPLICATION = 'dealnux.asgi.application'
 
 
 # Database
@@ -234,8 +245,8 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = 'redis://redis:6379/0'
+CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
