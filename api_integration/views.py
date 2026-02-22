@@ -19,6 +19,64 @@ from .services.clickbank_service import ClickBankService
 
 logger = logging.getLogger(__name__)
 
+
+def save_clickbank_product_to_db(product_data, platform):
+    """
+    Save ClickBank product to database
+    Returns (product, listing, created)
+    """
+    # Create/update product
+    product, _ = Product.objects.get_or_create(
+        title=product_data['title'],
+        defaults={
+            'description': product_data.get('description', '') or '',
+            'brand': product_data.get('brand', '') or '',
+            'model_number': product_data.get('model_number', '') or '',
+            'main_image': product_data.get('main_image', '') or ''
+        }
+    )
+
+    shipping_info = product_data.get('shipping_info', {})
+
+    # Create/update listing
+    listing, created = ProductListing.objects.update_or_create(
+        product=product,
+        platform=platform,
+        external_id=product_data['external_id'],
+        defaults={
+            'external_url': product_data.get('external_url', ''),
+            'price': product_data.get('price', 0),
+            'currency': product_data.get('currency', 'USD'),
+            'condition': product_data.get('condition', 'NEW'),
+            'quantity': product_data.get('quantity', 0),
+            'seller_username': product_data.get('seller_username', ''),
+            'seller_rating': product_data.get('seller_rating'),
+            'item_location': product_data.get('item_location', ''),
+            'shipping_cost': shipping_info.get('cost', 0),
+            'free_shipping': shipping_info.get('free_shipping', False),
+            'is_available': product_data.get('is_available', True)
+        }
+    )
+
+    # Save specifications
+    if product_data.get('specifications'):
+        ProductSpecification.objects.filter(product=product).delete()
+        for name, value in product_data['specifications'].items():
+            ProductSpecification.objects.create(
+                product=product,
+                name=name,
+                value=value
+            )
+
+    # Price history
+    if created:
+        PriceHistory.objects.create(
+            listing=listing,
+            price=listing.price,
+            currency=listing.currency
+        )
+
+    return product, listing, created
 # ============================================================================
 # Platform-specific sync functions
 # ============================================================================
@@ -463,7 +521,7 @@ class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset()
 
         platform = self.request.query_params.get('platform')
-        if platform:
+        if platform and platform != 'all':  # ✅ 'all' হলে filter skip
             queryset = queryset.filter(platform__code=platform)
 
         condition = self.request.query_params.get('condition')
@@ -552,8 +610,7 @@ def bulk_sync_products(request):
     }
     """
     platform_code = request.data.get('platform')
-    product_ids = request.data.get(
-        'product_ids') or request.data.get('external_ids', [])
+    product_ids = request.data.get('product_ids') or request.data.get('external_ids', [])
 
     if not platform_code or not product_ids:
         return Response({
@@ -576,25 +633,45 @@ def bulk_sync_products(request):
         'products': []
     }
 
-    ebay_service = EbayService()
+    # ✅ Use correct service based on platform
+    if platform_code == 'ebay':
+        service = EbayService()
+    elif platform_code == 'clickbank':
+        service = ClickBankService()
+    else:
+        return Response({
+            'error': f'Platform "{platform_code}" not supported for bulk sync'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     for external_id in product_ids:
         try:
-            item_data = ebay_service.get_item_details(external_id)
-
-            if not item_data:
-                result['failed'] += 1
-                continue
-
-            with transaction.atomic():
-                product, listing, created = save_ebay_product_to_db(
-                    item_data, platform)
+            # Get item data based on platform
+            if platform_code == 'ebay':
+                item_data = service.get_item_details(external_id)
+                if not item_data:
+                    result['failed'] += 1
+                    continue
+                
+                with transaction.atomic():
+                    product, listing, created = save_ebay_product_to_db(item_data, platform)
+                    
+            elif platform_code == 'clickbank':
+                item_data = service.get_product_details(external_id)
+                if not item_data:
+                    result['failed'] += 1
+                    continue
+                
+                product_data = service.extract_product_data(item_data)
+                
+                with transaction.atomic():
+                    product, listing, created = save_clickbank_product_to_db(product_data, platform)
 
             if product and listing:
                 if created:
                     result['synced'] += 1
                 else:
                     result['updated'] += 1
+                    
                 result['products'].append({
                     'id': product.id,
                     'title': product.title,
@@ -607,8 +684,7 @@ def bulk_sync_products(request):
 
         except Exception as e:
             result['failed'] += 1
-            logger.error(
-                f"Failed to bulk sync {external_id}: {str(e)}", exc_info=True)
+            logger.error(f"Failed to bulk sync {external_id}: {str(e)}", exc_info=True)
             continue
 
     return Response(result)
@@ -663,18 +739,37 @@ def sync_from_search_results(request):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    ebay_service = EbayService()
-    search_results = ebay_service.search_products(query, limit=limit)
+    # ✅ Route to correct platform
+    if platform_code == 'ebay':
+        service = EbayService()
+        search_results = service.search_products(query, limit=limit)
+        items_key = 'itemSummaries'
+        id_key = 'itemId'
+    elif platform_code == 'clickbank':
+        service = ClickBankService()
+        search_results = service.search_mock_products(query, limit)
+        items_key = 'data' if isinstance(search_results, dict) else None
+        id_key = 'vendor' if search_results and len(search_results) > 0 else 'site'
+        # For mock data, search_results is already a list
+        items = search_results if isinstance(search_results, list) else search_results.get(items_key, [])
+    else:
+        return Response(
+            {'error': f'Platform "{platform_code}" sync not implemented'},
+            status=status.HTTP_501_NOT_IMPLEMENTED
+        )
 
     if not search_results:
-        return Response({'error': 'Failed to search eBay'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': f'Failed to search {platform_code}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    items = search_results.get('itemSummaries', [])
+    # Get items based on platform
+    if platform_code == 'ebay':
+        items = search_results.get(items_key, [])
+    # items already set for clickbank above
 
     result = {
         'query': query,
         'platform': platform_code,
-        'total_found': search_results.get('total', 0),
+        'total_found': search_results.get('total', len(items)) if isinstance(search_results, dict) else len(items),
         'items_fetched': len(items),
         'synced': 0,
         'updated': 0,
@@ -685,7 +780,7 @@ def sync_from_search_results(request):
     }
 
     for item in items:
-        external_id = item.get('itemId')
+        external_id = item.get(id_key)
         result['external_ids'].append(external_id)
 
         try:
@@ -708,8 +803,15 @@ def sync_from_search_results(request):
                 continue
 
             with transaction.atomic():
-                product, listing, created = save_ebay_product_to_db(
-                    item, platform)
+                if platform_code == 'ebay':
+                    product, listing, created = save_ebay_product_to_db(item, platform)
+                elif platform_code == 'clickbank':
+                    # Use the sync_clickbank logic
+                    product_data = service.extract_product_data(item)
+                    product, listing, created = save_clickbank_product_to_db(product_data, platform)
+                else:
+                    result['failed'] += 1
+                    continue
 
             if product and listing:
                 status_text = 'created' if created else 'updated'
@@ -735,19 +837,16 @@ def sync_from_search_results(request):
 
         except Exception as e:
             result['failed'] += 1
-            logger.error(
-                f"Failed to sync {external_id}: {str(e)}", exc_info=True)
+            logger.error(f"Failed to sync {external_id}: {str(e)}", exc_info=True)
 
     return Response(result)
 
 
 @api_view(['GET'])
 def get_external_ids(request):
-    """
-    GET /api/get-external-ids/?q=laptop&limit=10
-    """
     query = request.GET.get('q', '')
     limit = min(int(request.GET.get('limit', 10)), 50)
+    platform_code = request.GET.get('platform', 'ebay')
 
     if not query:
         return Response(
@@ -755,37 +854,213 @@ def get_external_ids(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    ebay_service = EbayService()
-    search_results = ebay_service.search_products(query, limit=limit)
+    # "all" platform হ্যান্ডেল
+    if platform_code == 'all':
+        all_items = []
+        
+        # eBay
+        try:
+            ebay_service = EbayService()
+            ebay_results = ebay_service.search_products(query, limit=limit)
+            ebay_items = ebay_results.get('itemSummaries', []) if ebay_results else []
+            for item in ebay_items:
+                all_items.append({
+                    'external_id': item.get('itemId'),
+                    'platform': 'ebay',
+                    'title': item.get('title'),
+                    'price': item.get('price', {}).get('value'),
+                    'currency': item.get('price', {}).get('currency', 'USD'),
+                    'condition': item.get('condition'),
+                    'url': item.get('itemWebUrl')
+                })
+        except Exception as e:
+            logger.error(f"eBay search failed: {e}")
 
-    if not search_results:
-        return Response({'error': 'Failed to search eBay'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # ClickBank
+        try:
+            cb_service = ClickBankService()
+            cb_items = cb_service.search_mock_products(query, limit)
+            for item in cb_items:
+                all_items.append({
+                    'external_id': item.get('site'),
+                    'platform': 'clickbank',
+                    'title': item.get('title'),
+                    'price': item.get('price'),
+                    'currency': 'USD',
+                    'condition': 'NEW',
+                    'url': item.get('url')
+                })
+        except Exception as e:
+            logger.error(f"ClickBank search failed: {e}")
 
-    items = search_results.get('itemSummaries', [])
+        return Response({
+            'query': query,
+            'platform': 'all',
+            'items_returned': len(all_items),
+            'items': all_items,
+        })
 
+    # Single platform
+    if platform_code == 'ebay':
+        service = EbayService()
+        search_results = service.search_products(query, limit=limit)
+        items = search_results.get('itemSummaries', []) if search_results else []
+        id_key = 'itemId'
+    elif platform_code == 'clickbank':
+        service = ClickBankService()
+        items = service.search_mock_products(query, limit)  # [] হলেও চলবে
+        search_results = {'total': len(items)}
+        id_key = 'site'
+    else:
+        return Response(
+            {'error': f'Platform "{platform_code}" not supported'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Empty result এখন error না, শুধু empty list
     external_ids = []
     items_detail = []
 
     for item in items:
-        item_id = item.get('itemId')
+        item_id = item.get(id_key)
         external_ids.append(item_id)
         items_detail.append({
             'external_id': item_id,
             'title': item.get('title'),
-            'price': item.get('price', {}).get('value'),
-            'currency': item.get('price', {}).get('currency'),
+            'price': item.get('price', {}).get('value') if platform_code == 'ebay' else item.get('price'),
+            'currency': item.get('price', {}).get('currency') if platform_code == 'ebay' else 'USD',
             'condition': item.get('condition'),
-            'url': item.get('itemWebUrl')
+            'url': item.get('itemWebUrl') if platform_code == 'ebay' else item.get('url')
         })
 
     return Response({
         'query': query,
-        'total_found': search_results.get('total', 0),
+        'platform': platform_code,
+        'total_found': search_results.get('total', len(items)),
         'items_returned': len(items),
         'external_ids': external_ids,
         'items': items_detail,
         'bulk_sync_body': {
-            'platform': 'ebay',
+            'platform': platform_code,
             'product_ids': external_ids
         }
     })
+
+
+@api_view(['GET'])
+def product_price_history(request, slug):
+    """
+    GET /api/v1/fetch-products/products/{slug}/price_history/
+    """
+    try:
+        product = Product.objects.get(slug=slug)
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    listings = product.listings.all()
+    
+    history_data = []
+    for listing in listings:
+        histories = listing.price_history.order_by('-recorded_at')
+        for history in histories:
+            history_data.append({
+                'platform': listing.platform.name,
+                'platform_code': listing.platform.code,
+                'price': float(history.price),
+                'currency': history.currency,
+                'recorded_at': history.recorded_at,
+            })
+
+    # recorded_at দিয়ে sort
+    history_data.sort(key=lambda x: x['recorded_at'], reverse=True)
+
+    return Response({
+        'product': product.title,
+        'slug': product.slug,
+        'total_records': len(history_data),
+        'price_history': history_data
+    })
+
+
+
+from .tasks import sync_all_platforms_task, sync_ebay_task, sync_clickbank_task
+from django.core.cache import cache
+
+@api_view(['GET'])
+def smart_search(request):
+    """
+    Parallel sync + Cache
+    GET /api/v1/fetch-products/smart-search/?q=laptop&limit=10
+    """
+    query = request.GET.get('q', '')
+    limit = min(int(request.GET.get('limit', 10)), 50)
+
+    if not query:
+        return Response({'error': 'q is required'}, status=400)
+
+    # ১. Cache check করো
+    cache_key = f'smart_search_{query}_{limit}'
+    cached = cache.get(cache_key)
+    if cached:
+        return Response({
+            'source': 'cache',
+            'query': query,
+            'results': cached
+        })
+
+    # ২. DB তে আগের data আছে কিনা দেখো
+    from django.db.models import Q
+    existing_products = Product.objects.filter(
+        Q(title__icontains=query) | Q(description__icontains=query),
+        is_active=True
+    ).prefetch_related('listings__platform')[:limit]
+
+    if existing_products.exists():
+        # DB থেকে data দাও + background এ fresh sync চালাও
+        sync_all_platforms_task.delay(query, limit)  # background এ
+
+        results = ProductSerializer(existing_products, many=True).data
+        cache.set(cache_key, results, 300)  # 5 min cache
+
+        return Response({
+            'source': 'database',
+            'query': query,
+            'count': len(results),
+            'note': 'Background sync started for fresh data',
+            'results': results
+        })
+
+    # ৩. DB তে নেই - background task চালাও
+    task = sync_all_platforms_task.delay(query, limit)
+
+    return Response({
+        'source': 'syncing',
+        'query': query,
+        'task_id': task.id,
+        'message': 'Data fetching started from all platforms',
+        'check_status': f'/api/v1/fetch-products/task-status/{task.id}/',
+        'fetch_results': f'/api/v1/fetch-products/smart-search/?q={query}&limit={limit}'
+    }, status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(['GET'])
+def task_status(request, task_id):
+    """
+    Task status check করো
+    GET /api/v1/fetch-products/task-status/{task_id}/
+    """
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+
+    response = {
+        'task_id': task_id,
+        'status': result.status,  # PENDING, STARTED, SUCCESS, FAILURE
+    }
+
+    if result.status == 'SUCCESS':
+        response['result'] = result.result
+        response['message'] = 'Sync completed! Now fetch results.'
+    elif result.status == 'FAILURE':
+        response['error'] = str(result.result)
+
+    return Response(response)

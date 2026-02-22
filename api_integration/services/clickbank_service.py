@@ -78,50 +78,19 @@ class ClickBankService:
             return None
     
     def get_product_details(self, product_id):
-        """
-        Get detailed product information
-        
-        Args:
-            product_id: ClickBank product ID (vendor)
-        
-        Returns:
-            Product details dictionary
-        """
-        
-        # Check cache
         cache_key = f'clickbank_product_{product_id}'
         cached_product = cache.get(cache_key)
         if cached_product:
             return cached_product
-        
-        try:
-            # If you have API access
-            if self.api_key:
-                headers = {
-                    'Authorization': self.api_key,
-                    'Accept': 'application/json'
-                }
-                
-                url = f"{self.api_base_url}/products/{product_id}"
-                response = requests.get(url, headers=headers)
-                
-                if response.status_code == 200:
-                    product_data = response.json()
-                    cache.set(cache_key, product_data, 3600)
-                    return product_data
-            
-            # Fallback: Search for single product
-            results = self.search_products(query=product_id, limit=1)
-            if results and len(results) > 0:
-                product_data = results[0]
-                cache.set(cache_key, product_data, 3600)
-                return product_data
-            
-            return None
-            
-        except Exception as e:
-            print(f"ClickBank Product Details Exception: {e}")
-            return None
+    
+        # Mock data থেকে খুঁজুন
+        mock_products = self.search_mock_products(limit=100)
+        for product in mock_products:
+            if product.get('site') == product_id:
+                cache.set(cache_key, product, 3600)
+                return product
+    
+        return None
     
     def _parse_marketplace_xml(self, xml_content):
         """

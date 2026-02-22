@@ -234,7 +234,8 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -299,8 +300,6 @@ else:
 
 # ClickBank API Configuration
 CLICKBANK_API_KEY = os.environ.get('CLICKBANK_API_KEY', '')
-CLICKBANK_DEVELOPER_KEY = os.environ.get('CLICKBANK_DEVELOPER_KEY', '')
-CLICKBANK_CLERK_KEY = os.environ.get('CLICKBANK_CLERK_KEY', '')
 
 # Amazon API Configuration (future)
 AMAZON_ACCESS_KEY = config('AMAZON_ACCESS_KEY', default='')
