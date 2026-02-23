@@ -12,16 +12,13 @@ router.register(r'cart', views.CartViewSet, basename='cart')
 app_name = 'api_integration'
 
 urlpatterns = [
-    path('', views.api_root, name='api_root'),
     path('', include(router.urls)),
-    
-    # Existing endpoints
+    path('api-root/', views.api_root, name='api_root'),
     path('search-and-sync/', views.search_and_sync, name='search_and_sync'),
     path('bulk-sync/', views.bulk_sync_products, name='bulk_sync'),
-    
-    # ✨ নতুন 2টা endpoint add করুন
     path('sync-from-search/', views.sync_from_search_results, name='sync_from_search'),
     path('get-external-ids/', views.get_external_ids, name='get_external_ids'),
-
-    path('products/<slug:slug>/price_history/', views.product_price_history, name='product_price_history'),
+    path('smart-search/', views.smart_search, name='smart_search'),
+    path('task-status/<str:task_id>/', views.task_status, name='task_status'),
+    path('products/<slug:slug>/price-history/', views.product_price_history, name='product_price_history'),
 ]
