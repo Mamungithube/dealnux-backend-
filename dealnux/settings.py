@@ -310,12 +310,13 @@ else:
 
 
 # ClickBank API Configuration
-CLICKBANK_API_KEY = os.environ.get('CLICKBANK_API_KEY', '')
+CLICKBANK_API_KEY = config('CLICKBANK_API_KEY', default='')
+CLICKBANK_DEV_KEY = config('CLICKBANK_DEV_KEY', default='DEV-123456789012345678901234567890123456')
 
 # Amazon API Configuration (future)
-AMAZON_ACCESS_KEY = config('AMAZON_ACCESS_KEY', default='')
-AMAZON_SECRET_KEY = config('AMAZON_SECRET_KEY', default='')
+# AMAZON_ACCESS_KEY = config('AMAZON_ACCESS_KEY', default='')
+# AMAZON_SECRET_KEY = config('AMAZON_SECRET_KEY', default='')
 
-# AliExpress API Configuration (future)
-ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')
-ALIEXPRESS_APP_SECRET = config('ALIEXPRESS_APP_SECRET', default='')
+# # AliExpress API Configuration (future)
+# ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')
+# ALIEXPRESS_APP_SECRET = config('ALIEXPRESS_APP_SECRET', default='')

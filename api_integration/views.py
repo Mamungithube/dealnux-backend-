@@ -1064,3 +1064,102 @@ def task_status(request, task_id):
         response['error'] = str(result.result)
 
     return Response(response)
+
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import CartItem
+from .serializers import CartItemSerializer
+from api_integration.models import ProductListing
+
+class CartViewSet(viewsets.ModelViewSet):
+    serializer_class = CartItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CartItem.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def checkout_options(self, request):
+        cart_items = self.get_queryset()
+        if not cart_items.exists():
+            return Response({"error": "Cart is empty"}, status=400)
+
+        original_total = 0
+        optimized_total = 0
+        single_store_total = 0
+        
+        optimized_split = {}
+        single_store_target = 'amazon' # Default single store fallback
+        single_store_items = []
+
+        for item in cart_items:
+            product = item.product
+            qty = item.quantity
+            current_price = item.selected_listing.price * qty
+            original_total += current_price
+
+            # ১. Find Lowest Price (Optimized Split Logic)
+            cheapest_listing = ProductListing.objects.filter(
+                product=product, is_available=True
+            ).order_by('price').first()
+
+            if cheapest_listing:
+                opt_price = cheapest_listing.price * qty
+                optimized_total += opt_price
+                platform_name = cheapest_listing.platform.name
+                
+                if platform_name not in optimized_split:
+                    optimized_split[platform_name] = {'total': 0, 'items': []}
+                
+                optimized_split[platform_name]['total'] += opt_price
+                optimized_split[platform_name]['items'].append({
+                    'product': product.title,
+                    'price': opt_price,
+                    'url': cheapest_listing.external_url
+                })
+
+            # ২. Find Single Store Option (e.g. Amazon)
+            single_store_listing = ProductListing.objects.filter(
+                product=product, platform__code=single_store_target, is_available=True
+            ).first()
+
+            if single_store_listing:
+                single_price = single_store_listing.price * qty
+                single_store_total += single_price
+                single_store_items.append({
+                    'product': product.title,
+                    'price': single_price
+                })
+            else:
+                # If single store doesn't have it, fallback to current price
+                single_store_total += current_price
+
+        # Savings Calculation
+        split_savings = float(original_total - optimized_total)
+        
+        return Response({
+            "cart_total_original": float(original_total),
+            "options": {
+                "single_store": {
+                    "platform": "Amazon",
+                    "total_cost": float(single_store_total),
+                    "shipments": 1,
+                    "items": single_store_items
+                },
+                "optimized_split": {
+                    "total_cost": float(optimized_total),
+                    "total_saved": split_savings if split_savings > 0 else 0,
+                    "shipments": len(optimized_split.keys()),
+                    "platforms": optimized_split
+                }
+            },
+            "savings_summary": {
+                "original_total": float(original_total),
+                "price_match_savings": float(original_total - optimized_total) if original_total > optimized_total else 0,
+                "coupons_applied": 0, # Add coupon logic here if needed
+                "final_price": float(optimized_total)
+            }
+        })

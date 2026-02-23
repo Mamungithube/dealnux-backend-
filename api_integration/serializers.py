@@ -140,3 +140,16 @@ class PriceHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = PriceHistory
         fields = ['id', 'listing', 'product_title', 'platform_name', 'price', 'currency', 'recorded_at']
+
+
+from rest_framework import serializers
+from .models import CartItem
+from api_integration.serializers import ProductListingSerializer
+
+class CartItemSerializer(serializers.ModelSerializer):
+    listing_details = ProductListingSerializer(source='selected_listing', read_only=True)
+    product_title = serializers.CharField(source='product.title', read_only=True)
+
+    class Meta:
+        model = CartItem
+        fields = ['id', 'product', 'product_title', 'selected_listing', 'quantity', 'listing_details']

@@ -218,3 +218,22 @@ class PriceHistory(models.Model):
     
     def __str__(self):
         return f"{self.listing.product.title} - {self.price} {self.currency} on {self.recorded_at}"
+    
+
+
+from django.db import models
+from account.models import User
+from api_integration.models import ProductListing, Product
+
+class CartItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cart_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    selected_listing = models.ForeignKey(ProductListing, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'product') # একজন ইউজারের কার্টে একই প্রোডাক্ট একবারই থাকবে
+
+    def __str__(self):
+        return f"{self.user.email} - {self.product.title}"

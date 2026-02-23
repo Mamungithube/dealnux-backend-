@@ -34,15 +34,21 @@ def sync_ebay_task(query, limit=10):
 
 @shared_task
 def sync_clickbank_task(query, limit=10):
-    """Background এ ClickBank sync"""
     try:
         platform, _ = Platform.objects.get_or_create(
             code='clickbank',
             defaults={'name': 'ClickBank', 'api_enabled': True}
         )
         service = ClickBankService()
-        items = service.search_mock_products(query, limit)
-        
+
+        # ✅ Real API call
+        items = service.search_products(query, limit=limit)
+
+        # Real API কাজ না করলে mock fallback
+        if not items:
+            print("Real API failed, using mock data")
+            items = service.search_mock_products(query, limit)
+
         synced = 0
         for item in items:
             try:
@@ -52,7 +58,7 @@ def sync_clickbank_task(query, limit=10):
                 synced += 1
             except Exception as e:
                 logger.error(f"ClickBank item sync failed: {e}")
-        
+
         return {'platform': 'clickbank', 'synced': synced}
     except Exception as e:
         return {'platform': 'clickbank', 'error': str(e)}
