@@ -168,12 +168,28 @@ class ProfileSerializer(serializers.ModelSerializer):
         return None
 
     def get_interests(self, obj):
-        if obj.interests:
+        if not obj.interests:
+            return []
+
+        data = obj.interests
+
+        # যদি ডাটাটি স্ট্রিং হয়, তবে সেটিকে JSON হিসেবে লোড করি
+        if isinstance(data, str):
             try:
-                return json.loads(obj.interests)
+                data = json.loads(data)
             except (ValueError, TypeError):
                 return []
-        return []
+
+        # যদি লোড করার পর দেখা যায় এটি একটি লিস্ট যার প্রথম উপাদানটি আবার একটি স্ট্রিং-লিস্ট
+        # যেমন: ["[\"A\", \"B\"]"] -> এটিকে ঠিক করতে হবে
+        if isinstance(data, list) and len(data) > 0:
+            if isinstance(data[0], str) and data[0].startswith('['):
+                try:
+                    return json.loads(data[0])
+                except:
+                    return data
+
+        return data if isinstance(data, list) else []
 
 
 """==================== Profile Setup Serializer (Write) ===================="""
@@ -209,20 +225,19 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         fields = ['name', 'profile_picture', 'address', 'interests']
 
     def update(self, instance, validated_data):
-        user_data = validated_data.pop('user', {})
-        user = instance.user
-
-        # ১. User এর নাম আপডেট
-        if user_data and 'name' in user_data:
-            user.name = user_data.get('name')
-            user.save()
-
-        # ২. Interests আপডেট (JSON format এ)
+    # Interests হ্যান্ডেল করা
         interests_list = validated_data.pop('interests', None)
+
         if interests_list is not None:
             instance.interests = json.dumps(interests_list)
 
-        # ৩. বাকি ফিল্ডগুলো আপডেট
+        # User-এর নাম আপডেট (আপনার আগের কোড অনুযায়ী)
+        user_data = validated_data.pop('user', {})
+        if user_data and 'name' in user_data:
+            instance.user.name = user_data.get('name')
+            instance.user.save()
+
+        # বাকি সব ফিল্ড আপডেট
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
