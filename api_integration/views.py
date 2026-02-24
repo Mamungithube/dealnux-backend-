@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Min, Count, Avg
 from django.db import transaction
-from .models import Product, ProductListing, Platform, Category, PriceHistory, ProductImage, ProductSpecification
+from .models import Product, ProductListing, Platform, Category, PriceHistory, ProductImage, ProductSpecification , CartItem , SavingsActivity
 from .serializers import (
     ProductSerializer,
     ProductDetailSerializer,
@@ -18,7 +18,7 @@ from .serializers import (
 from .services.ebay_service import EbayService
 from .services.clickbank_service import ClickBankService
 from rest_framework.exceptions import ValidationError
-
+from rest_framework.views import APIView
 logger = logging.getLogger(__name__)
 
 
@@ -1164,3 +1164,87 @@ class CartViewSet(viewsets.ModelViewSet):
         
         # আপনার success ফরম্যাটে ডাটা রিটার্ন করবে (success: true)
         return self._success(data, message="Checkout options generated", code=200)
+    @action(detail=False, methods=['post'])
+    def complete_checkout(self, request):
+        cart_items = self.get_queryset()
+        
+        if not cart_items.exists():
+            raise ValidationError({"cart": "Your cart is empty."})
+
+        original_total = 0
+        optimized_total = 0
+        activities_to_create = []
+
+        for item in cart_items:
+            qty = item.quantity
+            current_price = item.selected_listing.price * qty
+            original_total += current_price
+
+            cheapest_listing = ProductListing.objects.filter(
+                product=item.product, is_available=True
+            ).order_by('price').first()
+
+            if cheapest_listing:
+                opt_price = cheapest_listing.price * qty
+                optimized_total += opt_price
+                
+                item_saved = float(current_price - opt_price)
+                if item_saved > 0:
+                    activities_to_create.append(
+                        SavingsActivity(
+                            user=request.user, 
+                            title=item.product.title, 
+                            saved_amount=item_saved
+                        )
+                    )
+            else:
+                optimized_total += current_price
+
+        total_saved = float(original_total - optimized_total)
+
+        # Database Transaction (ব্যালেন্স আপডেট ও কার্ট ডিলিট)
+        with transaction.atomic():
+            user = request.user
+            if total_saved > 0:
+                # User মডেলে total_lifetime_savings ফিল্ড থাকতে হবে
+                current_savings = getattr(user, 'total_lifetime_savings', 0)
+                user.total_lifetime_savings = float(current_savings) + total_saved
+                user.save()
+                
+                SavingsActivity.objects.bulk_create(activities_to_create)
+
+            cart_items.delete() # 🛒 কার্ট খালি করে দেওয়া হলো
+
+        data = {
+            "total_paid": float(optimized_total),
+            "total_saved_this_order": total_saved,
+            "lifetime_savings_now": float(getattr(user, 'total_lifetime_savings', 0))
+        }
+        return self._success(data, message="Checkout completed successfully", code=200)
+
+
+class DashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        recent_activities = SavingsActivity.objects.filter(user=user)[:5]
+        
+        data = {
+            "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0)),
+            "recent_activity": [
+                {
+                    "title": act.title,
+                    "saved_amount": float(act.saved_amount),
+                    "date": act.time_ago  # ✅ এখানে "Yesterday" বা "2 days ago" আসবে
+                } for act in recent_activities
+            ]
+        }
+        
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Dashboard data fetched",
+            "timestamp": int(time.time()),
+            "data": data
+        })

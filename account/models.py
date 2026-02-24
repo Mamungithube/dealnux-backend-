@@ -48,6 +48,10 @@ class User(AbstractUser):
     otp = models.CharField(max_length=4, blank=True, null=True) 
     profile_setup_completed = models.BooleanField(default=False)
 
+    total_lifetime_savings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    savings_coupons = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    savings_comparison = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 

@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator, MaxValueValidator
-
+from django.utils import timezone
 
 class Platform(models.Model):
     """E-commerce platform (eBay, Amazon, etc.)"""
@@ -237,3 +237,24 @@ class CartItem(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.product.title}"
+    
+
+class SavingsActivity(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='savings_activities')
+    title = models.CharField(max_length=255)
+    saved_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    # "2 days ago" বের করার ম্যাজিক মেথড
+    @property
+    def time_ago(self):
+        now = timezone.now()
+        diff = now - self.created_at
+        if diff.days == 0:
+            return "Today"
+        elif diff.days == 1:
+            return "Yesterday"
+        return f"{diff.days} days ago"
