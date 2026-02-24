@@ -90,6 +90,7 @@ INSTALLED_APPS = [
 AUTH_USER_MODEL = 'account.User'
 
 REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'api_integration.utils.custom_exception_handler',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],

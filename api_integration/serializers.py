@@ -3,7 +3,9 @@ from .models import (
     Platform, Category, Product, ProductListing,
     ProductImage, ProductSpecification, PriceHistory
 )
-
+from rest_framework.validators import UniqueTogetherValidator
+from rest_framework import serializers
+from .models import CartItem
 
 class PlatformSerializer(serializers.ModelSerializer):
     listings_count = serializers.SerializerMethodField()
@@ -142,9 +144,7 @@ class PriceHistorySerializer(serializers.ModelSerializer):
         fields = ['id', 'listing', 'product_title', 'platform_name', 'price', 'currency', 'recorded_at']
 
 
-from rest_framework import serializers
-from .models import CartItem
-from api_integration.serializers import ProductListingSerializer
+
 
 class CartItemSerializer(serializers.ModelSerializer):
     listing_details = ProductListingSerializer(source='selected_listing', read_only=True)
@@ -152,4 +152,30 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'product_title', 'selected_listing', 'quantity', 'listing_details']
+        fields = ['id', 'product', 'product_title', 'selected_listing', 'quantity', 'listing_details' ]
+        # , 'listing_details' 
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = request.user if request else None
+        product = attrs.get('product')
+        selected_listing = attrs.get('selected_listing')
+
+        # ✅ Listing টা ওই product এর কিনা check
+        if selected_listing and product:
+            if selected_listing.product != product:
+                raise serializers.ValidationError({
+                    "selected_listing": ["This listing does not belong to the selected product."]
+                })
+
+        # ✅ Already in cart check
+        if user and product:
+            qs = CartItem.objects.filter(user=user, product=product)
+            # PUT/PATCH এর সময় নিজেকে exclude করো
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({
+                    "product": ["This product is already in your cart."]
+                })
+
+        return attrs

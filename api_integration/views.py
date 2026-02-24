@@ -17,6 +17,7 @@ from .serializers import (
 )
 from .services.ebay_service import EbayService
 from .services.clickbank_service import ClickBankService
+from rest_framework.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -1034,18 +1035,61 @@ class CartViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return CartItem.objects.filter(user=self.request.user)
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def _success(self, data, message="Success", code=200):
+        return Response({
+            "success": True,
+            "code": code,
+            "message": message,
+            "timestamp": int(time.time()),
+            "data": data
+        }, status=code)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return self._success(serializer.data, message="Item added to cart", code=201)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return self._success(serializer.data, message="Cart item fetched")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return self._success(serializer.data, message="Cart items fetched")
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return self._success(serializer.data, message="Cart item updated")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return self._success({}, message="Item removed from cart")
+    
+
     @action(detail=False, methods=['get'])
     def checkout_options(self, request):
         cart_items = self.get_queryset()
-
+        
+        # কার্ট ফাঁকা থাকলে exception থ্রো করবে, যা আপনার custom_exception_handler হ্যান্ডেল করবে (success: false)
         if not cart_items.exists():
-            return error_response("Cart is empty", code=400)
+            raise ValidationError({"cart": "Your cart is empty."})
 
         original_total = 0
         optimized_total = 0
         single_store_total = 0
         optimized_split = {}
-        single_store_target = 'amazon'
+        single_store_target = 'ebay' # Default fallback
         single_store_items = []
 
         for item in cart_items:
@@ -1055,48 +1099,54 @@ class CartViewSet(viewsets.ModelViewSet):
             original_total += current_price
 
             cheapest_listing = ProductListing.objects.filter(
-                product=product,
-                is_available=True
+                product=product, is_available=True
             ).order_by('price').first()
 
             if cheapest_listing:
                 opt_price = cheapest_listing.price * qty
                 optimized_total += opt_price
                 platform_name = cheapest_listing.platform.name
-
+                
                 if platform_name not in optimized_split:
                     optimized_split[platform_name] = {'total': 0, 'items': []}
-
-                optimized_split[platform_name]['total'] += opt_price
+                
+                optimized_split[platform_name]['total'] += float(opt_price)
+                
+                # ✅ ক্লিয়ার কাট স্ট্রাকচার
                 optimized_split[platform_name]['items'].append({
                     'product': product.title,
-                    'price': opt_price,
+                    'unit_price': float(cheapest_listing.price),
+                    'quantity': qty,
+                    'total_price': float(opt_price),
                     'url': cheapest_listing.external_url
                 })
 
             single_store_listing = ProductListing.objects.filter(
-                product=product,
-                platform__code=single_store_target,
-                is_available=True
+                product=product, platform__code=single_store_target, is_available=True
             ).first()
 
             if single_store_listing:
                 single_price = single_store_listing.price * qty
                 single_store_total += single_price
+                
+                # ✅ ক্লিয়ার কাট স্ট্রাকচার
                 single_store_items.append({
-                    'product': product.title,
-                    'price': single_price
+                    'product': product.title, 
+                    'unit_price': float(single_store_listing.price),
+                    'quantity': qty,
+                    'total_price': float(single_price)
                 })
             else:
                 single_store_total += current_price
 
         split_savings = float(original_total - optimized_total)
-
-        return success_response({
+        
+        # রেসপন্সের মূল ডাটা
+        data = {
             "cart_total_original": float(original_total),
             "options": {
                 "single_store": {
-                    "platform": "Amazon",
+                    "platform": "eBay",
                     "total_cost": float(single_store_total),
                     "shipments": 1,
                     "items": single_store_items
@@ -1111,7 +1161,9 @@ class CartViewSet(viewsets.ModelViewSet):
             "savings_summary": {
                 "original_total": float(original_total),
                 "price_match_savings": float(original_total - optimized_total) if original_total > optimized_total else 0,
-                "coupons_applied": 0,
                 "final_price": float(optimized_total)
             }
-        }, message="Checkout options fetched")
+        }
+        
+        # আপনার success ফরম্যাটে ডাটা রিটার্ন করবে (success: true)
+        return self._success(data, message="Checkout options generated", code=200)

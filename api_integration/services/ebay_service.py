@@ -153,7 +153,7 @@ class EbayService:
             "quantity": item_data.get('quantity', 0),
             
             # Images
-            "main_image": item_data.get('image', {}).get('imageUrl'),
+            "main_image": item_data.get('image', {}).get('imageUrl') or '',
             "additional_images": [img.get('imageUrl') for img in item_data.get('additionalImages', [])],
             
             # Seller
