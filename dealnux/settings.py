@@ -10,53 +10,46 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
-import os
-import os
-from pathlib import Path
 from decouple import config
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# .env ফাইল লোড করা
 load_dotenv(BASE_DIR / '.env')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-z!bskcn@d^#vufyq^vg&%kyywi4c&vv49u#d5if&&##@*yl2cv'
+def get_env_list(var_name, default=""):
+    value = os.getenv(var_name, default)
+    if not value:
+        return []
+    # স্পেস ট্রিম করা এবং খালি স্ট্রিং ফিল্টার করা
+    return [item.strip() for item in value.split(",") if item.strip()]
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Security settings
+SECRET_KEY = os.getenv('SECRET_KEY')
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
+# সংশোধিত লিস্ট হ্যান্ডলিং
+ALLOWED_HOSTS = get_env_list('ALLOWED_HOSTS', '*')
+CORS_ALLOWED_ORIGINS = get_env_list('CORS_ALLOWED_ORIGINS')
+CSRF_TRUSTED_ORIGINS = get_env_list('CSRF_TRUSTED_ORIGINS')
+
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:3000",
-]
-
 
 # Session settings
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # or 'cache'
-SESSION_COOKIE_SAMESITE = 'Lax'  # or None for cross-origin
-SESSION_COOKIE_SECURE = False  # True in production with HTTPS
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False') == 'True'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_SAVE_EVERY_REQUEST = True
-
-
-ALLOWED_HOSTS = [
-    '*',
-    '74.208.158.27',
-    'localhost',
-    '127.0.0.1',
-    '10.10.10.46',
-]
-
-CSRF_TRUSTED_ORIGINS = ['https://*.127.0.0.1','http://10.10.10.46:8000']
 
 
 # Application definition

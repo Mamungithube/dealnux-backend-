@@ -26,11 +26,11 @@ class UserAdmin(ModelAdmin):
         'date_joined', 'referral_code', 'balance',
         'has_claimed_referral', 'referred_by'
     )
-    list_editable = ('ads_provided',)
+    # list_editable = ('ads_provided',)
     search_fields = ('email', 'name', 'referral_code')
     list_filter = ('has_claimed_referral', 'is_active', 'ads_provided')
     ordering = ('email',)
-    readonly_fields = ('referral_code', 'has_claimed_referral')
+    readonly_fields = ('email',  'referral_code', 'has_claimed_referral', 'balance', 'referred_by', 'ads_provided', 'is_active', 'otp', 'profile_setup_completed', 'date_joined','last_login', 'is_superuser', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined', 'profile_setup_completed','groups', 'user_permissions','password','name','address')
     
     # Unfold specific configurations
     list_filter_submit = True  # Add submit button to filters
@@ -39,9 +39,10 @@ class UserAdmin(ModelAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(ModelAdmin):
-    list_display = ('user', 'address', 'display_profile_picture')
+    list_display = ('user', 'display_profile_picture', 'address', 'interests', 'profile_picture')
     search_fields = ('user__email', 'user__name')
     ordering = ('user__email',)
+    readonly_fields = ('user', 'display_profile_picture', 'address', 'interests', 'profile_picture')
     
     # Unfold specific
     list_filter_submit = True
