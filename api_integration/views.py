@@ -21,9 +21,6 @@ from rest_framework.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
-p = Product.objects.get(id=520)
-print(p.is_active)   # True হওয়া দরকার
-print(p.slug)  
 
 # ============================================================================
 # Standardized Response Helpers
