@@ -30,7 +30,12 @@ class UserAdmin(ModelAdmin):
     search_fields = ('email', 'name', 'referral_code')
     list_filter = ('has_claimed_referral', 'is_active', 'ads_provided')
     ordering = ('email',)
-    readonly_fields = ('email',  'referral_code', 'has_claimed_referral', 'balance', 'referred_by', 'ads_provided', 'is_active', 'otp', 'profile_setup_completed', 'date_joined','last_login', 'is_superuser', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined', 'profile_setup_completed','groups', 'user_permissions','password','name','address')
+    readonly_fields = ('email',  'referral_code', 'has_claimed_referral', 'balance', 
+                       'referred_by', 'ads_provided', 'is_active', 'otp', 
+                       'profile_setup_completed', 'date_joined','last_login', 'is_superuser', 
+                       'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined', 
+                       'profile_setup_completed','groups', 'user_permissions','password','name',
+                       'address' , 'savings_comparison', 'savings_coupons', 'total_lifetime_savings')
     
     # Unfold specific configurations
     list_filter_submit = True  # Add submit button to filters

@@ -21,5 +21,5 @@ urlpatterns = [
     path('smart-search/', views.smart_search, name='smart_search'),
     path('task-status/<str:task_id>/', views.task_status, name='task_status'),
     path('products/<slug:slug>/price-history/', views.product_price_history, name='product_price_history'),
-    path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
+    path('dashboard/', views.DashboardSavingsView.as_view(), name='dashboard-savings'),
 ]

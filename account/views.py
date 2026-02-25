@@ -1,10 +1,10 @@
 from django.shortcuts import render
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
-from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer, 
-                         ChangePasswordSerializer, ResetPasswordSerializer, 
-                         LoginSerializer, ProfileSerializer, ProfileUpdateSerializer, 
-                         ProfileSetupSerializer)
+from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer,
+                         ChangePasswordSerializer, ResetPasswordSerializer,
+                         LoginSerializer, ProfileSerializer, ProfileUpdateSerializer,
+                          ProfileSetupSerializer)
 from .models import User, Profile
 from rest_framework.response import Response
 from rest_framework import status
@@ -17,7 +17,9 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from rest_framework import generics, permissions
 from django.db import transaction
-import random, json, time
+import random
+import json
+import time
 
 
 def generate_otp():
@@ -310,7 +312,6 @@ class ForgotPasswordAPIView(APIView):
 
 """ -------------------Change Password view----------------------- """
 
-
 class ChangePasswordViewSet(viewsets.GenericViewSet):
     serializer_class = ChangePasswordSerializer
     permission_classes = [IsAuthenticated]
@@ -334,13 +335,17 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
         try:
             serializer.is_valid(raise_exception=True)
         except Exception as exc:
+            errors = serializer.errors
+            error_messages = []
+            for field, messages in errors.items():
+                error_messages.extend(messages)
             return Response(
                 {
                     "success": False,
                     "code": status.HTTP_400_BAD_REQUEST,
-                    "message": "Invalid input.",
+                    "message": ", ".join(error_messages),
                     "timestamp": int(time.time()),
-                    "data": serializer.errors
+                    # "data": {}
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -356,7 +361,7 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
                     "code": status.HTTP_400_BAD_REQUEST,
                     "message": "The provided current password is incorrect.",
                     "timestamp": int(time.time()),
-                    "data": {"old_password": ["Incorrect password. Please try again."]}
+                    # "data": {}
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -365,13 +370,14 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
             from django.contrib.auth import password_validation
             password_validation.validate_password(new_password, user)
         except Exception as exc:
+            error_messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
             return Response(
                 {
                     "success": False,
                     "code": status.HTTP_400_BAD_REQUEST,
-                    "message": "New password did not meet requirements.",
+                    "message": ", ".join(error_messages),
                     "timestamp": int(time.time()),
-                    "data": {"new_password": exc.messages if hasattr(exc, 'messages') else [str(exc)]}
+                    # "data": {}
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -386,7 +392,7 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
                     "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                     "message": "Failed to update password. Please try again later.",
                     "timestamp": int(time.time()),
-                    "data": {"detail": [str(exc)]}
+                    # "data": {}
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -397,7 +403,7 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
                 "code": status.HTTP_200_OK,
                 "message": "Password changed successfully.",
                 "timestamp": int(time.time()),
-                "data": {}
+                # "data": {}
             },
             status=status.HTTP_200_OK,
         )
@@ -409,10 +415,10 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
 class LoginAPIView(APIView):
     serializer_class = LoginSerializer
     permission_classes = [AllowAny]
-    
+
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
-        
+
         if not serializer.is_valid():
             return Response(
                 {
@@ -424,10 +430,10 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
-        
+
         # ইউজার খুঁজুন
         try:
             user = User.objects.get(email=email)
@@ -442,7 +448,7 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Password verify করুন (manual authentication)
         if not user.check_password(password):
             return Response(
@@ -455,7 +461,7 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Account activate করা নাই
         if not user.is_active:
             return Response(
@@ -470,11 +476,11 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
+
         # Profile setup complete করা নাই
         if not user.profile_setup_completed:
             refresh = RefreshToken.for_user(user)
-            
+
             return Response(
                 {
                     "success": False,
@@ -491,13 +497,13 @@ class LoginAPIView(APIView):
                 },
                 status=status.HTTP_402_PAYMENT_REQUIRED
             )
-        
+
         # সফল Login - manually set backend
         user.backend = 'django.contrib.auth.backends.ModelBackend'
         login(request, user)
-        
+
         refresh = RefreshToken.for_user(user)
-        
+
         return Response(
             {
                 "success": True,
@@ -518,6 +524,7 @@ class LoginAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
 
 """========================= deleted account/views.py code========================="""
 
@@ -607,8 +614,10 @@ class ProfileSetupView(APIView):
 
                 address = serializer.validated_data.get('address')
                 interests = serializer.validated_data.get('interests')
-                profile_picture = serializer.validated_data.get('profile_picture')
-                referred_by_code = serializer.validated_data.get('referred_by_code')
+                profile_picture = serializer.validated_data.get(
+                    'profile_picture')
+                referred_by_code = serializer.validated_data.get(
+                    'referred_by_code')
 
                 if address:
                     profile.address = address
@@ -622,13 +631,16 @@ class ProfileSetupView(APIView):
                 profile.save()
 
                 # ✅ রেফারাল বোনাস প্রসেস (শুধুমাত্র একবার)
-                print(f"[DEBUG] referred_by_code from request: {referred_by_code}")
-                print(f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
-                
+                print(
+                    f"[DEBUG] referred_by_code from request: {referred_by_code}")
+                print(
+                    f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
+
                 if referred_by_code and not user.has_claimed_referral:
                     # রেফারাল কোড ট্রিম করুন
                     referred_by_code = referred_by_code.strip()
-                    print(f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
+                    print(
+                        f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
 
                     if not referred_by_code:
                         print("[DEBUG] Referral code is empty after trim")
@@ -642,8 +654,10 @@ class ProfileSetupView(APIView):
 
                     try:
                         # যার কোড ব্যবহার করা হচ্ছে তাকে খোঁজা
-                        referrer = User.objects.get(referral_code=referred_by_code)
-                        print(f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
+                        referrer = User.objects.get(
+                            referral_code=referred_by_code)
+                        print(
+                            f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
 
                         # নিজের কোড নিজে ব্যবহার করা যাবে না
                         if referrer == user:
@@ -658,17 +672,19 @@ class ProfileSetupView(APIView):
 
                         # ✅ বোনাস দিন (atomic transaction এ আছে)
                         print(f"[DEBUG] Adding bonus to referrer and new user")
-                        print(f"[DEBUG] Referrer old balance: {referrer.balance}")
+                        print(
+                            f"[DEBUG] Referrer old balance: {referrer.balance}")
                         print(f"[DEBUG] New user old balance: {user.balance}")
-                        
+
                         referrer.balance += 10
                         referrer.save()
 
                         user.balance += 10
                         user.referred_by = referrer
                         user.has_claimed_referral = True
-                        
-                        print(f"[DEBUG] Referrer new balance: {referrer.balance}")
+
+                        print(
+                            f"[DEBUG] Referrer new balance: {referrer.balance}")
                         print(f"[DEBUG] New user new balance: {user.balance}")
                         print(f"[DEBUG] Referral bonus applied successfully!")
 

@@ -1173,7 +1173,7 @@ class CartViewSet(viewsets.ModelViewSet):
 
         original_total = 0
         optimized_total = 0
-        activities_to_create = []
+        activities_to_create =[]
 
         for item in cart_items:
             qty = item.quantity
@@ -1202,49 +1202,65 @@ class CartViewSet(viewsets.ModelViewSet):
 
         total_saved = float(original_total - optimized_total)
 
-        # Database Transaction (ব্যালেন্স আপডেট ও কার্ট ডিলিট)
+        # Database Transaction
         with transaction.atomic():
             user = request.user
             if total_saved > 0:
-                # User মডেলে total_lifetime_savings ফিল্ড থাকতে হবে
                 current_savings = getattr(user, 'total_lifetime_savings', 0)
                 user.total_lifetime_savings = float(current_savings) + total_saved
                 user.save()
                 
-                SavingsActivity.objects.bulk_create(activities_to_create)
+                # Savings Activity ডাটাবেজে সেভ হচ্ছে
+                if activities_to_create:
+                    SavingsActivity.objects.bulk_create(activities_to_create)
 
-            cart_items.delete() # 🛒 কার্ট খালি করে দেওয়া হলো
+            cart_items.delete() 
+
+       
+        recent_activities = SavingsActivity.objects.filter(user=request.user).order_by('-created_at')[:5]
+        
+        recent_activity_list =[
+            {
+                "title": act.title,
+                "saved_amount": float(act.saved_amount),
+                "date": act.time_ago 
+            } for act in recent_activities
+        ]
 
         data = {
             "total_paid": float(optimized_total),
             "total_saved_this_order": total_saved,
-            "lifetime_savings_now": float(getattr(user, 'total_lifetime_savings', 0))
+            "lifetime_savings_now": float(getattr(user, 'total_lifetime_savings', 0)),
+            "recent_activity": recent_activity_list
         }
+        
         return self._success(data, message="Checkout completed successfully", code=200)
-
-
-class DashboardView(APIView):
+    
+class DashboardSavingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        recent_activities = SavingsActivity.objects.filter(user=user)[:5]
+        # ইউজারের লাস্ট ৫টি সেভিংস অ্যাক্টিভিটি আনবে
+        recent_activities = SavingsActivity.objects.filter(user=user).order_by('-created_at')[:5]
         
+        recent_activity_list =[
+            {
+                "title": act.title,
+                "saved_amount": float(act.saved_amount),
+                "date": act.time_ago  # "Today", "Yesterday" এখানে আসবে
+            } for act in recent_activities
+        ]
+
         data = {
-            "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0)),
-            "recent_activity": [
-                {
-                    "title": act.title,
-                    "saved_amount": float(act.saved_amount),
-                    "date": act.time_ago  # ✅ এখানে "Yesterday" বা "2 days ago" আসবে
-                } for act in recent_activities
-            ]
+            "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
+            "recent_activity": recent_activity_list
         }
         
         return Response({
             "success": True,
             "code": 200,
-            "message": "Dashboard data fetched",
+            "message": "Dashboard data fetched successfully",
             "timestamp": int(time.time()),
             "data": data
         })
