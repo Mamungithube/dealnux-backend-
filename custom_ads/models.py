@@ -19,6 +19,11 @@ class CustomAd(models.Model):
     description = models.TextField(blank=True, default="")
     image = models.ImageField(upload_to='ads/', help_text="Recommended size: 1200x628px")
     target_url = models.URLField(help_text="Valid URL required")
+    target_section = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True
+    )
     
     # Budget & Priority Logic
     total_budget = models.DecimalField(max_digits=10, decimal_places=2)
@@ -75,6 +80,33 @@ class CustomAd(models.Model):
     @property
     def budget_remaining(self):
         return float(self.total_budget - self.spent_amount)
+
+
+
+class AdSetting(models.Model):
+    """অ্যাডমিন ড্যাশবোর্ড থেকে ক্লিকে কাটার অ্যামাউন্ট নিয়ন্ত্রন করার জন্য"""
+    cpc_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.50,
+        help_text="per click amount to charge advertisers"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Ad Setting"
+        verbose_name_plural = "Ad Settings"
+
+    def __str__(self):
+        return f"Current CPC: {self.cpc_amount}"
+
+    def save(self, *args, **kwargs):
+        # এটি নিশ্চিত করবে যে ডাটাবেসে শুধুমাত্র একটি সেটিংস রো থাকবে (Singleton)
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+
+
 
 
 class AdvertiserRequest(models.Model):

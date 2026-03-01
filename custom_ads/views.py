@@ -4,10 +4,10 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, NotFound
 from django.db.models import F
 from django.db import IntegrityError, transaction
-from .models import AdReview, AdvertiserRequest, CustomAd
+from .models import AdReview, AdvertiserRequest, CustomAd, AdSetting
 from .serializers import (
-    AdvertiserRequestSerializer, 
-    AdSerializer, 
+    AdvertiserRequestSerializer,
+    AdSerializer,
     AdPublicSerializer
 )
 from .utils import get_weighted_ads
@@ -40,7 +40,7 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Check pending request
         if AdvertiserRequest.objects.filter(user=request.user, is_reviewed=False).exists():
             return Response(
@@ -53,7 +53,7 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Validate serializer
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
@@ -67,7 +67,7 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Create advertiser request
         try:
             self.perform_create(serializer)
@@ -107,6 +107,7 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
 
 """----------------------Create Ad (Only for approved advertisers)-----------------------"""
 
+
 class CreateAdView(generics.CreateAPIView):
     """
     Approved advertisers can create ads
@@ -128,7 +129,7 @@ class CreateAdView(generics.CreateAPIView):
                 },
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Validate serializer
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
@@ -142,7 +143,7 @@ class CreateAdView(generics.CreateAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Create ad
         try:
             serializer.save(advertiser=request.user)
@@ -227,60 +228,69 @@ class AdListView(generics.ListAPIView):
 
 
 """--------------------Ad Click Tracker-----------------------"""
+
+
 class AdClickTrackerView(APIView):
     """
-    Track ad clicks and update budget
-    POST: /api/ads/click/<ad_id>/
+    Track ad clicks and update budget with dynamic CPC
     """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, ad_id):
         try:
-            ad = CustomAd.objects.select_for_update().get(id=ad_id)
-            
-            # Update click count and spent amount
-            ad.clicks = F('clicks') + 1
-            ad.spent_amount = F('spent_amount') + 0.50  # $0.50 per click
-            ad.save()
-            
-            # Refresh to get actual values
-            ad.refresh_from_db()
-            
-            # Check if budget exceeded
-            if ad.spent_amount >= ad.total_budget:
-                ad.status = 'expired'
+            with transaction.atomic():
+                # ১. ডাটাবেস থেকে অ্যাডটি লক করে নিয়ে আসা
+                ad = CustomAd.objects.select_for_update().get(id=ad_id)
+                
+                # ২. অ্যাডমিন সেটিংস থেকে বর্তমান CPC রেট নেওয়া
+                setting = AdSetting.objects.first()
+                cpc = setting.cpc_amount if setting else 0.50
+
+                # ৩. অলরেডি বাজেট শেষ কি না চেক করা
+                if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
+                    return Response(
+                        {
+                            "success": False,
+                            "code": status.HTTP_400_BAD_REQUEST,
+                            "message": "Ad budget already exhausted.",
+                            "timestamp": int(time.time()),
+                            "data": {}
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # ৪. ক্লিক এবং খরচ আপডেট করা
+                ad.clicks = F('clicks') + 1
+                ad.spent_amount = F('spent_amount') + cpc
                 ad.save()
+                
+                # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
+                ad.refresh_from_db()
+                
+                # ৬. এই ক্লিকের পর বাজেট শেষ হয়েছে কি না চেক করা
+                remaining = float(ad.total_budget - ad.spent_amount)
+                if remaining <= 0:
+                    ad.status = 'expired'
+                    ad.save()
+                    remaining = 0
+
                 return Response(
                     {
                         "success": True,
                         "code": status.HTTP_200_OK,
-                        "message": "Ad budget exhausted. Status set to expired.",
+                        "message": "Click tracked successfully.",
                         "timestamp": int(time.time()),
                         "data": {
                             "clicks": ad.clicks,
-                            "spent": float(ad.spent_amount),
-                            "total_budget": float(ad.total_budget),
+                            "spent_now": float(cpc),
+                            "total_spent": float(ad.spent_amount),
+                            "remaining": remaining,
                             "status": ad.status
                         }
                     },
                     status=status.HTTP_200_OK
                 )
-            
-            return Response(
-                {
-                    "success": True,
-                    "code": status.HTTP_200_OK,
-                    "message": "Click tracked successfully.",
-                    "timestamp": int(time.time()),
-                    "data": {
-                        "clicks": ad.clicks,
-                        "spent": float(ad.spent_amount),
-                        "remaining": float(ad.total_budget - ad.spent_amount)
-                    }
-                },
-                status=status.HTTP_200_OK
-            )
-            
+                
         except CustomAd.DoesNotExist:
             return Response(
                 {
@@ -306,6 +316,8 @@ class AdClickTrackerView(APIView):
 
 
 """----------------------Advertiser Dashboard (Own Ads)-----------------------"""
+
+
 class AdvertiserAdDashboardView(generics.ListAPIView):
     """
     Advertiser can view their own ads
@@ -332,7 +344,7 @@ class AdvertiserAdDashboardView(generics.ListAPIView):
                     },
                     status=status.HTTP_403_FORBIDDEN
                 )
-            
+
             queryset = self.get_queryset()
             serializer = self.get_serializer(queryset, many=True)
             return Response(
@@ -362,6 +374,8 @@ class AdvertiserAdDashboardView(generics.ListAPIView):
 
 
 """--------------------Ad Details (Public)-----------------------"""
+
+
 class AdDetailView(generics.RetrieveAPIView):
     """
     Get single ad details
@@ -410,6 +424,8 @@ class AdDetailView(generics.RetrieveAPIView):
 
 
 """--------------------Update Ad (Only advertiser's own ad)-----------------------"""
+
+
 class UpdateAdView(generics.UpdateAPIView):
     """
     Update own ad
@@ -425,8 +441,9 @@ class UpdateAdView(generics.UpdateAPIView):
         try:
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
-            serializer = self.get_serializer(instance, data=request.data, partial=partial)
-            
+            serializer = self.get_serializer(
+                instance, data=request.data, partial=partial)
+
             if not serializer.is_valid():
                 return Response(
                     {
@@ -438,7 +455,7 @@ class UpdateAdView(generics.UpdateAPIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             self.perform_update(serializer)
             return Response(
                 {
@@ -475,6 +492,7 @@ class UpdateAdView(generics.UpdateAPIView):
 
 
 """--------------------Delete Ad (Only advertiser's own ad)-----------------------"""
+
 
 class DeleteAdView(generics.DestroyAPIView):
     """
@@ -526,6 +544,7 @@ class DeleteAdView(generics.DestroyAPIView):
 
 """--------------------Advertiser Request Status Check-----------------------"""
 
+
 class CheckAdvertiserStatusView(APIView):
     """
     Check advertiser application status
@@ -536,7 +555,7 @@ class CheckAdvertiserStatusView(APIView):
     def get(self, request):
         try:
             user = request.user
-            
+
             if user.ads_provided:
                 return Response(
                     {
@@ -550,7 +569,7 @@ class CheckAdvertiserStatusView(APIView):
                     },
                     status=status.HTTP_200_OK
                 )
-            
+
             try:
                 req = AdvertiserRequest.objects.get(user=user)
                 return Response(
@@ -592,14 +611,17 @@ class CheckAdvertiserStatusView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Ad Configuration Options-----------------------"""
+
+
 class AdConfigView(APIView):
     """
     Configuration options for ad creation form
     GET: /api/ads/config/
     """
     permission_classes = [permissions.AllowAny]
-    
+
     def get(self, request):
         try:
             return Response(
@@ -610,14 +632,18 @@ class AdConfigView(APIView):
                     "timestamp": int(time.time()),
                     "data": {
                         'target_sections': [
-                            {'value': key, 'label': label} 
+                            {'value': key, 'label': label}
                             for key, label in CustomAd.TARGET_SECTION_CHOICES
                         ],
                         'ad_sizes': [
-                            {'width': 85, 'height': 16, 'label': '85 × 16 (Small Banner)'},
-                            {'width': 120, 'height': 60, 'label': '120 × 60 (Large Banner)'},
-                            {'width': 300, 'height': 250, 'label': '300 × 250 (Medium Rectangle)'},
-                            {'width': 728, 'height': 90, 'label': '728 × 90 (Leaderboard)'},
+                            {'width': 85, 'height': 16,
+                                'label': '85 × 16 (Small Banner)'},
+                            {'width': 120, 'height': 60,
+                                'label': '120 × 60 (Large Banner)'},
+                            {'width': 300, 'height': 250,
+                                'label': '300 × 250 (Medium Rectangle)'},
+                            {'width': 728, 'height': 90,
+                                'label': '728 × 90 (Leaderboard)'},
                         ],
                         'budget_info': {
                             'min_budget': 10.00,
@@ -643,6 +669,7 @@ class AdConfigView(APIView):
 
 """==================== ADMIN - ADVERTISER REQUEST MANAGEMENT ===================="""
 
+
 class AdminAdvertiserRequestListView(generics.ListAPIView):
     """
     Admin can view all advertiser requests
@@ -650,19 +677,21 @@ class AdminAdvertiserRequestListView(generics.ListAPIView):
     """
     serializer_class = AdvertiserRequestSerializer
     permission_classes = [IsAdminUser]
-    
+
     def get_queryset(self):
         queryset = AdvertiserRequest.objects.all().order_by('-applied_at')
-        
+
         status_filter = self.request.query_params.get('status')
-        
+
         if status_filter == 'pending':
             queryset = queryset.filter(is_reviewed=False)
         elif status_filter == 'approved':
-            queryset = queryset.filter(is_reviewed=True, user__ads_provided=True)
+            queryset = queryset.filter(
+                is_reviewed=True, user__ads_provided=True)
         elif status_filter == 'rejected':
-            queryset = queryset.filter(is_reviewed=True, user__ads_provided=False)
-        
+            queryset = queryset.filter(
+                is_reviewed=True, user__ads_provided=False)
+
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -694,19 +723,22 @@ class AdminAdvertiserRequestListView(generics.ListAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Admin Approve Advertiser Request-----------------------"""
+
+
 class AdminApproveAdvertiserView(APIView):
     """
     Admin approves advertiser request
     POST: /api/ads/admin/requests/<id>/approve/
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request, pk):
         try:
             advertiser_request = AdvertiserRequest.objects.select_for_update().get(pk=pk)
-            
+
             if advertiser_request.is_reviewed:
                 return Response(
                     {
@@ -718,10 +750,10 @@ class AdminApproveAdvertiserView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Approve the advertiser
             advertiser_request.approve()
-            
+
             return Response(
                 {
                     "success": True,
@@ -732,7 +764,7 @@ class AdminApproveAdvertiserView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-            
+
         except AdvertiserRequest.DoesNotExist:
             return Response(
                 {
@@ -756,7 +788,10 @@ class AdminApproveAdvertiserView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Admin Reject Advertiser Request-----------------------"""
+
+
 class AdminRejectAdvertiserView(APIView):
     """
     Admin rejects advertiser request
@@ -764,12 +799,12 @@ class AdminRejectAdvertiserView(APIView):
     Body: {"reason": "Invalid business details"}
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request, pk):
         try:
             advertiser_request = AdvertiserRequest.objects.select_for_update().get(pk=pk)
-            
+
             if advertiser_request.is_reviewed:
                 return Response(
                     {
@@ -781,9 +816,9 @@ class AdminRejectAdvertiserView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             reason = request.data.get('reason', 'No reason provided')
-            
+
             if not reason or reason == 'No reason provided':
                 return Response(
                     {
@@ -795,10 +830,10 @@ class AdminRejectAdvertiserView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Reject the advertiser
             advertiser_request.reject(reason=reason)
-            
+
             return Response(
                 {
                     "success": True,
@@ -812,7 +847,7 @@ class AdminRejectAdvertiserView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-            
+
         except AdvertiserRequest.DoesNotExist:
             return Response(
                 {
@@ -839,6 +874,7 @@ class AdminRejectAdvertiserView(APIView):
 
 """==================== ADMIN - AD MANAGEMENT ===================="""
 
+
 class AdminAdListView(generics.ListAPIView):
     """
     Admin can view all ads
@@ -846,19 +882,20 @@ class AdminAdListView(generics.ListAPIView):
     """
     serializer_class = AdSerializer
     permission_classes = [IsAdminUser]
-    
+
     def get_queryset(self):
-        queryset = CustomAd.objects.all().select_related('advertiser').order_by('-created_at')
-        
+        queryset = CustomAd.objects.all().select_related(
+            'advertiser').order_by('-created_at')
+
         status_filter = self.request.query_params.get('status')
-        
+
         if status_filter == 'pending':
             queryset = queryset.filter(is_approved=False, status='active')
         elif status_filter == 'approved':
             queryset = queryset.filter(is_approved=True)
         elif status_filter == 'rejected':
             queryset = queryset.filter(is_approved=False, status='paused')
-        
+
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -890,7 +927,9 @@ class AdminAdListView(generics.ListAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Admin Approve Ad-----------------------"""
+
 
 class AdminApproveAdView(APIView):
     """
@@ -898,12 +937,12 @@ class AdminApproveAdView(APIView):
     POST: /api/ads/admin/ads/<id>/approve/
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request, pk):
         try:
             ad = CustomAd.objects.select_for_update().get(pk=pk)
-            
+
             if ad.is_approved:
                 return Response(
                     {
@@ -915,12 +954,12 @@ class AdminApproveAdView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Approve the ad
             ad.is_approved = True
             ad.status = 'active'
             ad.save()
-            
+
             # Create review record
             AdReview.objects.create(
                 ad=ad,
@@ -928,7 +967,7 @@ class AdminApproveAdView(APIView):
                 status='approved',
                 feedback='Ad approved by admin'
             )
-            
+
             return Response(
                 {
                     "success": True,
@@ -939,7 +978,7 @@ class AdminApproveAdView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-            
+
         except CustomAd.DoesNotExist:
             return Response(
                 {
@@ -963,7 +1002,9 @@ class AdminApproveAdView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Admin Reject Ad-----------------------"""
+
 
 class AdminRejectAdView(APIView):
     """
@@ -972,12 +1013,12 @@ class AdminRejectAdView(APIView):
     Body: {"reason": "Inappropriate content", "feedback": "Please revise the image"}
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request, pk):
         try:
             ad = CustomAd.objects.select_for_update().get(pk=pk)
-            
+
             if ad.is_approved:
                 return Response(
                     {
@@ -989,10 +1030,10 @@ class AdminRejectAdView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             reason = request.data.get('reason', 'No reason provided')
             feedback = request.data.get('feedback', '')
-            
+
             if not reason or reason == 'No reason provided':
                 return Response(
                     {
@@ -1004,12 +1045,12 @@ class AdminRejectAdView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Reject the ad
             ad.is_approved = False
             ad.status = 'paused'
             ad.save()
-            
+
             # Create review record
             AdReview.objects.create(
                 ad=ad,
@@ -1017,7 +1058,7 @@ class AdminRejectAdView(APIView):
                 status='rejected',
                 feedback=f"{reason}. {feedback}"
             )
-            
+
             return Response(
                 {
                     "success": True,
@@ -1032,7 +1073,7 @@ class AdminRejectAdView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-            
+
         except CustomAd.DoesNotExist:
             return Response(
                 {
@@ -1056,7 +1097,10 @@ class AdminRejectAdView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Admin Pause/Unpause Ad-----------------------"""
+
+
 class AdminPauseAdView(APIView):
     """
     Admin can pause/unpause an approved ad
@@ -1064,12 +1108,12 @@ class AdminPauseAdView(APIView):
     POST: /api/ads/admin/ads/<id>/unpause/
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request, pk, action):
         try:
             ad = CustomAd.objects.select_for_update().get(pk=pk)
-            
+
             if action == 'pause':
                 ad.status = 'paused'
                 message = f"Ad '{ad.title}' has been paused."
@@ -1087,9 +1131,9 @@ class AdminPauseAdView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             ad.save()
-            
+
             return Response(
                 {
                     "success": True,
@@ -1100,7 +1144,7 @@ class AdminPauseAdView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-            
+
         except CustomAd.DoesNotExist:
             return Response(
                 {
@@ -1124,37 +1168,44 @@ class AdminPauseAdView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """==================== ADMIN - DASHBOARD STATS ===================="""
+
+
 class AdminDashboardStatsView(APIView):
     """
     Admin dashboard statistics
     GET: /api/ads/admin/stats/
     """
     permission_classes = [IsAdminUser]
-    
+
     def get(self, request):
         try:
             # Advertiser stats
             total_advertisers = User.objects.filter(ads_provided=True).count()
-            pending_requests = AdvertiserRequest.objects.filter(is_reviewed=False).count()
-            
+            pending_requests = AdvertiserRequest.objects.filter(
+                is_reviewed=False).count()
+
             # Ad stats
             total_ads = CustomAd.objects.count()
-            pending_ads = CustomAd.objects.filter(is_approved=False, status='active').count()
-            active_ads = CustomAd.objects.filter(is_approved=True, status='active').count()
-            
+            pending_ads = CustomAd.objects.filter(
+                is_approved=False, status='active').count()
+            active_ads = CustomAd.objects.filter(
+                is_approved=True, status='active').count()
+
             # Revenue stats
-            total_revenue = CustomAd.objects.aggregate(total=Sum('spent_amount'))['total'] or 0
-            
+            total_revenue = CustomAd.objects.aggregate(
+                total=Sum('spent_amount'))['total'] or 0
+
             # Recent activities
             recent_requests = AdvertiserRequest.objects.filter(
                 is_reviewed=False
             ).order_by('-applied_at')[:5]
-            
+
             recent_ads = CustomAd.objects.filter(
                 is_approved=False
             ).order_by('-created_at')[:5]
-            
+
             return Response(
                 {
                     "success": True,
@@ -1198,6 +1249,7 @@ class AdminDashboardStatsView(APIView):
 
 """==================== BULK ACTIONS ===================="""
 
+
 class AdminBulkApproveAdsView(APIView):
     """
     Bulk approve multiple ads
@@ -1205,12 +1257,12 @@ class AdminBulkApproveAdsView(APIView):
     Body: {"ad_ids": [1, 2, 3, 4]}
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request):
         try:
             ad_ids = request.data.get('ad_ids', [])
-            
+
             if not ad_ids:
                 return Response(
                     {
@@ -1222,7 +1274,7 @@ class AdminBulkApproveAdsView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             if not isinstance(ad_ids, list):
                 return Response(
                     {
@@ -1234,10 +1286,10 @@ class AdminBulkApproveAdsView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             ads = CustomAd.objects.filter(id__in=ad_ids, is_approved=False)
             count = ads.update(is_approved=True, status='active')
-            
+
             # Create review records
             for ad in ads:
                 AdReview.objects.create(
@@ -1246,7 +1298,7 @@ class AdminBulkApproveAdsView(APIView):
                     status='approved',
                     feedback='Bulk approved by admin'
                 )
-            
+
             return Response(
                 {
                     "success": True,
@@ -1272,7 +1324,9 @@ class AdminBulkApproveAdsView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 """--------------------Bulk Reject Ads-----------------------"""
+
 
 class AdminBulkRejectAdsView(APIView):
     """
@@ -1281,13 +1335,13 @@ class AdminBulkRejectAdsView(APIView):
     Body: {"ad_ids": [1, 2, 3], "reason": "Policy violation"}
     """
     permission_classes = [IsAdminUser]
-    
+
     @transaction.atomic
     def post(self, request):
         try:
             ad_ids = request.data.get('ad_ids', [])
             reason = request.data.get('reason', 'Rejected by admin')
-            
+
             if not ad_ids:
                 return Response(
                     {
@@ -1299,7 +1353,7 @@ class AdminBulkRejectAdsView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             if not isinstance(ad_ids, list):
                 return Response(
                     {
@@ -1311,7 +1365,7 @@ class AdminBulkRejectAdsView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             if not reason or reason == 'Rejected by admin':
                 return Response(
                     {
@@ -1323,10 +1377,10 @@ class AdminBulkRejectAdsView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             ads = CustomAd.objects.filter(id__in=ad_ids)
             count = ads.update(is_approved=False, status='paused')
-            
+
             # Create review records
             for ad in ads:
                 AdReview.objects.create(
@@ -1335,7 +1389,7 @@ class AdminBulkRejectAdsView(APIView):
                     status='rejected',
                     feedback=reason
                 )
-            
+
             return Response(
                 {
                     "success": True,

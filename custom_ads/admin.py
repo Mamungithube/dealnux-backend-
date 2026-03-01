@@ -2,7 +2,7 @@ from django.contrib import admin
 from unfold.admin import ModelAdmin
 from unfold.decorators import display, action
 from django.utils.html import format_html
-from .models import CustomAd, AdvertiserRequest, AdReview
+from .models import CustomAd, AdvertiserRequest, AdReview , AdSetting
 from decimal import Decimal
 
 
@@ -49,27 +49,33 @@ class AdvertiserRequestAdmin(ModelAdmin):
         self.message_user(request, f"{count} requests rejected.")
 
 
+@admin.register(AdSetting)
+class AdSettingAdmin(ModelAdmin):
+    list_display = ('cpc_amount', 'updated_at')
+
 @admin.register(CustomAd)
 class CustomAdAdmin(ModelAdmin):
+    # ড্যাশবোর্ডে যা যা দেখাবে
     list_display = (
-        'id', 'title', 'advertiser', 'status', 'is_approved',
-        'total_budget', 'spent_amount', 'budget_remaining',
-        'clicks', 'impressions', 'ctr',
+        'id', 'title', 'target_section', 'advertiser', 'status', 'is_approved',
+        'total_budget', 'spent_amount', 'clicks', 'impressions',
         'start_date', 'end_date',
     )
 
     list_filter = (
-        'status', 'is_approved', 'is_premium',
+        'status', 'is_approved', 'is_premium', 'target_section',
         'start_date', 'end_date',
     )
 
-    search_fields = ('title', 'advertiser__email')
-    readonly_fields = ('clicks', 'impressions', 'created_at', 'updated_at')
+    search_fields = ('title', 'advertiser__email', 'target_section')
+
+    # সমাধান: created_at এবং updated_at অবশ্যই readonly_fields এ থাকতে হবে
+    readonly_fields = ('clicks', 'impressions', 'created_at', 'updated_at', 'spent_amount')
 
     fieldsets = (
         ('Ad Info', {
             'fields': (
-                'advertiser', 'title', 'description',
+                'advertiser', 'title', 'target_section', 'description',
                 'image', 'target_url', 'cta_text',
             )
         }),
@@ -88,17 +94,14 @@ class CustomAdAdmin(ModelAdmin):
         ('Performance (Read Only)', {
             'fields': ('clicks', 'impressions')
         }),
-        ('Meta', {
-            'fields': ('created_at', 'updated_at')
+        ('Meta Data', {
+            'fields': ('created_at', 'updated_at'),
         }),
     )
 
     ordering = ('-created_at',)
-    
-    # Unfold specific
     list_filter_submit = True
     list_fullwidth = True
-
 
 @admin.register(AdReview)
 class AdReviewAdmin(ModelAdmin):
