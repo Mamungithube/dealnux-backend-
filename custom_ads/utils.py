@@ -17,6 +17,11 @@ def get_weighted_ads(count=3):
     cache_key = f'active_ads_{count}'
     cached_ads = cache.get(cache_key)
     
+    if cached_ads:
+        return cached_ads
+
+    
+    
     now = timezone.now()
     
     # Query active ads

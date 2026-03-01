@@ -1,16 +1,17 @@
 from rest_framework import serializers
+from .models import Privacy_Policy, Cookie_Policy, Terms_Of_Service
 
-class PrivacyPolicySerializer(serializers.Serializer):
-    content = serializers.CharField()
-    created_at = serializers.DateTimeField()
-    last_updated = serializers.DateTimeField()
+class PrivacyPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Privacy_Policy
+        fields = ['id', 'content', 'created_at', 'last_updated']
 
-class CookiePolicySerializer(serializers.Serializer):
-    content = serializers.CharField()
-    created_at = serializers.DateTimeField()
-    last_updated = serializers.DateTimeField()
+class CookiePolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cookie_Policy
+        fields =['id', 'content', 'created_at', 'last_updated']
 
-class TermsOfServiceSerializer(serializers.Serializer):
-    content = serializers.CharField()
-    created_at = serializers.DateTimeField()
-    last_updated = serializers.DateTimeField()
+class TermsOfServiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Terms_Of_Service
+        fields =['id', 'content', 'created_at', 'last_updated']

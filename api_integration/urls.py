@@ -13,7 +13,6 @@ app_name = 'api_integration'
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('api-root/', views.api_root, name='api_root'),
     path('search-and-sync/', views.search_and_sync, name='search_and_sync'),
     path('bulk-sync/', views.bulk_sync_products, name='bulk_sync'),
     path('sync-from-search/', views.sync_from_search_results, name='sync_from_search'),

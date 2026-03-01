@@ -29,7 +29,7 @@ def api_response(*, success: bool, code: int, message: str, data=None):
 # Privacy Policy View
 # ==========================
 class PrivacyPolicyView(APIView):
-    permission_classes = [IsAdminUser]  
+    # permission_classes = [IsAdminUser]  
 
     def get(self, request):
         policy = Privacy_Policy.objects.first()
@@ -111,7 +111,7 @@ class PrivacyPolicyView(APIView):
 # Cookie Policy View
 # ==========================
 class CookiePolicyView(APIView):
-    permission_classes = [IsAdminUser]  
+    # permission_classes = [IsAdminUser]  
 
     def get(self, request):
         policy = Cookie_Policy.objects.first()
@@ -193,7 +193,7 @@ class CookiePolicyView(APIView):
 # Terms Of Service View
 # ==========================
 class TermsOfServiceView(APIView):
-    permission_classes = [IsAdminUser]  
+    # permission_classes = [IsAdminUser]  
 
     def get(self, request):
         policy = Terms_Of_Service.objects.first()

@@ -25,7 +25,7 @@ class AdvertiserRequestAdmin(ModelAdmin):
     def user_email(self, obj):
         return obj.user.email
 
-    @display(description='Status', header=True)
+    @display(description='Status')
     def action_buttons(self, obj):
         if not obj.is_reviewed:
             return format_html(

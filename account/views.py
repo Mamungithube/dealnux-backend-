@@ -20,6 +20,7 @@ from django.db import transaction
 import random
 import json
 import time
+from custom_ads.models import AdvertiserRequest
 
 
 def generate_otp():
@@ -724,30 +725,45 @@ class ProfileSetupView(APIView):
 
 """------------------------Profile Detail View-----------------------------------"""
 
-
 class ProfileDetailsView(generics.RetrieveAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        profile, created = Profile.objects.get_or_create(
-            user=self.request.user)
+        profile, created = Profile.objects.get_or_create(user=self.request.user)
         return profile
+
+    def get_advertiser_status(self, user):
+        if user.ads_provided:
+            return {"status": "approved"}
+        
+        try:
+            req = AdvertiserRequest.objects.get(user=user)
+            return {
+                "status": "pending" if not req.is_reviewed else "rejected",
+                "applied_at": req.applied_at,
+                "rejection_reason": req.rejection_reason
+            }
+        except AdvertiserRequest.DoesNotExist:
+            return {"status": "not_applied"}
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
+        
         return Response(
             {
                 "success": True,
                 "code": status.HTTP_200_OK,
                 "message": "Profile retrieved successfully.",
                 "timestamp": int(time.time()),
-                "data": serializer.data
+                "data": {
+                    **serializer.data,
+                    "advertiser_status": self.get_advertiser_status(request.user)
+                }
             },
             status=status.HTTP_200_OK
         )
-
 
 """ ------------------------Profile UpdateView view--------------------------- """
 

@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Min, Count, Avg
 from django.db import transaction
-from .models import Product, ProductListing, Platform, Category, PriceHistory, ProductImage, ProductSpecification , CartItem , SavingsActivity
+from .models import Product, ProductListing, Platform, Category, PriceHistory, ProductImage, ProductSpecification, CartItem, SavingsActivity
 from .serializers import (
     ProductSerializer,
     ProductDetailSerializer,
@@ -19,6 +19,9 @@ from .services.ebay_service import EbayService
 from .services.clickbank_service import ClickBankService
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from .serializers import CartItemSerializer
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +50,7 @@ def error_response(message="Error", data=None, code=400):
 
 
 # ============================================================================
-# DB Save Helpers
+# DB Save Helpers (Smart Product Matching Added)
 # ============================================================================
 
 def save_clickbank_product_to_db(product_data, platform):
@@ -55,22 +58,36 @@ def save_clickbank_product_to_db(product_data, platform):
     Save ClickBank product to database
     Returns (product, listing, created)
     """
-    product, _ = Product.objects.get_or_create(
-        title=product_data['title'],
-        defaults={
-            'description': product_data.get('description', '') or '',
-            'brand': product_data.get('brand', '') or '',
-            'model_number': product_data.get('model_number', '') or '',
-            'main_image': product_data.get('main_image', '') or ''
-        }
-    )
+    brand = product_data.get('brand', '')
+    brand = brand.strip() if brand else ''
+    
+    model_number = product_data.get('model_number', '')
+    model_number = model_number.strip() if model_number else ''
+    
+    product = None
+
+    # ১. প্রথমে Brand এবং Model Number দিয়ে খোঁজার চেষ্টা করবে
+    if brand and model_number:
+        product = Product.objects.filter(brand__iexact=brand, model_number__iexact=model_number).first()
+    
+    # ২. যদি না পায়, তখন Title দিয়ে খুঁজবে বা নতুন তৈরি করবে
+    if not product:
+        product, _ = Product.objects.get_or_create(
+            title=product_data.get('title', 'Unknown Product'),
+            defaults={
+                'description': product_data.get('description', '') or '',
+                'brand': brand,
+                'model_number': model_number,
+                'main_image': product_data.get('main_image', '') or ''
+            }
+        )
 
     shipping_info = product_data.get('shipping_info', {})
 
     listing, created = ProductListing.objects.update_or_create(
         product=product,
         platform=platform,
-        external_id=product_data['external_id'],
+        external_id=product_data.get('external_id'),
         defaults={
             'external_url': product_data.get('external_url', ''),
             'price': product_data.get('price', 0),
@@ -119,22 +136,36 @@ def save_ebay_product_to_db(item_data, platform):
 
     product_data = ebay_service.extract_product_data(detailed_item)
 
-    product, _ = Product.objects.get_or_create(
-        title=product_data['title'],
-        defaults={
-            'description': product_data.get('description', ''),
-            'brand': product_data.get('brand', ''),
-            'model_number': product_data.get('model_number', ''),
-            'main_image': product_data.get('main_image', '')
-        }
-    )
+    brand = product_data.get('brand', '')
+    brand = brand.strip() if brand else ''
+    
+    model_number = product_data.get('model_number', '')
+    model_number = model_number.strip() if model_number else ''
+    
+    product = None
+
+    # ১. প্রথমে Brand এবং Model Number দিয়ে খোঁজার চেষ্টা করবে
+    if brand and model_number:
+        product = Product.objects.filter(brand__iexact=brand, model_number__iexact=model_number).first()
+    
+    # ২. যদি না পায়, তখন Title দিয়ে খুঁজবে বা নতুন তৈরি করবে
+    if not product:
+        product, _ = Product.objects.get_or_create(
+            title=product_data.get('title', 'Unknown Product'),
+            defaults={
+                'description': product_data.get('description', '') or '',
+                'brand': brand,
+                'model_number': model_number,
+                'main_image': product_data.get('main_image', '') or ''
+            }
+        )
 
     shipping_info = product_data.get('shipping_info', {})
 
     listing, listing_created = ProductListing.objects.update_or_create(
         product=product,
         platform=platform,
-        external_id=product_data['external_id'],
+        external_id=product_data.get('external_id'),
         defaults={
             'external_url': product_data.get('external_url', ''),
             'price': product_data.get('price', 0),
@@ -206,7 +237,7 @@ def sync_ebay_products(platform, query, limit):
     if not search_results:
         return error_response("Failed to fetch products from eBay", code=500)
 
-    items = search_results.get('itemSummaries', [])
+    items = search_results.get('itemSummaries',[])
 
     result = {
         'query': query,
@@ -216,7 +247,7 @@ def sync_ebay_products(platform, query, limit):
         'updated': 0,
         'failed': 0,
         'products': [],
-        'external_ids': []
+        'external_ids':[]
     }
 
     for item in items:
@@ -268,8 +299,8 @@ def sync_clickbank_products(platform, query, limit):
         'synced': 0,
         'updated': 0,
         'failed': 0,
-        'products': [],
-        'external_ids': []
+        'products':[],
+        'external_ids':[]
     }
 
     for item in search_results:
@@ -280,76 +311,26 @@ def sync_clickbank_products(platform, query, limit):
             product_data = clickbank_service.extract_product_data(item)
 
             with transaction.atomic():
-                product, _ = Product.objects.get_or_create(
-                    title=product_data['title'],
-                    defaults={
-                        'description': product_data.get('description', '') or '',
-                        'brand': product_data.get('brand', '') or '',
-                        'model_number': product_data.get('model_number', '') or '',
-                        'main_image': product_data.get('main_image', '') or ''
-                    }
-                )
+                product, listing, created = save_clickbank_product_to_db(product_data, platform)
 
-                shipping_info = product_data.get('shipping_info', {})
+                if product and listing:
+                    if created:
+                        result['synced'] += 1
+                    else:
+                        result['updated'] += 1
 
-                listing, created = ProductListing.objects.update_or_create(
-                    product=product,
-                    platform=platform,
-                    external_id=external_id,
-                    defaults={
-                        'external_url': product_data.get('external_url', ''),
-                        'price': product_data.get('price', 0),
-                        'currency': product_data.get('currency', 'USD'),
-                        'condition': product_data.get('condition', 'NEW'),
-                        'quantity': product_data.get('quantity', 0),
-                        'seller_username': product_data.get('seller_username', ''),
-                        'seller_rating': product_data.get('seller_rating'),
-                        'item_location': product_data.get('item_location', ''),
-                        'shipping_cost': shipping_info.get('cost', 0),
-                        'free_shipping': shipping_info.get('free_shipping', False),
-                        'is_available': product_data.get('is_available', True)
-                    }
-                )
-
-                if product_data.get('specifications'):
-                    ProductSpecification.objects.filter(product=product).delete()
-                    for name, value in product_data['specifications'].items():
-                        ProductSpecification.objects.create(
-                            product=product,
-                            name=name,
-                            value=value
-                        )
-
-                if created:
-                    PriceHistory.objects.create(
-                        listing=listing,
-                        price=listing.price,
-                        currency=listing.currency
-                    )
+                    result['products'].append({
+                        'product_id': product.id,
+                        'listing_id': listing.id,
+                        'external_id': external_id,
+                        'title': product.title,
+                        'slug': product.slug,
+                        'price': float(listing.price),
+                        'currency': listing.currency,
+                        'status': 'created' if created else 'updated'
+                    })
                 else:
-                    last_history = listing.price_history.order_by('-recorded_at').first()
-                    if not last_history or last_history.price != listing.price:
-                        PriceHistory.objects.create(
-                            listing=listing,
-                            price=listing.price,
-                            currency=listing.currency
-                        )
-
-                if created:
-                    result['synced'] += 1
-                else:
-                    result['updated'] += 1
-
-                result['products'].append({
-                    'product_id': product.id,
-                    'listing_id': listing.id,
-                    'external_id': external_id,
-                    'title': product.title,
-                    'slug': product.slug,
-                    'price': float(listing.price),
-                    'currency': listing.currency,
-                    'status': 'created' if created else 'updated'
-                })
+                    result['failed'] += 1
 
         except Exception as e:
             result['failed'] += 1
@@ -364,7 +345,7 @@ def sync_all_platforms(query, limit):
 
     all_results = {
         'query': query,
-        'platforms': [],
+        'platforms':[],
         'total_synced': 0,
         'total_updated': 0,
         'total_failed': 0,
@@ -428,10 +409,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         category = self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(category__slug=category)
-
-        brand = self.request.query_params.get('brand')
-        if brand:
-            queryset = queryset.filter(brand__iexact=brand)
 
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
@@ -562,10 +539,6 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['GET'])
 def search_and_sync(request):
-    """
-    Search and automatically sync products to database
-    GET /api/search-and-sync/?q=laptop&limit=10&platform=ebay
-    """
     query = request.GET.get('q', '')
     limit = min(int(request.GET.get('limit', 10)), 50)
     platform_code = request.GET.get('platform', 'ebay')
@@ -590,13 +563,8 @@ def search_and_sync(request):
 
 @api_view(['POST'])
 def bulk_sync_products(request):
-    """
-    Bulk sync multiple products
-    POST /api/bulk-sync/
-    Body: { "platform": "ebay", "product_ids": ["v1|110588835408|0"] }
-    """
     platform_code = request.data.get('platform')
-    product_ids = request.data.get('product_ids') or request.data.get('external_ids', [])
+    product_ids = request.data.get('product_ids') or request.data.get('external_ids',[])
 
     if not platform_code or not product_ids:
         return error_response('Both "platform" and "product_ids" are required', code=400)
@@ -619,7 +587,7 @@ def bulk_sync_products(request):
         'synced': 0,
         'updated': 0,
         'failed': 0,
-        'products': []
+        'products':[]
     }
 
     for external_id in product_ids:
@@ -665,40 +633,9 @@ def bulk_sync_products(request):
     return success_response(result, message="Bulk sync completed")
 
 
-@api_view(['GET'])
-def api_root(request):
-    """API Root - List all available endpoints"""
-    return success_response({
-        'message': 'Dealnux Price Comparison API',
-        'version': '1.0',
-        'endpoints': {
-            'products': {
-                'list': '/products/',
-                'detail': '/products/{slug}/',
-                'compare_prices': '/products/{slug}/compare_prices/',
-            },
-            'listings': {
-                'list': '/listings/',
-                'detail': '/listings/{id}/',
-            },
-            'platforms': {
-                'list': '/platforms/',
-                'detail': '/platforms/{code}/',
-            },
-            'sync': {
-                'search_and_sync': '/search-and-sync/?q={query}&limit=10',
-                'bulk_sync': '/bulk-sync/ (POST)',
-            }
-        }
-    }, message="API root")
-
 
 @api_view(['POST'])
 def sync_from_search_results(request):
-    """
-    POST /api/sync-from-search/
-    Body: {"query": "laptop", "limit": 10, "platform": "ebay"}
-    """
     query = request.data.get('query', '')
     limit = min(int(request.data.get('limit', 10)), 50)
     platform_code = request.data.get('platform', 'ebay')
@@ -716,13 +653,13 @@ def sync_from_search_results(request):
         search_results = service.search_products(query, limit=limit)
         items_key = 'itemSummaries'
         id_key = 'itemId'
-        items = search_results.get(items_key, []) if search_results else []
+        items = search_results.get(items_key,[]) if search_results else[]
 
     elif platform_code == 'clickbank':
         service = ClickBankService()
         search_results = service.search_mock_products(query, limit)
         id_key = 'site'
-        items = search_results if isinstance(search_results, list) else []
+        items = search_results if isinstance(search_results, list) else[]
 
     else:
         return error_response(f'Platform "{platform_code}" sync not implemented', code=501)
@@ -740,7 +677,7 @@ def sync_from_search_results(request):
         'skipped': 0,
         'failed': 0,
         'products': [],
-        'external_ids': []
+        'external_ids':[]
     }
 
     for item in items:
@@ -815,12 +752,12 @@ def get_external_ids(request):
         return error_response('Query parameter "q" is required', code=400)
 
     if platform_code == 'all':
-        all_items = []
+        all_items =[]
 
         try:
             ebay_service = EbayService()
             ebay_results = ebay_service.search_products(query, limit=limit)
-            ebay_items = ebay_results.get('itemSummaries', []) if ebay_results else []
+            ebay_items = ebay_results.get('itemSummaries', []) if ebay_results else[]
             for item in ebay_items:
                 all_items.append({
                     'external_id': item.get('itemId'),
@@ -860,7 +797,7 @@ def get_external_ids(request):
     if platform_code == 'ebay':
         service = EbayService()
         search_results = service.search_products(query, limit=limit)
-        items = search_results.get('itemSummaries', []) if search_results else []
+        items = search_results.get('itemSummaries',[]) if search_results else[]
         id_key = 'itemId'
 
     elif platform_code == 'clickbank':
@@ -873,7 +810,7 @@ def get_external_ids(request):
         return error_response(f'Platform "{platform_code}" not supported', code=400)
 
     external_ids = []
-    items_detail = []
+    items_detail =[]
 
     for item in items:
         item_id = item.get(id_key)
@@ -881,6 +818,7 @@ def get_external_ids(request):
         items_detail.append({
             'external_id': item_id,
             'title': item.get('title'),
+            'categories': item.get('categories',[]),
             'price': item.get('price', {}).get('value') if platform_code == 'ebay' else item.get('price'),
             'currency': item.get('price', {}).get('currency') if platform_code == 'ebay' else 'USD',
             'condition': item.get('condition'),
@@ -903,16 +841,13 @@ def get_external_ids(request):
 
 @api_view(['GET'])
 def product_price_history(request, slug):
-    """
-    GET /api/v1/fetch-products/products/{slug}/price_history/
-    """
     try:
         product = Product.objects.get(slug=slug)
     except Product.DoesNotExist:
         return error_response('Product not found', code=404)
 
     listings = product.listings.all()
-    history_data = []
+    history_data =[]
 
     for listing in listings:
         histories = listing.price_history.order_by('-recorded_at')
@@ -938,13 +873,8 @@ def product_price_history(request, slug):
 from .tasks import sync_all_platforms_task, sync_ebay_task, sync_clickbank_task
 from django.core.cache import cache
 
-
 @api_view(['GET'])
 def smart_search(request):
-    """
-    Parallel sync + Cache
-    GET /api/v1/fetch-products/smart-search/?q=laptop&limit=10
-    """
     query = request.GET.get('q', '')
     limit = min(int(request.GET.get('limit', 10)), 50)
 
@@ -993,10 +923,6 @@ def smart_search(request):
 
 @api_view(['GET'])
 def task_status(request, task_id):
-    """
-    Task status check
-    GET /api/v1/fetch-products/task-status/{task_id}/
-    """
     from celery.result import AsyncResult
 
     result = AsyncResult(task_id)
@@ -1018,12 +944,6 @@ def task_status(request, task_id):
 # ============================================================================
 # Cart ViewSet
 # ============================================================================
-
-from rest_framework.permissions import IsAuthenticated
-from .models import CartItem
-from .serializers import CartItemSerializer
-from api_integration.models import ProductListing
-
 
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartItemSerializer
@@ -1078,7 +998,6 @@ class CartViewSet(viewsets.ModelViewSet):
     def checkout_options(self, request):
         cart_items = self.get_queryset()
         
-        # কার্ট ফাঁকা থাকলে exception থ্রো করবে, যা আপনার custom_exception_handler হ্যান্ডেল করবে (success: false)
         if not cart_items.exists():
             raise ValidationError({"cart": "Your cart is empty."})
 
@@ -1086,8 +1005,8 @@ class CartViewSet(viewsets.ModelViewSet):
         optimized_total = 0
         single_store_total = 0
         optimized_split = {}
-        single_store_target = 'ebay' # Default fallback
-        single_store_items = []
+        single_store_target = 'ebay'
+        single_store_items =[]
 
         for item in cart_items:
             product = item.product
@@ -1105,11 +1024,10 @@ class CartViewSet(viewsets.ModelViewSet):
                 platform_name = cheapest_listing.platform.name
                 
                 if platform_name not in optimized_split:
-                    optimized_split[platform_name] = {'total': 0, 'items': []}
+                    optimized_split[platform_name] = {'total': 0, 'items':[]}
                 
                 optimized_split[platform_name]['total'] += float(opt_price)
                 
-                # ✅ ক্লিয়ার কাট স্ট্রাকচার
                 optimized_split[platform_name]['items'].append({
                     'product': product.title,
                     'unit_price': float(cheapest_listing.price),
@@ -1126,7 +1044,6 @@ class CartViewSet(viewsets.ModelViewSet):
                 single_price = single_store_listing.price * qty
                 single_store_total += single_price
                 
-                # ✅ ক্লিয়ার কাট স্ট্রাকচার
                 single_store_items.append({
                     'product': product.title, 
                     'unit_price': float(single_store_listing.price),
@@ -1138,7 +1055,6 @@ class CartViewSet(viewsets.ModelViewSet):
 
         split_savings = float(original_total - optimized_total)
         
-        # রেসপন্সের মূল ডাটা
         data = {
             "cart_total_original": float(original_total),
             "options": {
@@ -1162,8 +1078,8 @@ class CartViewSet(viewsets.ModelViewSet):
             }
         }
         
-        # আপনার success ফরম্যাটে ডাটা রিটার্ন করবে (success: true)
         return self._success(data, message="Checkout options generated", code=200)
+
     @action(detail=False, methods=['post'])
     def complete_checkout(self, request):
         cart_items = self.get_queryset()
@@ -1202,7 +1118,6 @@ class CartViewSet(viewsets.ModelViewSet):
 
         total_saved = float(original_total - optimized_total)
 
-        # Database Transaction
         with transaction.atomic():
             user = request.user
             if total_saved > 0:
@@ -1210,13 +1125,11 @@ class CartViewSet(viewsets.ModelViewSet):
                 user.total_lifetime_savings = float(current_savings) + total_saved
                 user.save()
                 
-                # Savings Activity ডাটাবেজে সেভ হচ্ছে
                 if activities_to_create:
                     SavingsActivity.objects.bulk_create(activities_to_create)
 
             cart_items.delete() 
 
-       
         recent_activities = SavingsActivity.objects.filter(user=request.user).order_by('-created_at')[:5]
         
         recent_activity_list =[
@@ -1235,20 +1148,17 @@ class CartViewSet(viewsets.ModelViewSet):
         }
         
         return self._success(data, message="Checkout completed successfully", code=200)
-    
-class DashboardSavingsView(APIView):
-    permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    @action(detail=False, methods=['get'])
+    def dashboard(self, request):
         user = request.user
-        # ইউজারের লাস্ট ৫টি সেভিংস অ্যাক্টিভিটি আনবে
         recent_activities = SavingsActivity.objects.filter(user=user).order_by('-created_at')[:5]
         
         recent_activity_list =[
             {
                 "title": act.title,
                 "saved_amount": float(act.saved_amount),
-                "date": act.time_ago  # "Today", "Yesterday" এখানে আসবে
+                "date": act.time_ago
             } for act in recent_activities
         ]
 
@@ -1257,10 +1167,26 @@ class DashboardSavingsView(APIView):
             "recent_activity": recent_activity_list
         }
         
-        return Response({
-            "success": True,
-            "code": 200,
-            "message": "Dashboard data fetched successfully",
-            "timestamp": int(time.time()),
-            "data": data
-        })
+        return self._success(data, message="Dashboard data fetched successfully", code=200)
+
+class DashboardSavingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        recent_activities = SavingsActivity.objects.filter(user=user).order_by('-created_at')[:5]
+        
+        recent_activity_list =[
+            {
+                "title": act.title,
+                "saved_amount": float(act.saved_amount),
+                "date": act.time_ago
+            } for act in recent_activities
+        ]
+
+        data = {
+            "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
+            "recent_activity": recent_activity_list
+        }
+        
+        return success_response(data, message="Dashboard data fetched successfully")
