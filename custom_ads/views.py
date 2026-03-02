@@ -36,7 +36,9 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
                     "code": status.HTTP_400_BAD_REQUEST,
                     "message": "You are already an approved advertiser.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "detail": "You are already an approved advertiser."
+                    }
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -49,7 +51,9 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
                     "code": status.HTTP_400_BAD_REQUEST,
                     "message": "Your previous request is still under review.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "detail": "Your previous request is still under review."
+                    }
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -125,7 +129,9 @@ class CreateAdView(generics.CreateAPIView):
                     "code": status.HTTP_403_FORBIDDEN,
                     "message": "You must be an approved advertiser to create ads. Please apply first.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "detail": "You must be an approved advertiser to create ads. Please apply first."
+                    }
                 },
                 status=status.HTTP_403_FORBIDDEN
             )
@@ -241,7 +247,7 @@ class AdClickTrackerView(APIView):
             with transaction.atomic():
                 # ১. ডাটাবেস থেকে অ্যাডটি লক করে নিয়ে আসা
                 ad = CustomAd.objects.select_for_update().get(id=ad_id)
-                
+
                 # ২. অ্যাডমিন সেটিংস থেকে বর্তমান CPC রেট নেওয়া
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else 0.50
@@ -263,10 +269,10 @@ class AdClickTrackerView(APIView):
                 ad.clicks = F('clicks') + 1
                 ad.spent_amount = F('spent_amount') + cpc
                 ad.save()
-                
+
                 # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
                 ad.refresh_from_db()
-                
+
                 # ৬. এই ক্লিকের পর বাজেট শেষ হয়েছে কি না চেক করা
                 remaining = float(ad.total_budget - ad.spent_amount)
                 if remaining <= 0:
@@ -290,7 +296,7 @@ class AdClickTrackerView(APIView):
                     },
                     status=status.HTTP_200_OK
                 )
-                
+
         except CustomAd.DoesNotExist:
             return Response(
                 {
@@ -406,7 +412,9 @@ class AdDetailView(generics.RetrieveAPIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Ad not found.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "detail": "Ad not found."
+                    }
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -514,7 +522,10 @@ class DeleteAdView(generics.DestroyAPIView):
                     "code": status.HTTP_200_OK,
                     "message": "Ad deleted successfully.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "id": instance.id,
+                        "title": instance.title
+                    }
                 },
                 status=status.HTTP_200_OK
             )
@@ -525,7 +536,10 @@ class DeleteAdView(generics.DestroyAPIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Ad not found or you don't have permission to delete it.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "id": instance.id,
+                        "title": instance.title
+                    }
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -746,7 +760,9 @@ class AdminApproveAdvertiserView(APIView):
                         "code": status.HTTP_400_BAD_REQUEST,
                         "message": "This request has already been reviewed.",
                         "timestamp": int(time.time()),
-                        "data": {}
+                        "data": {
+                            "detail": "This request has already been reviewed."
+                        }
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -772,7 +788,9 @@ class AdminApproveAdvertiserView(APIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Advertiser request not found.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "detail": "Advertiser request not found."
+                    }
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -812,7 +830,9 @@ class AdminRejectAdvertiserView(APIView):
                         "code": status.HTTP_400_BAD_REQUEST,
                         "message": "This request has already been reviewed.",
                         "timestamp": int(time.time()),
-                        "data": {}
+                        "data": {
+                            "detail": "This request has already been reviewed."
+                        }
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -950,7 +970,9 @@ class AdminApproveAdView(APIView):
                         "code": status.HTTP_400_BAD_REQUEST,
                         "message": "This ad is already approved.",
                         "timestamp": int(time.time()),
-                        "data": {}
+                        "data": {
+                            "detail": "This ad is already approved."
+                        }
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -986,7 +1008,9 @@ class AdminApproveAdView(APIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Ad not found.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {
+                        "detail": "Ad not found."
+                    }
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -1026,7 +1050,9 @@ class AdminRejectAdView(APIView):
                         "code": status.HTTP_400_BAD_REQUEST,
                         "message": "Cannot reject an already approved ad. Pause it instead.",
                         "timestamp": int(time.time()),
-                        "data": {}
+                        "data": {
+                            "detail": "Cannot reject an already approved ad. Pause it instead."
+                        }
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -1081,7 +1107,7 @@ class AdminRejectAdView(APIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Ad not found.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {"detail": "The requested ad does not exist."}
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -1127,7 +1153,7 @@ class AdminPauseAdView(APIView):
                         "code": status.HTTP_400_BAD_REQUEST,
                         "message": "Invalid action. Use 'pause' or 'unpause'.",
                         "timestamp": int(time.time()),
-                        "data": {}
+                        "data": {"detail": "Invalid action. Use 'pause' or 'unpause'."}
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -1152,7 +1178,7 @@ class AdminPauseAdView(APIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Ad not found.",
                     "timestamp": int(time.time()),
-                    "data": {}
+                    "data": {"detail": "The requested ad does not exist."}
                 },
                 status=status.HTTP_404_NOT_FOUND
             )

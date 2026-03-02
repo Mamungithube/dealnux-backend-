@@ -1,5 +1,123 @@
+# ===========================
+# Python
+# ===========================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+*.whl
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===========================
+# Virtual Environment
+# ===========================
+.venv/
+venv/
+env/
+ENV/
+.env/
+
+# ===========================
+# Environment Variables
+# ===========================
 .env
+.env.*
+!.env.example
+*.local
+
+# ===========================
+# Django
+# ===========================
 db.sqlite3
-.git
+db.sqlite3-journal
+*.log
+local_settings.py
+/staticfiles/
+/mediafiles/
+/media/
+/static/
+
+# ===========================
+# PostgreSQL
+# ===========================
+*.sql
+*.dump
+*.pg_dump
+pgdata/
+
+# ===========================
+# Redis
+# ===========================
+dump.rdb
+*.rdb
+redis-data/
+
+# ===========================
+# Celery
+# ===========================
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat.pid
+*.pid
+
+# ===========================
+# Docker
+# ===========================
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ===========================
+# Secrets & Keys
+# ===========================
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets/
+
+# ===========================
+# IDE & Editors
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Testing & Coverage
+# ===========================
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+test-reports/
+
+# ===========================
+# Logs
+# ===========================
+logs/
+*.log
+*.log.*
+
+# ===========================
+# Git
+# ===========================
+.git/
