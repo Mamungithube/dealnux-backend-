@@ -103,6 +103,33 @@ class CustomAdAdmin(ModelAdmin):
     list_filter_submit = True
     list_fullwidth = True
 
+    actions = ['approve_ads', 'reject_ads'] # অ্যাকশনগুলো এখানে যুক্ত করুন
+
+    @action(description="✅ Approve and Activate selected ads")
+    def approve_ads(self, request, queryset):
+        # একসাথে অনেকগুলো অ্যাড আপডেট হবে
+        count = queryset.update(is_approved=True, status='active')
+        self.message_user(request, f"সফলভাবে {count}টি অ্যাড অ্যাপ্রুভ এবং একটিভ করা হয়েছে।")
+
+    @action(description="❌ Reject selected ads")
+    def reject_ads(self, request, queryset):
+        count = queryset.update(is_approved=False, status='rejected')
+        self.message_user(request, f"{count}টি অ্যাড রিজেক্ট করা হয়েছে।")
+
+
+    def save_model(self, request, obj, form, change):
+        # যদি অ্যাপ্রুভ টিক দেয়া হয় এবং স্ট্যাটাস পেন্ডিং থাকে
+        if obj.is_approved and obj.status == 'pending':
+            obj.status = 'active'
+        
+        # যদি অ্যাপ্রুভ টিক তুলে দেয়া হয় এবং স্ট্যাটাস একটিভ থাকে
+        elif not obj.is_approved and obj.status == 'active':
+            obj.status = 'pending'
+            
+        super().save_model(request, obj, form, change)
+
+    list_editable = ('status', 'is_approved')
+
 @admin.register(AdReview)
 class AdReviewAdmin(ModelAdmin):
     list_display = ('id', 'ad', 'reviewed_at', 'status', 'feedback')
