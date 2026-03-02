@@ -55,7 +55,6 @@ class AdSettingAdmin(ModelAdmin):
 
 @admin.register(CustomAd)
 class CustomAdAdmin(ModelAdmin):
-    # ড্যাশবোর্ডে যা যা দেখাবে
     list_display = (
         'id', 'title', 'target_section', 'advertiser', 'status', 'is_approved',
         'total_budget', 'spent_amount', 'clicks', 'impressions',
@@ -69,7 +68,6 @@ class CustomAdAdmin(ModelAdmin):
 
     search_fields = ('title', 'advertiser__email', 'target_section')
 
-    # সমাধান: created_at এবং updated_at অবশ্যই readonly_fields এ থাকতে হবে
     readonly_fields = ('clicks', 'impressions', 'created_at', 'updated_at', 'spent_amount')
 
     fieldsets = (
@@ -103,7 +101,7 @@ class CustomAdAdmin(ModelAdmin):
     list_filter_submit = True
     list_fullwidth = True
 
-    actions = ['approve_ads', 'reject_ads'] # অ্যাকশনগুলো এখানে যুক্ত করুন
+    actions = ['approve_ads', 'reject_ads']
 
     @action(description="✅ Approve and Activate selected ads")
     def approve_ads(self, request, queryset):
@@ -118,11 +116,9 @@ class CustomAdAdmin(ModelAdmin):
 
 
     def save_model(self, request, obj, form, change):
-        # যদি অ্যাপ্রুভ টিক দেয়া হয় এবং স্ট্যাটাস পেন্ডিং থাকে
         if obj.is_approved and obj.status == 'pending':
             obj.status = 'active'
         
-        # যদি অ্যাপ্রুভ টিক তুলে দেয়া হয় এবং স্ট্যাটাস একটিভ থাকে
         elif not obj.is_approved and obj.status == 'active':
             obj.status = 'pending'
             
@@ -137,7 +133,6 @@ class AdReviewAdmin(ModelAdmin):
     search_fields = ('ad__title', 'reviewer__email')
     readonly_fields = ('reviewed_at',)
     
-    # Unfold specific
     list_filter_submit = True
 
     @display(description='Reviewer')

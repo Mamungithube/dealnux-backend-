@@ -16,6 +16,7 @@ from django.db.models import Sum
 from rest_framework.decorators import action
 from .permissions import IsAdminUser
 import time
+from django.http import Http404
 
 
 # ১. Advertiser Request Apply
@@ -383,10 +384,6 @@ class AdvertiserAdDashboardView(generics.ListAPIView):
 
 
 class AdDetailView(generics.RetrieveAPIView):
-    """
-    Get single ad details
-    GET: /api/ads/detail/<id>/
-    """
     queryset = CustomAd.objects.filter(is_approved=True, status='active')
     serializer_class = AdPublicSerializer
     permission_classes = [permissions.AllowAny]
@@ -405,16 +402,14 @@ class AdDetailView(generics.RetrieveAPIView):
                 },
                 status=status.HTTP_200_OK
             )
-        except CustomAd.DoesNotExist:
+        except Http404: # DRF এখানে Http404 রাইজ করে
             return Response(
                 {
                     "success": False,
                     "code": status.HTTP_404_NOT_FOUND,
-                    "message": "Ad not found.",
+                    "message": "Ad not found or is not active.",
                     "timestamp": int(time.time()),
-                    "data": {
-                        "detail": "Ad not found."
-                    }
+                    "data": {"detail": "No CustomAd matches the given query."}
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -423,9 +418,9 @@ class AdDetailView(generics.RetrieveAPIView):
                 {
                     "success": False,
                     "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "message": "Failed to retrieve ad details.",
+                    "message": "An unexpected error occurred.",
                     "timestamp": int(time.time()),
-                    "data": {"detail": [str(e)]}
+                    "data": {"detail": str(e)}
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

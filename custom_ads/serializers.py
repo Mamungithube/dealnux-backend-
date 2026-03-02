@@ -107,10 +107,7 @@ class AdPublicSerializer(serializers.ModelSerializer):
     """Public facing serializer - minimal data exposure"""
     class Meta:
         model = CustomAd
-        fields = [
-            'id', 'title', 'description', 'image', 
-            'target_url', 'cta_text'
-        ]
+        fields = "__all__"
 
 
 
