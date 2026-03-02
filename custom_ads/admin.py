@@ -54,20 +54,54 @@ class AdSettingAdmin(ModelAdmin):
     list_display = ('cpc_amount', 'updated_at')
 
 @admin.register(CustomAd)
-class CustomAdAdmin(admin.ModelAdmin):
-    list_display = ['title', 'advertiser', 'status', 'is_approved', 'created_at']
-    list_filter = ['status', 'is_approved']
-    actions = ['approve_ads', 'reject_ads']
+class CustomAdAdmin(ModelAdmin):
+    # ড্যাশবোর্ডে যা যা দেখাবে
+    list_display = (
+        'id', 'title', 'target_section', 'advertiser', 'status', 'is_approved',
+        'total_budget', 'spent_amount', 'clicks', 'impressions',
+        'start_date', 'end_date',
+    )
 
-    def approve_ads(self, request, queryset):
-        queryset.update(status='active', is_approved=True)
-        self.message_user(request, f"{queryset.count()} ads approved successfully.")
-    approve_ads.short_description = "Approve selected ads"
+    list_filter = (
+        'status', 'is_approved', 'is_premium', 'target_section',
+        'start_date', 'end_date',
+    )
 
-    def reject_ads(self, request, queryset):
-        queryset.update(status='rejected', is_approved=False)
-        self.message_user(request, f"{queryset.count()} ads rejected.")
-    reject_ads.short_description = "Reject selected ads"
+    search_fields = ('title', 'advertiser__email', 'target_section')
+
+    # সমাধান: created_at এবং updated_at অবশ্যই readonly_fields এ থাকতে হবে
+    readonly_fields = ('clicks', 'impressions', 'created_at', 'updated_at', 'spent_amount')
+
+    fieldsets = (
+        ('Ad Info', {
+            'fields': (
+                'advertiser', 'title', 'target_section', 'description',
+                'image', 'target_url', 'cta_text',
+            )
+        }),
+        ('Budget & Priority', {
+            'fields': (
+                'total_budget', 'spent_amount',
+                'priority_weight', 'is_premium',
+            )
+        }),
+        ('Status & Approval', {
+            'fields': (
+                'status', 'is_approved',
+                'start_date', 'end_date',
+            )
+        }),
+        ('Performance (Read Only)', {
+            'fields': ('clicks', 'impressions')
+        }),
+        ('Meta Data', {
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )
+
+    ordering = ('-created_at',)
+    list_filter_submit = True
+    list_fullwidth = True
 
 @admin.register(AdReview)
 class AdReviewAdmin(ModelAdmin):

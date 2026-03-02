@@ -12,7 +12,7 @@ class CustomAd(models.Model):
         ('expired', 'Expired'),     
         ('rejected', 'Rejected'),   
     ]
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    
     advertiser = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -50,8 +50,7 @@ class CustomAd(models.Model):
     start_date = models.DateTimeField(default=timezone.now)
     end_date = models.DateTimeField()
     is_approved = models.BooleanField(default=False)
-    status = models.CharField(
-        max_length=10, choices=STATUS_CHOICES, default='active')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     cta_text = models.CharField(max_length=50, default="Learn More")
 
     # Meta
