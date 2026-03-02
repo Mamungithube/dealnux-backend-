@@ -3,6 +3,17 @@ from .models import AdvertiserRequest, CustomAd, AdReview
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+
+class AdReviewSerializer(serializers.ModelSerializer):
+    reviewer_email = serializers.EmailField(source='reviewer.email', read_only=True)
+    
+    class Meta:
+        model = AdReview
+        fields = ['id', 'status', 'feedback', 'reviewed_at', 'reviewer_email']
+        read_only_fields = ['reviewed_at']
+
+
+
 class AdvertiserRequestSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
     
@@ -18,11 +29,13 @@ class AdvertiserRequestSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = self.context['request'].user
         
-        # Check if already applied
-        if AdvertiserRequest.objects.filter(user=user).exists():
-            raise serializers.ValidationError(
-                "You have already applied. Please wait for admin review."
-            )
+        # পুরনো check সরিয়ে নিচেরটা দিন
+        pending = AdvertiserRequest.objects.filter(user=user, is_reviewed=False).exists()
+        if pending:
+            raise serializers.ValidationError("Your request is still under review.")
+        
+        # Rejected হলে পুরনো request delete করে নতুন তৈরি করুন
+        AdvertiserRequest.objects.filter(user=user, is_reviewed=True).delete()
         
         return AdvertiserRequest.objects.create(user=user, **validated_data)
 
@@ -41,21 +54,22 @@ class AdSerializer(serializers.ModelSerializer):
     advertiser_name = serializers.CharField(source='advertiser.Fullname', read_only=True)
     ctr = serializers.FloatField(read_only=True)
     budget_remaining = serializers.FloatField(read_only=True)
-    
+    reviews = AdReviewSerializer(many=True, read_only=True)  # ✅ উপরে define আছে তাই কাজ করবে
+
     class Meta:
         model = CustomAd
         fields = [
             'id', 'title', 'description', 'image', 'target_url',
-            'target_section',                                          # এটা আগে missing ছিল
-            'total_budget', 'spent_amount', 'priority_weight', 
+            'target_section',
+            'total_budget', 'spent_amount', 'priority_weight',
             'is_premium', 'clicks', 'impressions', 'ctr',
             'start_date', 'end_date', 'is_approved', 'status',
             'cta_text', 'advertiser_name', 'budget_remaining',
-            'created_at', 'updated_at', 'reviews' 
+            'created_at', 'updated_at', 'reviews'
         ]
         read_only_fields = [
-            'spent_amount', 'clicks', 'impressions', 
-            'is_approved', 'status',                                   # status user change করতে পারবে না
+            'spent_amount', 'clicks', 'impressions',
+            'is_approved', 'status',
             'created_at', 'updated_at', 'reviews'
         ]
 
@@ -101,13 +115,4 @@ class AdPublicSerializer(serializers.ModelSerializer):
 
 
 # serializers.py - AdReview serializer
-
-class AdReviewSerializer(serializers.ModelSerializer):
-    reviewer_email = serializers.EmailField(source='reviewer.email', read_only=True)
-    
-    class Meta:
-        model = AdReview
-        fields = ['id', 'status', 'feedback', 'reviewed_at', 'reviewer_email']
-        read_only_fields = ['reviewed_at']
-
 

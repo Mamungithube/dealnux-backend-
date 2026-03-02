@@ -245,10 +245,10 @@ class AdClickTrackerView(APIView):
     def post(self, request, ad_id):
         try:
             with transaction.atomic():
-                # ১. ডাটাবেস থেকে অ্যাডটি লক করে নিয়ে আসা
+                # ১. ডাটাবেস থেকে অ্যাডটি লক করে নিয়ে আসা
                 ad = CustomAd.objects.select_for_update().get(id=ad_id)
 
-                # ২. অ্যাডমিন সেটিংস থেকে বর্তমান CPC রেট নেওয়া
+                # ২. অ্যাডমিন সেটিংস থেকে বর্তমান CPC রেট নেওয়া
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else 0.50
 
@@ -270,10 +270,10 @@ class AdClickTrackerView(APIView):
                 ad.spent_amount = F('spent_amount') + cpc
                 ad.save()
 
-                # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
+                # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
                 ad.refresh_from_db()
 
-                # ৬. এই ক্লিকের পর বাজেট শেষ হয়েছে কি না চেক করা
+                # ৬. এই ক্লিকের পর বাজেট শেষ হয়েছে কি না চেক করা
                 remaining = float(ad.total_budget - ad.spent_amount)
                 if remaining <= 0:
                     ad.status = 'expired'
@@ -515,6 +515,9 @@ class DeleteAdView(generics.DestroyAPIView):
     def destroy(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
+            ad_id = instance.id
+            ad_title = instance.title
+
             self.perform_destroy(instance)
             return Response(
                 {
@@ -523,8 +526,8 @@ class DeleteAdView(generics.DestroyAPIView):
                     "message": "Ad deleted successfully.",
                     "timestamp": int(time.time()),
                     "data": {
-                        "id": instance.id,
-                        "title": instance.title
+                        "id": ad_id,
+                        "title": ad_title
                     }
                 },
                 status=status.HTTP_200_OK
@@ -536,23 +539,9 @@ class DeleteAdView(generics.DestroyAPIView):
                     "code": status.HTTP_404_NOT_FOUND,
                     "message": "Ad not found or you don't have permission to delete it.",
                     "timestamp": int(time.time()),
-                    "data": {
-                        "id": instance.id,
-                        "title": instance.title
-                    }
+                    "data": {}
                 },
                 status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "message": "Failed to delete ad.",
-                    "timestamp": int(time.time()),
-                    "data": {"detail": [str(e)]}
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
@@ -585,7 +574,7 @@ class CheckAdvertiserStatusView(APIView):
                 )
 
             try:
-                req = AdvertiserRequest.objects.get(user=user)
+                req = AdvertiserRequest.objects.filter(user=user).latest('applied_at')
                 return Response(
                     {
                         "success": True,
@@ -700,11 +689,9 @@ class AdminAdvertiserRequestListView(generics.ListAPIView):
         if status_filter == 'pending':
             queryset = queryset.filter(is_reviewed=False)
         elif status_filter == 'approved':
-            queryset = queryset.filter(
-                is_reviewed=True, user__ads_provided=True)
+            queryset = queryset.filter(is_reviewed=True, user__ads_provided=True)
         elif status_filter == 'rejected':
-            queryset = queryset.filter(
-                is_reviewed=True, user__ads_provided=False)
+            queryset = queryset.filter(is_reviewed=True, user__ads_provided=False)
 
         return queryset
 
@@ -767,7 +754,6 @@ class AdminApproveAdvertiserView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Approve the advertiser
             advertiser_request.approve()
 
             return Response(
@@ -837,9 +823,9 @@ class AdminRejectAdvertiserView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            reason = request.data.get('reason', 'No reason provided')
+            reason = request.data.get('reason', '')
 
-            if not reason or reason == 'No reason provided':
+            if not reason:
                 return Response(
                     {
                         "success": False,
@@ -851,7 +837,6 @@ class AdminRejectAdvertiserView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Reject the advertiser
             advertiser_request.reject(reason=reason)
 
             return Response(
@@ -904,17 +889,15 @@ class AdminAdListView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
 
     def get_queryset(self):
-        queryset = CustomAd.objects.all().select_related(
-            'advertiser').order_by('-created_at')
-
+        queryset = CustomAd.objects.all().select_related('advertiser').order_by('-created_at')
         status_filter = self.request.query_params.get('status')
 
         if status_filter == 'pending':
-            queryset = queryset.filter(is_approved=False, status='active')
+            queryset = queryset.filter(is_approved=False, status='pending')  # ✅ ঠিক করা
         elif status_filter == 'approved':
-            queryset = queryset.filter(is_approved=True)
+            queryset = queryset.filter(is_approved=True, status='active')
         elif status_filter == 'rejected':
-            queryset = queryset.filter(is_approved=False, status='paused')
+            queryset = queryset.filter(status='rejected')  # ✅ ঠিক করা
 
         return queryset
 
@@ -977,12 +960,10 @@ class AdminApproveAdView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Approve the ad
             ad.is_approved = True
             ad.status = 'active'
             ad.save()
 
-            # Create review record
             AdReview.objects.create(
                 ad=ad,
                 reviewer=request.user,
@@ -1057,10 +1038,10 @@ class AdminRejectAdView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            reason = request.data.get('reason', 'No reason provided')
+            reason = request.data.get('reason', '')
             feedback = request.data.get('feedback', '')
 
-            if not reason or reason == 'No reason provided':
+            if not reason:
                 return Response(
                     {
                         "success": False,
@@ -1072,17 +1053,16 @@ class AdminRejectAdView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Reject the ad
+            # ✅ 'paused' থেকে 'rejected' এ ঠিক করা
             ad.is_approved = False
-            ad.status = 'paused'
+            ad.status = 'rejected'
             ad.save()
 
-            # Create review record
             AdReview.objects.create(
                 ad=ad,
                 reviewer=request.user,
                 status='rejected',
-                feedback=f"{reason}. {feedback}"
+                feedback=f"{reason}. {feedback}".strip('. ')
             )
 
             return Response(
@@ -1141,11 +1121,35 @@ class AdminPauseAdView(APIView):
             ad = CustomAd.objects.select_for_update().get(pk=pk)
 
             if action == 'pause':
+                if not ad.is_approved:
+                    return Response(
+                        {
+                            "success": False,
+                            "code": status.HTTP_400_BAD_REQUEST,
+                            "message": "Only approved ads can be paused.",
+                            "timestamp": int(time.time()),
+                            "data": {}
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 ad.status = 'paused'
                 message = f"Ad '{ad.title}' has been paused."
+
             elif action == 'unpause':
+                if not ad.is_approved:
+                    return Response(
+                        {
+                            "success": False,
+                            "code": status.HTTP_400_BAD_REQUEST,
+                            "message": "Only approved ads can be unpaused.",
+                            "timestamp": int(time.time()),
+                            "data": {}
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 ad.status = 'active'
                 message = f"Ad '{ad.title}' is now active."
+
             else:
                 return Response(
                     {
@@ -1207,29 +1211,24 @@ class AdminDashboardStatsView(APIView):
 
     def get(self, request):
         try:
-            # Advertiser stats
             total_advertisers = User.objects.filter(ads_provided=True).count()
-            pending_requests = AdvertiserRequest.objects.filter(
-                is_reviewed=False).count()
+            pending_requests = AdvertiserRequest.objects.filter(is_reviewed=False).count()
 
-            # Ad stats
             total_ads = CustomAd.objects.count()
             pending_ads = CustomAd.objects.filter(
-                is_approved=False, status='active').count()
+                is_approved=False, status='pending').count()  # ✅ ঠিক করা
             active_ads = CustomAd.objects.filter(
                 is_approved=True, status='active').count()
 
-            # Revenue stats
             total_revenue = CustomAd.objects.aggregate(
                 total=Sum('spent_amount'))['total'] or 0
 
-            # Recent activities
             recent_requests = AdvertiserRequest.objects.filter(
                 is_reviewed=False
             ).order_by('-applied_at')[:5]
 
             recent_ads = CustomAd.objects.filter(
-                is_approved=False
+                is_approved=False, status='pending'
             ).order_by('-created_at')[:5]
 
             return Response(
@@ -1313,27 +1312,46 @@ class AdminBulkApproveAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            ads = CustomAd.objects.filter(id__in=ad_ids, is_approved=False)
-            count = ads.update(is_approved=True, status='active')
+            # ✅ আগে list() দিয়ে সেভ করুন
+            ads = list(CustomAd.objects.filter(id__in=ad_ids, is_approved=False))
 
-            # Create review records
-            for ad in ads:
-                AdReview.objects.create(
+            if not ads:
+                return Response(
+                    {
+                        "success": False,
+                        "code": status.HTTP_404_NOT_FOUND,
+                        "message": "No pending ads found with the given IDs.",
+                        "timestamp": int(time.time()),
+                        "data": {}
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # ✅ Bulk update
+            CustomAd.objects.filter(id__in=[ad.id for ad in ads]).update(
+                is_approved=True, status='active'
+            )
+
+            # ✅ bulk_create দিয়ে একটা query তে সব insert
+            AdReview.objects.bulk_create([
+                AdReview(
                     ad=ad,
                     reviewer=request.user,
                     status='approved',
                     feedback='Bulk approved by admin'
                 )
+                for ad in ads
+            ])
 
             return Response(
                 {
                     "success": True,
                     "code": status.HTTP_200_OK,
-                    "message": f"{count} ads approved successfully.",
+                    "message": f"{len(ads)} ads approved successfully.",
                     "timestamp": int(time.time()),
                     "data": {
-                        "approved_count": count,
-                        "approved_ids": list(ads.values_list('id', flat=True))
+                        "approved_count": len(ads),
+                        "approved_ids": [ad.id for ad in ads]
                     }
                 },
                 status=status.HTTP_200_OK
@@ -1366,7 +1384,7 @@ class AdminBulkRejectAdsView(APIView):
     def post(self, request):
         try:
             ad_ids = request.data.get('ad_ids', [])
-            reason = request.data.get('reason', 'Rejected by admin')
+            reason = request.data.get('reason', '')
 
             if not ad_ids:
                 return Response(
@@ -1392,7 +1410,7 @@ class AdminBulkRejectAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if not reason or reason == 'Rejected by admin':
+            if not reason:
                 return Response(
                     {
                         "success": False,
@@ -1404,27 +1422,46 @@ class AdminBulkRejectAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            ads = CustomAd.objects.filter(id__in=ad_ids)
-            count = ads.update(is_approved=False, status='paused')
+            # ✅ আগে list() দিয়ে সেভ করুন
+            ads = list(CustomAd.objects.filter(id__in=ad_ids))
 
-            # Create review records
-            for ad in ads:
-                AdReview.objects.create(
+            if not ads:
+                return Response(
+                    {
+                        "success": False,
+                        "code": status.HTTP_404_NOT_FOUND,
+                        "message": "No ads found with the given IDs.",
+                        "timestamp": int(time.time()),
+                        "data": {}
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # ✅ Bulk update, status='rejected' ঠিক করা
+            CustomAd.objects.filter(id__in=[ad.id for ad in ads]).update(
+                is_approved=False, status='rejected'
+            )
+
+            # ✅ bulk_create দিয়ে একটা query তে সব insert
+            AdReview.objects.bulk_create([
+                AdReview(
                     ad=ad,
                     reviewer=request.user,
                     status='rejected',
                     feedback=reason
                 )
+                for ad in ads
+            ])
 
             return Response(
                 {
                     "success": True,
                     "code": status.HTTP_200_OK,
-                    "message": f"{count} ads rejected successfully.",
+                    "message": f"{len(ads)} ads rejected successfully.",
                     "timestamp": int(time.time()),
                     "data": {
-                        "rejected_count": count,
-                        "rejected_ids": list(ads.values_list('id', flat=True)),
+                        "rejected_count": len(ads),
+                        "rejected_ids": [ad.id for ad in ads],
                         "reason": reason
                     }
                 },
