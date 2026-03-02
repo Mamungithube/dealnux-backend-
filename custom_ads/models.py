@@ -3,51 +3,57 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
+
 class CustomAd(models.Model):
     STATUS_CHOICES = [
-        ('active', 'Active'), 
-        ('paused', 'Paused'), 
-        ('expired', 'Expired')
+        ('pending', 'Pending'),      
+        ('active', 'Active'),       
+        ('paused', 'Paused'),
+        ('expired', 'Expired'),     
+        ('rejected', 'Rejected'),   
     ]
-    
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     advertiser = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE, 
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
         related_name='ads'
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
-    image = models.ImageField(upload_to='ads/', help_text="Recommended size: 1200x628px")
+    image = models.ImageField(
+        upload_to='ads/', help_text="Recommended size: 1200x628px")
     target_url = models.URLField(help_text="Valid URL required")
     target_section = models.CharField(
-        max_length=100, 
-        blank=True, 
+        max_length=100,
+        blank=True,
         null=True
     )
-    
+
     # Budget & Priority Logic
     total_budget = models.DecimalField(max_digits=10, decimal_places=2)
-    spent_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    spent_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
     priority_weight = models.PositiveIntegerField(
-        default=1, 
+        default=1,
         help_text="Higher value = higher priority (1-100)"
     )
     is_premium = models.BooleanField(
-        default=False, 
+        default=False,
         help_text="Premium ads get 5x weight boost"
     )
-    
+
     # Performance Tracking
     clicks = models.PositiveIntegerField(default=0)
     impressions = models.PositiveIntegerField(default=0)
-    
+
     # Validity & Approval
     start_date = models.DateTimeField(default=timezone.now)
     end_date = models.DateTimeField()
     is_approved = models.BooleanField(default=False)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default='active')
     cta_text = models.CharField(max_length=50, default="Learn More")
-    
+
     # Meta
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -60,7 +66,7 @@ class CustomAd(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.advertiser.email}"
-    
+
     def clean(self):
         """Custom validation"""
         if self.end_date <= self.start_date:
@@ -80,14 +86,19 @@ class CustomAd(models.Model):
     @property
     def budget_remaining(self):
         return float(self.total_budget - self.spent_amount)
-
+    
+    def check_and_expire(self):
+        if self.status == 'active':
+            if self.budget_remaining <= 0 or self.end_date <= timezone.now():
+                self.status = 'expired'
+                self.save(update_fields=['status'])
 
 
 class AdSetting(models.Model):
     """অ্যাডমিন ড্যাশবোর্ড থেকে ক্লিকে কাটার অ্যামাউন্ট নিয়ন্ত্রন করার জন্য"""
     cpc_amount = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
+        max_digits=10,
+        decimal_places=2,
         default=0.50,
         help_text="per click amount to charge advertisers"
     )
@@ -106,12 +117,9 @@ class AdSetting(models.Model):
         super().save(*args, **kwargs)
 
 
-
-
-
 class AdvertiserRequest(models.Model):
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, 
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='advertiser_request'
     )
@@ -149,26 +157,27 @@ class AdvertiserRequest(models.Model):
 
 class AdReview(models.Model):
     """Admin review/rejection records"""
-    ad = models.ForeignKey(CustomAd, on_delete=models.CASCADE, related_name='reviews')
+    ad = models.ForeignKey(
+        CustomAd, on_delete=models.CASCADE, related_name='reviews')
     reviewer = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
         null=True,
         related_name='reviewed_ads'
     )
-    
+
     STATUS_CHOICES = [
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('needs_changes', 'Needs Changes')
     ]
-    
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     feedback = models.TextField()
     reviewed_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-reviewed_at']
-    
+
     def __str__(self):
         return f"{self.ad.title} - {self.status}"

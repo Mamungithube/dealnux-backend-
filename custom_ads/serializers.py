@@ -46,6 +46,7 @@ class AdSerializer(serializers.ModelSerializer):
         model = CustomAd
         fields = [
             'id', 'title', 'description', 'image', 'target_url',
+            'target_section',                                          # এটা আগে missing ছিল
             'total_budget', 'spent_amount', 'priority_weight', 
             'is_premium', 'clicks', 'impressions', 'ctr',
             'start_date', 'end_date', 'is_approved', 'status',
@@ -54,7 +55,8 @@ class AdSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'spent_amount', 'clicks', 'impressions', 
-            'is_approved', 'status', 'created_at', 'updated_at', 'reviews'
+            'is_approved', 'status',                                   # status user change করতে পারবে না
+            'created_at', 'updated_at', 'reviews'
         ]
 
     def validate(self, data):
