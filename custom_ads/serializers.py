@@ -1,7 +1,9 @@
 from rest_framework import serializers
-from .models import AdvertiserRequest, CustomAd, AdReview
+from .models import AdvertiserRequest, CustomAd, AdReview , AdDailyPerformance
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
+from datetime import timedelta
 
 
 class AdReviewSerializer(serializers.ModelSerializer):
@@ -104,12 +106,55 @@ class AdSerializer(serializers.ModelSerializer):
 
 
 class AdPublicSerializer(serializers.ModelSerializer):
-    """Public facing serializer - minimal data exposure"""
+    """Public facing serializer with performance chart data"""
+    performance = serializers.SerializerMethodField()
+
     class Meta:
         model = CustomAd
         fields = "__all__"
 
+    def get_performance(self, obj):
+        # Last 7 days এর data
+        today = timezone.now().date()
+        week_ago = today - timedelta(days=6)
+
+        daily_data = AdDailyPerformance.objects.filter(
+            ad=obj,
+            date__gte=week_ago,
+            date__lte=today
+        ).order_by('date')
+
+        # সব ৭ দিনের জন্য data ensure করা (missing days = 0)
+        data_map = {d.date: d for d in daily_data}
+        result = []
+
+        for i in range(7):
+            day = week_ago + timedelta(days=i)
+            if day in data_map:
+                result.append({
+                    'day': day.strftime('%a'),
+                    'impressions': data_map[day].impressions,
+                    'clicks': data_map[day].clicks,
+                })
+            else:
+                result.append({
+                    'day': day.strftime('%a'),
+                    'impressions': 0,
+                    'clicks': 0,
+                })
+
+        return result
 
 
-# serializers.py - AdReview serializer
+
+class AdDailyPerformanceSerializer(serializers.ModelSerializer):
+    day = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AdDailyPerformance
+        fields = ['day', 'impressions', 'clicks']
+
+    def get_day(self, obj):
+        # Mon, Tue, Wed... format
+        return obj.date.strftime('%a')
 

@@ -180,3 +180,21 @@ class AdReview(models.Model):
 
     def __str__(self):
         return f"{self.ad.title} - {self.status}"
+
+
+class AdDailyPerformance(models.Model):
+    ad = models.ForeignKey(
+        CustomAd, 
+        on_delete=models.CASCADE, 
+        related_name='daily_performance'
+    )
+    date = models.DateField()
+    impressions = models.PositiveIntegerField(default=0)
+    clicks = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('ad', 'date')
+        ordering = ['date']
+
+    def __str__(self):
+        return f"{self.ad.title} - {self.date}"

@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, NotFound
 from django.db.models import F
 from django.db import IntegrityError, transaction
-from .models import AdReview, AdvertiserRequest, CustomAd, AdSetting
+from .models import AdDailyPerformance, AdReview, AdvertiserRequest, CustomAd, AdSetting
 from .serializers import (
     AdvertiserRequestSerializer,
     AdSerializer,
@@ -273,6 +273,16 @@ class AdClickTrackerView(APIView):
 
                 # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
                 ad.refresh_from_db()
+
+                today = time.timezone.now().date()
+                daily_stat, _ = AdDailyPerformance.objects.get_or_create(
+                    ad=ad,
+                    date=today,
+                    defaults={'impressions': 0, 'clicks': 0}
+                )
+                AdDailyPerformance.objects.filter(id=daily_stat.id).update(
+                    clicks=F('clicks') + 1
+                )
 
                 # ৬. এই ক্লিকের পর বাজেট শেষ হয়েছে কি না চেক করা
                 remaining = float(ad.total_budget - ad.spent_amount)
