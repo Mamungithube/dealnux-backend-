@@ -384,7 +384,7 @@ class AdvertiserAdDashboardView(generics.ListAPIView):
 
 
 class AdDetailView(generics.RetrieveAPIView):
-    queryset = CustomAd.objects.filter(is_approved=True, status='active')
+    queryset = CustomAd.objects.all()
     serializer_class = AdPublicSerializer
     permission_classes = [permissions.AllowAny]
 

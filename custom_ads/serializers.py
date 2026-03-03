@@ -54,7 +54,7 @@ class AdSerializer(serializers.ModelSerializer):
     advertiser_name = serializers.CharField(source='advertiser.Fullname', read_only=True)
     ctr = serializers.FloatField(read_only=True)
     budget_remaining = serializers.FloatField(read_only=True)
-    reviews = AdReviewSerializer(many=True, read_only=True)  # ✅ উপরে define আছে তাই কাজ করবে
+    reviews = AdReviewSerializer(many=True, read_only=True)
 
     class Meta:
         model = CustomAd
