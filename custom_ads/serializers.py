@@ -114,38 +114,41 @@ class AdPublicSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_performance(self, obj):
-        # Last 7 days এর data
+        from datetime import timedelta
+        
+        # Ad এর start_date থেকে আজ পর্যন্ত
+        start = obj.start_date.date()
         today = timezone.now().date()
-        week_ago = today - timedelta(days=6)
-
+    
         daily_data = AdDailyPerformance.objects.filter(
             ad=obj,
-            date__gte=week_ago,
+            date__gte=start,
             date__lte=today
         ).order_by('date')
-
-        # সব ৭ দিনের জন্য data ensure করা (missing days = 0)
+    
+        # সব দিনের জন্য data ensure করা (missing days = 0)
         data_map = {d.date: d for d in daily_data}
         result = []
-
-        for i in range(7):
-            day = week_ago + timedelta(days=i)
-            if day in data_map:
+    
+        current = start
+        while current <= today:
+            if current in data_map:
                 result.append({
-                    'day': day.strftime('%a'),
-                    'impressions': data_map[day].impressions,
-                    'clicks': data_map[day].clicks,
+                    'date': current.strftime('%Y-%m-%d'),
+                    'impressions': data_map[current].impressions,
+                    'clicks': data_map[current].clicks,
                 })
             else:
                 result.append({
-                    'day': day.strftime('%a'),
+                    'date': current.strftime('%Y-%m-%d'),
                     'impressions': 0,
                     'clicks': 0,
                 })
-
+            current += timedelta(days=1)
+    
         return result
-
-
+    
+    
 
 class AdDailyPerformanceSerializer(serializers.ModelSerializer):
     day = serializers.SerializerMethodField()

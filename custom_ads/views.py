@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from .permissions import IsAdminUser
 import time
 from django.http import Http404
-
+from django.utils import timezone
 
 # ১. Advertiser Request Apply
 class ApplyForAdvertiserView(generics.CreateAPIView):
@@ -274,7 +274,7 @@ class AdClickTrackerView(APIView):
                 # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
                 ad.refresh_from_db()
 
-                today = time.timezone.now().date()
+                today = timezone.now().date()
                 daily_stat, _ = AdDailyPerformance.objects.get_or_create(
                     ad=ad,
                     date=today,
