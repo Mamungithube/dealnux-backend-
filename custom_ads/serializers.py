@@ -108,6 +108,7 @@ class AdSerializer(serializers.ModelSerializer):
 class AdPublicSerializer(serializers.ModelSerializer):
     """Public facing serializer with performance chart data"""
     performance = serializers.SerializerMethodField()
+    reviews = AdReviewSerializer(many=True, read_only=True)
 
     class Meta:
         model = CustomAd
@@ -115,21 +116,21 @@ class AdPublicSerializer(serializers.ModelSerializer):
 
     def get_performance(self, obj):
         from datetime import timedelta
-        
+
         # Ad এর start_date থেকে আজ পর্যন্ত
         start = obj.start_date.date()
         today = timezone.now().date()
-    
+
         daily_data = AdDailyPerformance.objects.filter(
             ad=obj,
             date__gte=start,
             date__lte=today
         ).order_by('date')
-    
+
         # সব দিনের জন্য data ensure করা (missing days = 0)
         data_map = {d.date: d for d in daily_data}
         result = []
-    
+
         current = start
         while current <= today:
             if current in data_map:
@@ -145,10 +146,10 @@ class AdPublicSerializer(serializers.ModelSerializer):
                     'clicks': 0,
                 })
             current += timedelta(days=1)
-    
+
         return result
-    
-    
+
+
 
 class AdDailyPerformanceSerializer(serializers.ModelSerializer):
     day = serializers.SerializerMethodField()
