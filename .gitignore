@@ -120,4 +120,5 @@ logs/
 # ===========================
 # Git
 # ===========================
-.git/
+.git/celerybeat-schedule
+cloudflared-linux-amd64.deb
