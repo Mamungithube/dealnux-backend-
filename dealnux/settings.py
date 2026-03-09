@@ -91,6 +91,8 @@ INSTALLED_APPS = [
     'custom_ads',
     'policy',
     'api_integration',
+    'store',
+    'payment',
     
 
     # Third-party apps
@@ -337,10 +339,20 @@ else:
 CLICKBANK_API_KEY = config('CLICKBANK_API_KEY', default='')
 CLICKBANK_DEV_KEY = config('CLICKBANK_DEV_KEY', default='DEV-123456789012345678901234567890123456')
 
-# Amazon API Configuration (future)
-# AMAZON_ACCESS_KEY = config('AMAZON_ACCESS_KEY', default='')
-# AMAZON_SECRET_KEY = config('AMAZON_SECRET_KEY', default='')
+# RapidAPI and Walmart API Configuration (future)
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
+WALMART_CLIENT_ID = os.getenv('WALMART_CLIENT_ID')
+WALMART_CLIENT_SECRET = os.getenv('WALMART_CLIENT_SECRET')
 
 # # AliExpress API Configuration (future)
 # ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')
 # ALIEXPRESS_APP_SECRET = config('ALIEXPRESS_APP_SECRET', default='')
+
+
+STRIPE_PUBLIC_KEY          = os.getenv('STRIPE_PUBLIC_KEY')
+STRIPE_SECRET_KEY          = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET      = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_SUCCESS_URL         = os.getenv('STRIPE_SUCCESS_URL')
+STRIPE_CANCEL_URL          = os.getenv('STRIPE_CANCEL_URL')
+STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
+STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')

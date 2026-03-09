@@ -3,7 +3,7 @@ import base64
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
-
+from datetime import datetime, timezone as dt_timezone
 
 class EbayService:
     """eBay API Integration Service"""
@@ -218,14 +218,14 @@ class EbayService:
         }
     
     def _calculate_delivery_days(self, shipping_option):
-        """Calculate estimated delivery days"""
         try:
-            max_date = shipping_option.get('maxEstimatedDeliveryDate')
-            if max_date:
-                # Parse date and calculate days from now
-                # Simplified version - you might want more sophisticated parsing
-                return 7  # Default to 7 days
-        except:
+            max_date_str = shipping_option.get('maxEstimatedDeliveryDate')
+            if max_date_str:
+                max_date = datetime.fromisoformat(max_date_str.replace('Z', '+00:00'))
+                now = datetime.now(dt_timezone.utc)
+                delta = max_date - now
+                return max(1, delta.days)
+        except Exception:
             pass
         return None
     
