@@ -18,7 +18,7 @@ class HomeDepotService:
 
     def __init__(self):
         self.api_key = settings.RAPIDAPI_KEY
-        self.host = 'home-depot-product-lookup.p.rapidapi.com'  # ✅ Official host
+        self.host = 'home-depot-product-lookup.p.rapidapi.com'
         self.headers = {
             'Content-Type': 'application/json',
             'x-rapidapi-host': self.host,

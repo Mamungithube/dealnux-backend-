@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'custom_ads',
     'policy',
     'api_integration',
+    'store',
     
 
     # Third-party apps

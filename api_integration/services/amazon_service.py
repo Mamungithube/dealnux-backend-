@@ -4,9 +4,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class AmazonService:
+    """
+    Real-Time Amazon Data via RapidAPI
+    Host: real-time-amazon-data.p.rapidapi.com
+    """
+
     def __init__(self):
-        # .env ফাইল থেকে RAPIDAPI_KEY নিবে
         self.api_key = settings.RAPIDAPI_KEY
         self.host = 'real-time-amazon-data.p.rapidapi.com'
         self.headers = {
@@ -15,70 +20,235 @@ class AmazonService:
         }
 
     def search_products(self, query, limit=10):
-        """Amazon এ টেক্সট দিয়ে প্রোডাক্ট সার্চ করার জন্য
-
-        Returns a list of product dicts or None if a request error occurred.
+        """
+        GET /search — query দিয়ে Amazon product search করে।
+        Returns list of product dicts, or [] on failure.
         """
         url = f"https://{self.host}/search"
         params = {
             'query': query,
             'page': '1',
-            'country': 'US'
+            'country': 'US',
+            'sort_by': 'RELEVANCE',
+            'product_condition': 'ALL',
+            'is_prime': 'false',
+            'deals_and_discounts': 'NONE',
         }
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=15)
-            if response.status_code != 200:
-                logger.error(f"Amazon Search HTTP {response.status_code}: {response.text[:1000]}")
-                return None
-
-            data = response.json().get('data', {})
-            if not isinstance(data, dict):
-                logger.error(f"Amazon Search unexpected data format: {data}")
-                return None
-
-            products = data.get('products', [])
-            if not isinstance(products, list):
-                logger.error(f"Amazon Search products not a list: {products}")
-                return None
-
-            return products[:limit]  # লিমিট অনুযায়ী ডাটা রিটার্ন করবে
-
+            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            logger.debug(f"Amazon search status: {response.status_code}")
+            if response.status_code == 200:
+                data = response.json().get('data', {})
+                products = data.get('products', [])
+                logger.info(f"Amazon search '{query}': {len(products)} results")
+                return products[:limit]
+            logger.error(f"Amazon search error {response.status_code}: {response.text[:300]}")
+            return []
         except Exception as e:
-            logger.error(f"Amazon Search Exception: {e}")
+            logger.error(f"Amazon search exception: {e}")
+            return []
+
+    def get_product_details(self, asin, country='US'):
+        """
+        GET /product-details — ASIN দিয়ে full product details আনে।
+        """
+        url = f"https://{self.host}/product-details"
+        params = {'asin': asin, 'country': country}
+        try:
+            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            if response.status_code == 200:
+                return response.json().get('data', {})
+            logger.error(f"Amazon product-details error {response.status_code}: {asin}")
+            return None
+        except Exception as e:
+            logger.error(f"Amazon product-details exception ({asin}): {e}")
             return None
 
-
-    def get_product_details(self, asin):
-        """নির্দিষ্ট ASIN দিয়ে প্রোডাক্টের বিস্তারিত আনার জন্য"""
-        url = f"https://{self.host}/product-details"
-        params = {'asin': asin, 'country': 'US'}
+    def get_product_offers(self, asin, country='US', limit=10):
+        """
+        GET /product-offers — ASIN এর seller offers আনে।
+        """
+        url = f"https://{self.host}/product-offers"
+        params = {
+            'asin': asin,
+            'country': country,
+            'limit': str(limit),
+            'page': '1',
+        }
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers, params=params, timeout=20)
             if response.status_code == 200:
                 return response.json().get('data', {})
             return None
         except Exception as e:
-            logger.error(f"Amazon Product Details Error: {e}")
+            logger.error(f"Amazon product-offers exception ({asin}): {e}")
             return None
 
     def extract_product_data(self, item):
-        """Amazon এর JSON ডাটাকে আমাদের ডাটাবেজ মডেলে কনভার্ট করা"""
-        price_str = item.get('product_price')
-        # price অনেক সময় স্ট্রিং হিসেবে "$29.99" আসতে পারে, সেটা ক্লিন করার জন্য
+        """
+        Amazon raw item dict কে আমাদের DB-compatible standard format এ convert করে।
+        search result item এবং product-details item উভয়ের সাথেই কাজ করে।
+        """
+        # ── Price ────────────────────────────────────────────────────────────
+        price_str = (
+            item.get('product_price')
+            or item.get('price')
+            or item.get('buybox_price')
+            or '0'
+        )
         try:
-            price = float(str(price_str).replace('$', '').replace(',', '').strip()) if price_str else 0.0
-        except ValueError:
+            price = float(
+                str(price_str)
+                .replace('$', '')
+                .replace(',', '')
+                .strip()
+            )
+        except (ValueError, TypeError):
             price = 0.0
 
+        # ── Original / list price ─────────────────────────────────────────
+        original_price_str = (
+            item.get('product_original_price')
+            or item.get('original_price')
+            or item.get('list_price')
+        )
+        original_price = None
+        if original_price_str:
+            try:
+                original_price = float(
+                    str(original_price_str)
+                    .replace('$', '')
+                    .replace(',', '')
+                    .strip()
+                )
+            except (ValueError, TypeError):
+                original_price = None
+
+        # ── Discount ──────────────────────────────────────────────────────
+        discount_percentage = None
+        if original_price and price and original_price > price:
+            discount_percentage = round(
+                ((original_price - price) / original_price) * 100, 2
+            )
+
+        # ── Rating / reviews ─────────────────────────────────────────────
+        rating_raw = item.get('product_star_rating') or item.get('rating') or 0
+        try:
+            seller_rating = float(str(rating_raw).split()[0]) * 20  # 5-star → 0-100 scale
+        except (ValueError, TypeError):
+            seller_rating = None
+
+        review_count_raw = item.get('product_num_ratings') or item.get('reviews_count') or 0
+        try:
+            review_count = int(str(review_count_raw).replace(',', '').strip())
+        except (ValueError, TypeError):
+            review_count = 0
+
+        # ── Images ───────────────────────────────────────────────────────
+        main_image = (
+            item.get('product_photo')
+            or item.get('main_image')
+            or item.get('thumbnail')
+            or ''
+        )
+        additional_images = item.get('product_photos', []) or []
+        if isinstance(additional_images, list):
+            additional_images = [img for img in additional_images if img != main_image][:9]
+
+        # ── ASIN / external ID ───────────────────────────────────────────
+        external_id = (
+            item.get('asin')
+            or item.get('product_asin')
+            or item.get('id')
+            or ''
+        )
+
+        # ── Brand ────────────────────────────────────────────────────────
+        brand = (
+            item.get('product_brand')
+            or item.get('brand')
+            or item.get('manufacturer')
+            or ''
+        )
+
+        # ── Availability ─────────────────────────────────────────────────
+        availability_raw = item.get('product_availability') or item.get('availability') or ''
+        is_available = item.get('is_available', True)
+        if isinstance(availability_raw, str):
+            is_available = 'in stock' in availability_raw.lower() or is_available
+
+        # ── Condition ────────────────────────────────────────────────────
+        condition_map = {
+            'new': 'NEW',
+            'used': 'USED',
+            'refurbished': 'REFURBISHED',
+            'open box': 'OPEN_BOX',
+        }
+        condition_raw = str(item.get('condition', 'New')).lower()
+        condition = condition_map.get(condition_raw, 'NEW')
+
+        # ── Shipping ─────────────────────────────────────────────────────
+        shipping_raw = item.get('delivery') or item.get('shipping') or ''
+        free_shipping = 'free' in str(shipping_raw).lower() or price >= 25  # Amazon free shipping threshold
+
         return {
-            'external_id': item.get('asin', ''),
-            'title': item.get('product_title', ''),
-            'description': item.get('product_description', ''),
-            'external_url': item.get('product_url', ''),
+            'external_id': external_id,
+            'title': (
+                item.get('product_title')
+                or item.get('title')
+                or item.get('name')
+                or 'Amazon Product'
+            ),
+            'description': (
+                item.get('product_description')
+                or item.get('description')
+                or item.get('about_product')
+                or ''
+            ),
+            'external_url': (
+                item.get('product_url')
+                or item.get('url')
+                or (f"https://www.amazon.com/dp/{external_id}" if external_id else '')
+            ),
             'price': price,
-            'currency': 'USD', # Amazon US ডাটা
-            'condition': 'NEW',
-            'main_image': item.get('product_photo', ''),
-            'brand': item.get('product_brand', ''), # অনেক সময় ডাইরেক্ট ব্রান্ড থাকে না
-            'is_available': item.get('is_available', True),
+            'currency': 'USD',
+            'original_price': original_price,
+            'discount_percentage': discount_percentage,
+            'condition': condition,
+            'quantity': int(item.get('quantity') or item.get('stock_quantity') or 1),
+            'main_image': main_image,
+            'additional_images': additional_images,
+            'seller_username': 'Amazon',
+            'seller_rating': seller_rating,
+            'seller_feedback_count': review_count,
+            'item_location': 'United States',
+            'ships_from_country': 'US',
+            'brand': brand,
+            'model_number': (
+                item.get('model_number')
+                or item.get('model')
+                or item.get('asin')
+                or external_id
+            ),
+            'category_path': (
+                item.get('category')
+                or item.get('product_category')
+                or ''
+            ),
+            'is_available': bool(is_available),
+            'returns_accepted': True,
+            'return_period_days': 30,
+            'shipping_info': {
+                'cost': 0,
+                'currency': 'USD',
+                'free_shipping': free_shipping,
+                'estimated_days': 5 if free_shipping else 7,
+            },
+            'specifications': {
+                'Brand': brand or 'N/A',
+                'ASIN': external_id or 'N/A',
+                'Rating': str(item.get('product_star_rating') or 'N/A'),
+                'Reviews': str(review_count),
+                'Store': 'Amazon',
+            },
         }
