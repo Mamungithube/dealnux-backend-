@@ -146,6 +146,10 @@ class SellerProductSerializer(serializers.ModelSerializer):
         cat = Category.objects.filter(slug__iexact=str(value).strip()).first()
         if cat:
             return cat
+        # 4. partial name match (e.g. "Toys" → "Toys & Games")
+        cat = Category.objects.filter(name__icontains=str(value).strip()).first()
+        if cat:
+            return cat
         raise serializers.ValidationError(
             f'Category "{value}" not found. Send pk number or exact category name.'
         )
