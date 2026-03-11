@@ -31,12 +31,12 @@ class AdvertiserRequestSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = self.context['request'].user
         
-        # পুরনো check সরিয়ে নিচেরটা দিন
+        # Remove the old check and enter the following one.
         pending = AdvertiserRequest.objects.filter(user=user, is_reviewed=False).exists()
         if pending:
             raise serializers.ValidationError("Your request is still under review.")
         
-        # Rejected হলে পুরনো request delete করে নতুন তৈরি করুন
+        # If rejected, delete the old request and create a new one.
         AdvertiserRequest.objects.filter(user=user, is_reviewed=True).delete()
         
         return AdvertiserRequest.objects.create(user=user, **validated_data)
@@ -117,7 +117,7 @@ class AdPublicSerializer(serializers.ModelSerializer):
     def get_performance(self, obj):
         from datetime import timedelta
 
-        # Ad এর start_date থেকে আজ পর্যন্ত
+        # From Ad's start_date to today
         start = obj.start_date.date()
         today = timezone.now().date()
 
@@ -127,7 +127,7 @@ class AdPublicSerializer(serializers.ModelSerializer):
             date__lte=today
         ).order_by('date')
 
-        # সব দিনের জন্য data ensure করা (missing days = 0)
+        # Ensure data for all days (missing days = 0)
         data_map = {d.date: d for d in daily_data}
         result = []
 

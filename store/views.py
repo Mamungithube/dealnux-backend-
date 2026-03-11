@@ -55,7 +55,7 @@ class StandardPagination(PageNumberPagination):
 
 
 def is_approved_seller(user):
-    """User approved seller কিনা check করে"""
+    """Check if user is an approved seller"""
     return hasattr(user, 'seller_profile') and user.seller_profile.is_active
 
 
@@ -65,8 +65,8 @@ def is_approved_seller(user):
 
 class SellerRequestViewSet(viewsets.ModelViewSet):
     """
-    User নিজে seller হওয়ার request করে।
-    Admin approve/reject করে।
+    User submits a request to become a seller.
+    Admin approves/rejects it.
     """
     serializer_class   = SellerRequestSerializer
     permission_classes = [IsAuthenticated]
@@ -75,7 +75,7 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_staff:
             return SellerRequest.objects.select_related('user', 'reviewed_by').all()
-        # Normal user শুধু নিজেরটা দেখতে পাবে
+        # Normal user can only see their own
         return SellerRequest.objects.filter(user=user)
 
     def get_serializer_class(self):
@@ -168,7 +168,7 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        """নিজের seller profile দেখা"""
+        """View your own seller profile"""
         try:
             profile = request.user.seller_profile
         except SellerProfile.DoesNotExist:
@@ -183,9 +183,9 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
 
 class SellerProductViewSet(viewsets.ModelViewSet):
     """
-    Seller নিজে product manage করে।
-    Admin approve/reject করে।
-    Public (AllowAny) → শুধু APPROVED products দেখাবে।
+    Seller manages their own products.
+    Admin approves/rejects them.
+    Public (AllowAny) - only shows APPROVED products.
     """
     pagination_class = StandardPagination
 
@@ -204,7 +204,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # Admin — সব দেখতে পারবে
+        # Admin - can see all
         if user.is_authenticated and user.is_staff:
             qs = SellerProduct.objects.select_related('seller', 'category').all()
             status_filter = self.request.query_params.get('status')
@@ -212,12 +212,12 @@ class SellerProductViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(status=status_filter.upper())
             return qs
 
-        # Authenticated seller — নিজের সব product
+        # Authenticated seller - their own products
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
                 return SellerProduct.objects.filter(seller=user.seller_profile)
 
-        # Public — শুধু APPROVED
+        # Public - only APPROVED
         qs = SellerProduct.objects.filter(status='APPROVED').select_related('seller', 'category')
         search = self.request.query_params.get('search')
         if search:
@@ -261,7 +261,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if not request.user.is_staff and instance.seller.user != request.user:
             return error_response("Permission denied.", code=403)
-        # Approved product edit করলে PENDING এ ফিরবে
+        # When editing an approved product, it returns to PENDING
         partial = kwargs.pop('partial', False)
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -278,7 +278,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         instance.delete()
         return success_response({}, message="Product deleted.")
 
-    # ── Seller: নিজের সব product ─────────────────────────────────────────
+    # ── Seller: their own products ─────────────────────────────────────────
 
     @action(detail=False, methods=['get'])
     def my_products(self, request):
@@ -342,9 +342,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_staff:
             return Order.objects.select_related('buyer', 'seller', 'seller_product').all()
-        # Buyer নিজের orders
+        # Buyer's own orders
         qs = Order.objects.filter(buyer=user)
-        # Seller নিজের shop এর orders
+        # Seller's shop orders
         if is_approved_seller(user):
             qs = qs | Order.objects.filter(seller=user.seller_profile)
         return qs.distinct()
@@ -378,7 +378,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if new_status not in allowed_statuses:
             return error_response(f"Invalid status. Choose from: {allowed_statuses}", code=400)
 
-        # Only seller বা admin status বদলাতে পারবে
+        # Only seller or admin can change status
         if not request.user.is_staff:
             if not is_approved_seller(request.user) or order.seller.user != request.user:
                 return error_response("Permission denied.", code=403)

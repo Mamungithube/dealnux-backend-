@@ -7,7 +7,6 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     if response is not None:
-        # First error message বের করা
         errors = response.data
         first_message = "An error occurred"
 

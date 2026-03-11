@@ -246,14 +246,14 @@ class AdClickTrackerView(APIView):
     def post(self, request, ad_id):
         try:
             with transaction.atomic():
-                # ১. ডাটাবেস থেকে অ্যাডটি লক করে নিয়ে আসা
+                # ১. Retrieve the add from the database by locking it.
                 ad = CustomAd.objects.select_for_update().get(id=ad_id)
 
-                # ২. অ্যাডমিন সেটিংস থেকে বর্তমান CPC রেট নেওয়া
+                # ২. Retrieve current CPC rate from admin settings
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else 0.50
 
-                # ৩. অলরেডি বাজেট শেষ কি না চেক করা
+                # ৩. Checking whether the budget is already finished or not
                 if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
                     return Response(
                         {
@@ -266,12 +266,12 @@ class AdClickTrackerView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # ৪. ক্লিক এবং খরচ আপডেট করা
+                # ৪. Updating clicks and costs
                 ad.clicks = F('clicks') + 1
                 ad.spent_amount = F('spent_amount') + cpc
                 ad.save()
 
-                # ৫. ডাটাবেস থেকে রিফ্রেশ করে নতুন ভ্যালু নেওয়া
+                # ৫. Retrieving new values ​​by refreshing from the database
                 ad.refresh_from_db()
 
                 today = timezone.now().date()
@@ -284,7 +284,7 @@ class AdClickTrackerView(APIView):
                     clicks=F('clicks') + 1
                 )
 
-                # ৬. এই ক্লিকের পর বাজেট শেষ হয়েছে কি না চেক করা
+                # ৬. After clicking this, check whether the budget is finished or not.
                 remaining = float(ad.total_budget - ad.spent_amount)
                 if remaining <= 0:
                     ad.status = 'expired'
@@ -412,7 +412,7 @@ class AdDetailView(generics.RetrieveAPIView):
                 },
                 status=status.HTTP_200_OK
             )
-        except Http404: # DRF এখানে Http404 রাইজ করে
+        except Http404:
             return Response(
                 {
                     "success": False,
@@ -1317,7 +1317,7 @@ class AdminBulkApproveAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ✅ আগে list() দিয়ে সেভ করুন
+            # ✅ Save with list() first.
             ads = list(CustomAd.objects.filter(id__in=ad_ids, is_approved=False))
 
             if not ads:
@@ -1337,7 +1337,7 @@ class AdminBulkApproveAdsView(APIView):
                 is_approved=True, status='active'
             )
 
-            # ✅ bulk_create দিয়ে একটা query তে সব insert
+            # ✅ Insert all in one query with bulk_create
             AdReview.objects.bulk_create([
                 AdReview(
                     ad=ad,
@@ -1427,7 +1427,7 @@ class AdminBulkRejectAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ✅ আগে list() দিয়ে সেভ করুন
+            # ✅ Save with list() first.
             ads = list(CustomAd.objects.filter(id__in=ad_ids))
 
             if not ads:
@@ -1442,12 +1442,12 @@ class AdminBulkRejectAdsView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # ✅ Bulk update, status='rejected' ঠিক করা
+            # ✅ Bulk update, status='rejected' fix
             CustomAd.objects.filter(id__in=[ad.id for ad in ads]).update(
                 is_approved=False, status='rejected'
             )
 
-            # ✅ bulk_create দিয়ে একটা query তে সব insert
+            # ✅ Insert all in one query with bulk_create
             AdReview.objects.bulk_create([
                 AdReview(
                     ad=ad,

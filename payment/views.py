@@ -25,7 +25,7 @@ PLATFORM_FEE_PERCENT = Decimal('10')  # 10% platform fee
 # ============================================================================
 
 def _calculate_amounts(seller_product, quantity, coupon_code=''):
-    """Price calculate করে dict return করে"""
+    """Calculate price and return dict"""
     unit_price      = seller_product.price
     total_amount    = unit_price * quantity
     discount_amount = Decimal('0')
@@ -51,12 +51,12 @@ def _calculate_amounts(seller_product, quantity, coupon_code=''):
 
 
 # ============================================================================
-# 1. Checkout — Stripe Session তৈরি করা
+# 1. Checkout — create Stripe Session
 # ============================================================================
 
 class CreateCheckoutSessionView(APIView):
     """
-    Buyer এখানে POST করলে Stripe Checkout URL পাবে।
+    When buyer POSTs here, they will get a Stripe Checkout URL.
 
     POST /api/v1/store/checkout/
     {
@@ -97,7 +97,7 @@ class CreateCheckoutSessionView(APIView):
         # Stripe amount (cents)
         amount_cents = int(amounts['final_amount'] * 100)
 
-        # Payment record তৈরি (PENDING)
+        # Create payment record (PENDING)
         payment = Payment.objects.create(
             buyer               = request.user,
             seller_product      = seller_product,
@@ -148,7 +148,7 @@ class CreateCheckoutSessionView(APIView):
                 customer_email = request.user.email,
             )
 
-            # Payment এ session id save করো
+            # Save session id to payment
             payment.stripe_checkout_session_id = session.id
             payment.stripe_checkout_url        = session.url
             payment.save(update_fields=['stripe_checkout_session_id', 'stripe_checkout_url'])
@@ -168,13 +168,13 @@ class CreateCheckoutSessionView(APIView):
 
 
 # ============================================================================
-# 2. Stripe Webhook — Payment সফল হলে Order তৈরি
+# 2. Stripe Webhook — Create Order when payment succeeds
 # ============================================================================
 
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(APIView):
     """
-    Stripe এখানে POST করবে payment event এর জন্য।
+    Stripe will POST here for payment events.
     POST /api/v1/store/webhook/stripe/
     """
     permission_classes = [AllowAny]
@@ -217,7 +217,7 @@ class StripeWebhookView(APIView):
         if not seller_product:
             return
 
-        # Order তৈরি
+        # Create order
         order = Order.objects.create(
             buyer            = payment.buyer,
             seller           = seller_product.seller,
@@ -229,18 +229,18 @@ class StripeWebhookView(APIView):
             currency         = payment.currency,
             shipping_address = payment.shipping_address,
             note             = payment.note,
-            status           = 'CONFIRMED',  # payment হয়েছে তাই সরাসরি CONFIRMED
+            status           = 'CONFIRMED',  # payment done so directly set to CONFIRMED
         )
 
-        # Payment এ order link করো
+        # Link order to payment
         payment.order = order
         payment.save(update_fields=['order'])
 
-        # Stock কমাও
+        # Reduce stock
         seller_product.quantity -= payment.quantity
         seller_product.save(update_fields=['quantity'])
 
-        # Coupon used count বাড়াও
+        # Increase coupon used count
         if payment.coupon_code:
             Coupon.objects.filter(code=payment.coupon_code.upper()).update(
                 used_count=F('used_count') + 1
@@ -252,7 +252,7 @@ class StripeWebhookView(APIView):
         seller.total_earnings += payment.final_amount
         seller.save(update_fields=['total_orders', 'total_earnings'])
 
-        # Seller Payout তৈরি
+        # Create seller payout
         fee_amount    = payment.final_amount * PLATFORM_FEE_PERCENT / 100
         seller_amount = payment.final_amount - fee_amount
 
@@ -267,7 +267,7 @@ class StripeWebhookView(APIView):
             stripe_account_id    = seller.stripe_account_id,
         )
 
-        # Stripe Connect Transfer — seller এর stripe account এ পাঠাও
+        # Stripe Connect Transfer — send to seller's stripe account
         if seller.stripe_account_id and seller.stripe_account_verified:
             try:
                 transfer = stripe.Transfer.create(
@@ -296,12 +296,12 @@ class StripeWebhookView(APIView):
 
 
 # ============================================================================
-# 3. Stripe Connect — Seller এর Stripe account তৈরি
+# 3. Stripe Connect — Create seller's Stripe account
 # ============================================================================
 
 class SellerStripeConnectView(APIView):
     """
-    Seller এর Stripe Connect onboarding URL দেবে।
+    Will give seller's Stripe Connect onboarding URL.
     POST /api/v1/store/seller/stripe-connect/
     """
     permission_classes = [IsAuthenticated]
@@ -315,7 +315,7 @@ class SellerStripeConnectView(APIView):
         if not seller.is_active:
             return Response({'error': 'Your seller account is inactive.'}, status=403)
 
-        # Stripe Connect account তৈরি বা existing account use করো
+        # Create Stripe Connect account or use existing account
         if not seller.stripe_account_id:
             account = stripe.Account.create(
                 type    = 'express',
@@ -328,7 +328,7 @@ class SellerStripeConnectView(APIView):
             seller.stripe_account_id = account.id
             seller.save(update_fields=['stripe_account_id'])
         
-        # Onboarding link তৈরি করো
+        # Create onboarding link
         account_link = stripe.AccountLink.create(
             account     = seller.stripe_account_id,
             refresh_url = settings.STRIPE_CONNECT_REFRESH_URL,
@@ -344,7 +344,7 @@ class SellerStripeConnectView(APIView):
 
 class SellerStripeStatusView(APIView):
     """
-    Seller এর Stripe account status check করবে।
+    Will check seller's Stripe account status.
     GET /api/v1/store/seller/stripe-status/
     """
     permission_classes = [IsAuthenticated]
@@ -362,7 +362,7 @@ class SellerStripeStatusView(APIView):
                 'message':      'No Stripe account connected. POST /store/seller/stripe-connect/ to connect.',
             })
 
-        # Stripe থেকে account details আনো
+        # Get account details from Stripe
         try:
             account = stripe.Account.retrieve(seller.stripe_account_id)
             verified = account.get('charges_enabled', False) and account.get('payouts_enabled', False)
@@ -388,7 +388,7 @@ class SellerStripeStatusView(APIView):
 
 class PaymentHistoryView(APIView):
     """
-    Buyer এর নিজের payment history।
+    Buyer's own payment history.
     GET /api/v1/store/payments/
     """
     permission_classes = [IsAuthenticated]
@@ -417,7 +417,7 @@ class PaymentHistoryView(APIView):
 
 class SellerPayoutHistoryView(APIView):
     """
-    Seller এর payout history।
+    Seller's payout history.
     GET /api/v1/store/seller/payouts/
     """
     permission_classes = [IsAuthenticated]

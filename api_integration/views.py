@@ -206,8 +206,8 @@ def save_ebay_product_to_db(item_data, platform):
 
 def save_generic_product_to_db(product_data, platform):
     """
-    Universal save helper — Amazon, Walmart, Shopify, HomeDepot সব platform এর জন্য।
-    product_data তে shipping_info, seller fields সব থাকলে সেগুলো save করে।
+    Universal save helper — for all platforms like Amazon, Walmart, Shopify, HomeDepot.
+    Saves shipping_info, seller fields in product_data if they are present.
     """
     brand = (product_data.get('brand') or '').strip()
     model_number = (product_data.get('model_number') or '').strip()
@@ -458,7 +458,7 @@ def sync_homedepot_products(platform, query, limit):
     service = HomeDepotService()
 
     if not str(query).strip().isdigit():
-        # Text query এলে empty success return (hourly sync এ skip হবে)
+        # Text query returns empty success (will skip hourly sync)
         logger.info(f"HomeDepot skipped for non-numeric query: '{query}'")
         result = _build_result_template(query, 'homedepot', limit)
         result['note'] = 'HomeDepot requires numeric productId — text query skipped'

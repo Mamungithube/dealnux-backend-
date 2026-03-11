@@ -233,7 +233,7 @@ class CartItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'product') # একজন ইউজারের কার্টে একই প্রোডাক্ট একবারই থাকবে
+        unique_together = ('user', 'product') 
 
     def __str__(self):
         return f"{self.user.email} - {self.product.title}"
@@ -248,7 +248,7 @@ class SavingsActivity(models.Model):
     class Meta:
         ordering = ['-created_at']
 
-    # "2 days ago" বের করার ম্যাজিক মেথড
+
     @property
     def time_ago(self):
         now = timezone.now()

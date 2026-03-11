@@ -1,4 +1,4 @@
-# ads/permissions.py (নতুন ফাইল)
+
 from rest_framework import permissions
 
 class IsAdminUser(permissions.BasePermission):

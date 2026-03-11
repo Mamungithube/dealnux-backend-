@@ -105,14 +105,14 @@ class CustomAdAdmin(ModelAdmin):
 
     @action(description="✅ Approve and Activate selected ads")
     def approve_ads(self, request, queryset):
-        # একসাথে অনেকগুলো অ্যাড আপডেট হবে
+        # Many ads will be updated at once.
         count = queryset.update(is_approved=True, status='active')
-        self.message_user(request, f"সফলভাবে {count}টি অ্যাড অ্যাপ্রুভ এবং একটিভ করা হয়েছে।")
+        self.message_user(request, f"{count} ads have been successfully approved and activated.")
 
     @action(description="❌ Reject selected ads")
     def reject_ads(self, request, queryset):
         count = queryset.update(is_approved=False, status='rejected')
-        self.message_user(request, f"{count}টি অ্যাড রিজেক্ট করা হয়েছে।")
+        self.message_user(request, f"{count} The ad has been rejected.")
 
 
     def save_model(self, request, obj, form, change):

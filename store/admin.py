@@ -21,7 +21,7 @@ class SellerProductImageInline(TabularInline):
     model  = SellerProductImage
     extra  = 0
     fields = ['image', 'alt_text', 'order']
-    tab    = True  # Unfold: inline কে tab এ দেখাবে
+    tab    = True  # Unfold: show inline in tab
 
 
 # ============================================================================
@@ -79,9 +79,9 @@ class SellerRequestAdmin(ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         """
-        Admin panel এ status dropdown থেকে manually APPROVED/REJECTED করলেও
-        approve()/reject() method সঠিকভাবে call হবে —
-        ফলে SellerProfile automatically তৈরি হবে।
+        When manually setting status in admin panel dropdown,
+        the approve()/reject() method will be called correctly —
+        so SellerProfile will be created automatically.
         """
         if change and 'status' in form.changed_data:
             if obj.status == 'APPROVED':
@@ -572,16 +572,16 @@ class CouponAdmin(ModelAdmin):
 
 
 # ============================================================================
-# Sidebar Badge Functions — settings.py UNFOLD config এ reference করা হয়েছে
+# Sidebar Badge Functions — referenced in settings.py UNFOLD config
 # ============================================================================
 
 def pending_seller_requests_count(request):
-    """Pending seller request count — sidebar badge এ দেখাবে"""
+    """Pending seller request count — will show in sidebar badge"""
     count = SellerRequest.objects.filter(status='PENDING').count()
     return str(count) if count > 0 else None
 
 
 def pending_products_count(request):
-    """Pending product review count — sidebar badge এ দেখাবে"""
+    """Pending product review count — will show in sidebar badge"""
     count = SellerProduct.objects.filter(status='PENDING').count()
     return str(count) if count > 0 else None

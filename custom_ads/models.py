@@ -94,7 +94,7 @@ class CustomAd(models.Model):
 
 
 class AdSetting(models.Model):
-    """অ্যাডমিন ড্যাশবোর্ড থেকে ক্লিকে কাটার অ্যামাউন্ট নিয়ন্ত্রন করার জন্য"""
+    """To control the amount of deduction per click from the admin dashboard"""
     cpc_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -111,7 +111,7 @@ class AdSetting(models.Model):
         return f"Current CPC: {self.cpc_amount}"
 
     def save(self, *args, **kwargs):
-        # এটি নিশ্চিত করবে যে ডাটাবেসে শুধুমাত্র একটি সেটিংস রো থাকবে (Singleton)
+        # This will ensure that there will only be one settings row in the database (Singleton)
         self.pk = 1
         super().save(*args, **kwargs)
 
@@ -152,7 +152,7 @@ class AdvertiserRequest(models.Model):
         self.save()
 
 
-# models.py - AdReview model যোগ করুন
+"""--------------Add AdReview model------------------"""
 
 class AdReview(models.Model):
     """Admin review/rejection records"""

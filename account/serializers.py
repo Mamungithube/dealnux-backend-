@@ -51,7 +51,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User.objects.create_user(**validated_data)
         user.is_active = False
 
-        # ✅ OTP সরাসরি User মডেলে সেভ করুন
+        # ✅ Save OTP directly in User model
         otp = generate_otp()
         user.otp = otp
         user.save()
@@ -173,15 +173,13 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         data = obj.interests
 
-        # যদি ডাটাটি স্ট্রিং হয়, তবে সেটিকে JSON হিসেবে লোড করি
+        # If the data is a string, load it as JSON.
         if isinstance(data, str):
             try:
                 data = json.loads(data)
             except (ValueError, TypeError):
                 return []
 
-        # যদি লোড করার পর দেখা যায় এটি একটি লিস্ট যার প্রথম উপাদানটি আবার একটি স্ট্রিং-লিস্ট
-        # যেমন: ["[\"A\", \"B\"]"] -> এটিকে ঠিক করতে হবে
         if isinstance(data, list) and len(data) > 0:
             if isinstance(data[0], str) and data[0].startswith('['):
                 try:
@@ -225,19 +223,19 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         fields = ['name', 'profile_picture', 'address', 'interests']
 
     def update(self, instance, validated_data):
-    # Interests হ্যান্ডেল করা
+    # Handling Interests
         interests_list = validated_data.pop('interests', None)
 
         if interests_list is not None:
             instance.interests = json.dumps(interests_list)
 
-        # User-এর নাম আপডেট (আপনার আগের কোড অনুযায়ী)
+        # Update user name (as per your previous code)
         user_data = validated_data.pop('user', {})
         if user_data and 'name' in user_data:
             instance.user.name = user_data.get('name')
             instance.user.save()
 
-        # বাকি সব ফিল্ড আপডেট
+        # All other fields updated
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 

@@ -9,7 +9,7 @@ from decimal import Decimal
 # ============================================================================
 
 class CheckoutSerializer(serializers.Serializer):
-    """Buyer → Stripe Checkout Session তৈরির জন্য"""
+    """Buyer → To create a Stripe Checkout Session"""
     seller_product   = serializers.PrimaryKeyRelatedField(
         queryset=SellerProduct.objects.filter(status='APPROVED')
     )
@@ -46,7 +46,7 @@ class CheckoutSerializer(serializers.Serializer):
 # ============================================================================
 
 class PaymentSerializer(serializers.ModelSerializer):
-    """Buyer এর payment history"""
+    """Buyer's payment history"""
     product_title   = serializers.CharField(source='seller_product.title', read_only=True, allow_null=True)
     shop_name       = serializers.CharField(source='seller_product.seller.shop_name', read_only=True, allow_null=True)
     order_status    = serializers.CharField(source='order.status', read_only=True, allow_null=True)
@@ -70,7 +70,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # Pending না হলে checkout_url দেখানোর দরকার নেই
+        # No need to show checkout_url unless it's pending.
         if instance.status != 'PENDING':
             data['stripe_checkout_url'] = None
         return data
@@ -131,7 +131,7 @@ class StripeConnectStatusSerializer(serializers.Serializer):
 # ============================================================================
 
 class AdminPaymentSerializer(serializers.ModelSerializer):
-    """Admin — সব payment দেখার জন্য"""
+    """Admin — To view all payments"""
     buyer_email     = serializers.EmailField(source='buyer.email', read_only=True)
     product_title   = serializers.CharField(source='seller_product.title', read_only=True, allow_null=True)
     shop_name       = serializers.CharField(source='seller_product.seller.shop_name', read_only=True, allow_null=True)
@@ -142,7 +142,7 @@ class AdminPaymentSerializer(serializers.ModelSerializer):
 
 
 class AdminSellerPayoutSerializer(serializers.ModelSerializer):
-    """Admin — সব payout দেখার জন্য"""
+    """Admin — To view all payouts"""
     shop_name   = serializers.CharField(source='seller.shop_name', read_only=True)
     buyer_email = serializers.EmailField(source='payment.buyer.email', read_only=True)
 

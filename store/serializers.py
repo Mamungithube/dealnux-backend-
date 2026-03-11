@@ -13,7 +13,7 @@ from api_integration.serializers import ProductListingSerializer
 # ============================================================================
 
 class SellerRequestSerializer(serializers.ModelSerializer):
-    """User নিজে POST করার জন্য"""
+    """User can submit this request to become a seller"""
     user_email = serializers.CharField(source='user.email', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
 
@@ -30,7 +30,7 @@ class SellerRequestSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
-            # একজন user একটাই request করতে পারবে (PENDING/APPROVED)
+            # A user can only make one request (PENDING/APPROVED).
             existing = SellerRequest.objects.filter(
                 user=request.user,
                 status__in=['PENDING', 'APPROVED']
@@ -45,7 +45,7 @@ class SellerRequestSerializer(serializers.ModelSerializer):
 
 
 class AdminSellerRequestSerializer(serializers.ModelSerializer):
-    """Admin এর জন্য — approve/reject action সহ"""
+    """For Admin — with approve/reject action"""
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_name  = serializers.CharField(source='user.name',  read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -91,14 +91,14 @@ class SellerProductImageSerializer(serializers.ModelSerializer):
 # ============================================================================
 
 class SellerProductSerializer(serializers.ModelSerializer):
-    """Seller নিজে product add/edit করার জন্য"""
+    """For the seller to add/edit the product themselves"""
     seller_shop         = serializers.CharField(source='seller.shop_name', read_only=True)
     status_display      = serializers.CharField(source='get_status_display', read_only=True)
     discount_percentage = serializers.SerializerMethodField()
     images              = SellerProductImageSerializer(many=True, read_only=True)
     category_name       = serializers.CharField(source='category.name', read_only=True, allow_null=True)
 
-    # category: pk ("3") বা name ("food") দুটোই চলবে
+    # category: pk ("3") or name ("food") will both work
     category = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
@@ -126,11 +126,11 @@ class SellerProductSerializer(serializers.ModelSerializer):
         return obj.discount_percentage
 
     def validate_category(self, value):
-        """pk number বা category name — দুটোই accept করবে"""
+        """pk number or category name — both will be accepted"""
         from api_integration.models import Category
         if not value:
             return None
-        # 1. numeric string → pk দিয়ে খোঁজা
+        # 1. Search by numeric string → pk
         if str(value).strip().isdigit():
             try:
                 return Category.objects.get(pk=int(value))
@@ -138,11 +138,11 @@ class SellerProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"Category with pk={value} not found."
                 )
-        # 2. name দিয়ে খোঁজা (case-insensitive)
+        # 2. Search by name (case-insensitive)
         cat = Category.objects.filter(name__iexact=str(value).strip()).first()
         if cat:
             return cat
-        # 3. slug দিয়ে খোঁজা
+        # 3. Search by slug (case-insensitive)
         cat = Category.objects.filter(slug__iexact=str(value).strip()).first()
         if cat:
             return cat
@@ -155,7 +155,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
         )
 
     def validate_condition(self, value):
-        """case-insensitive: 'new', 'NEW', 'New' সব accept করবে"""
+        """case-insensitive: 'new', 'NEW', 'New' all will accept"""
         from .models import SellerProduct as SP
         valid = {c[0] for c in SP.CONDITION_CHOICES}
         upper = value.upper() if value else ''
@@ -190,7 +190,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
 
 
 class SellerProductPublicSerializer(serializers.ModelSerializer):
-    """Public API — approved product দেখানোর জন্য"""
+    """Public API - for displaying approved products"""
     seller_shop  = serializers.CharField(source='seller.shop_name', read_only=True)
     seller_logo  = serializers.ImageField(source='seller.shop_logo', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True, allow_null=True)
@@ -275,7 +275,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
-    """Buyer order দেওয়ার জন্য"""
+    """For buyer to place an order"""
 
     class Meta:
         model = Order
@@ -312,7 +312,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             note            = validated_data.get('note', ''),
         )
 
-        # Stock কমাও
+        # Reduce stock
         seller_product.quantity -= order.quantity
         seller_product.save(update_fields=['quantity'])
 
@@ -348,7 +348,7 @@ class CouponSerializer(serializers.ModelSerializer):
 
 
 class CouponValidateSerializer(serializers.Serializer):
-    """Buyer যখন coupon apply করবে"""
+    """When buyer applies a coupon"""
     code         = serializers.CharField(max_length=50)
     order_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
 

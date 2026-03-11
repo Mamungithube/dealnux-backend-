@@ -160,7 +160,6 @@ class CartItemSerializer(serializers.ModelSerializer):
         product = attrs.get('product')
         selected_listing = attrs.get('selected_listing')
 
-        # ✅ Listing টা ওই product এর কিনা check
         if selected_listing and product:
             if selected_listing.product != product:
                 raise serializers.ValidationError({
@@ -170,7 +169,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         # ✅ Already in cart check
         if user and product:
             qs = CartItem.objects.filter(user=user, product=product)
-            # PUT/PATCH এর সময় নিজেকে exclude করো
+            # PUT/PATCH 
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():

@@ -3,15 +3,13 @@ from django.utils import timezone
 from account.models import User
 from api_integration.models import Product, ProductListing, Platform, Category
 
-
 # ============================================================================
-# Seller Request — Admin approve করলে Seller হওয়া যাবে
+# Seller Request — You can become a Seller if the Admin approves.
 # ============================================================================
 
 class SellerRequest(models.Model):
     """
-    User seller হতে চাইলে এই request পাঠাবে।
-    Admin approve/reject করবে।
+    If the user wants to become a seller, send this request. Admin will approve/reject।
     """
 
     STATUS_CHOICES = [
@@ -20,48 +18,52 @@ class SellerRequest(models.Model):
         ('REJECTED', 'Rejected'),
     ]
 
-    user            = models.OneToOneField(User, on_delete=models.CASCADE, related_name='seller_request')
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='seller_request')
 
     # Shop info
-    shop_name       = models.CharField(max_length=255)
-    shop_description= models.TextField(blank=True)
+    shop_name = models.CharField(max_length=255)
+    shop_description = models.TextField(blank=True)
 
     # Contact
-    phone_number    = models.CharField(max_length=20)
+    phone_number = models.CharField(max_length=20)
 
     # Documents (optional upload)
-    nid_document      = models.FileField(upload_to='seller_docs/nid/', blank=True, null=True)
-    business_document = models.FileField(upload_to='seller_docs/business/', blank=True, null=True)
+    nid_document = models.FileField(
+        upload_to='seller_docs/nid/', blank=True, null=True)
+    business_document = models.FileField(
+        upload_to='seller_docs/business/', blank=True, null=True)
 
     # Admin action
-    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
-    admin_note      = models.TextField(blank=True)   # reject reason ইত্যাদি
-    reviewed_by     = models.ForeignKey(
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    admin_note = models.TextField(blank=True) 
+    reviewed_by = models.ForeignKey(
         User, on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='reviewed_seller_requests'
     )
-    reviewed_at     = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
-        verbose_name        = 'Seller Request'
+        verbose_name = 'Seller Request'
         verbose_name_plural = 'Seller Requests'
 
     def __str__(self):
         return f"{self.user.email} → {self.shop_name} [{self.status}]"
 
     def approve(self, admin_user):
-        """Admin approve করলে SellerProfile তৈরি হবে এবং User কে seller mark করা হবে।"""
-        self.status      = 'APPROVED'
+        """If the admin approves, the Seller Profile will be created and the user will be marked as a seller."""
+        self.status = 'APPROVED'
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
         self.save()
 
-        # SellerProfile create — bank info পরে seller নিজে profile এ যোগ করবে
+        # SellerProfile create — bank info will be added to the profile later by the seller himself
         SellerProfile.objects.get_or_create(
             user=self.user,
             defaults={
@@ -71,43 +73,47 @@ class SellerRequest(models.Model):
             }
         )
 
-        # User model এ is_seller flag set করো
-        self.user.ads_provided = True   # existing field reuse, অথবা নিচে আলাদা field যোগ করুন
+        # Set is_seller flag in User model
+        # Reuse existing field, or add separate field below
+        self.user.ads_provided = True
         self.user.save(update_fields=['ads_provided'])
 
     def reject(self, admin_user, note=''):
-        self.status      = 'REJECTED'
-        self.admin_note  = note
+        self.status = 'REJECTED'
+        self.admin_note = note
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
         self.save()
 
 
 # ============================================================================
-# Seller Profile — Approved seller দের তথ্য
+# Seller Profile — Approved seller information
 # ============================================================================
 
 class SellerProfile(models.Model):
-    user            = models.OneToOneField(User, on_delete=models.CASCADE, related_name='seller_profile')
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='seller_profile')
 
-    shop_name       = models.CharField(max_length=255)
-    shop_description= models.TextField(blank=True)
-    shop_logo       = models.ImageField(upload_to='seller_logos/', blank=True, null=True)
-    phone_number    = models.CharField(max_length=20)
+    shop_name = models.CharField(max_length=255)
+    shop_description = models.TextField(blank=True)
+    shop_logo = models.ImageField(
+        upload_to='seller_logos/', blank=True, null=True)
+    phone_number = models.CharField(max_length=20)
 
     # Payment
-    bank_name       = models.CharField(max_length=200, blank=True)
+    bank_name = models.CharField(max_length=200, blank=True)
     bank_account_number = models.CharField(max_length=100, blank=True)
-    bkash_number    = models.CharField(max_length=20, blank=True)
+    bkash_number = models.CharField(max_length=20, blank=True)
 
     # Stats
-    total_products  = models.PositiveIntegerField(default=0)
-    total_orders    = models.PositiveIntegerField(default=0)
-    total_earnings  = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_products = models.PositiveIntegerField(default=0)
+    total_orders = models.PositiveIntegerField(default=0)
+    total_earnings = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
 
-    is_active       = models.BooleanField(default=True)
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -117,14 +123,14 @@ class SellerProfile(models.Model):
 
 
 # ============================================================================
-# Seller Product — Seller নিজে যোগ করা product
+# Seller Product — Product added by the Seller himself
 # ============================================================================
 
 class SellerProduct(models.Model):
     """
-    Seller নিজে add করা product।
-    Admin approve হলে api_integration.Product এ link হবে
-    এবং একটা 'local' platform ProductListing তৈরি হবে।
+    Product added by the seller himself.
+    If admin approves, it will be linked to api_integration.Product
+    and a 'local' platform ProductListing will be created.
     """
 
     STATUS_CHOICES = [
@@ -141,62 +147,70 @@ class SellerProduct(models.Model):
         ('OPEN_BOX',    'Open Box'),
     ]
 
-    seller          = models.ForeignKey(SellerProfile, on_delete=models.CASCADE, related_name='products')
-    category        = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
+    seller = models.ForeignKey(
+        SellerProfile, on_delete=models.CASCADE, related_name='products')
+    category = models.ForeignKey(
+        Category, on_delete=models.SET_NULL, null=True, blank=True)
 
     # Basic info
-    title           = models.CharField(max_length=500)
-    description     = models.TextField(blank=True)
-    brand           = models.CharField(max_length=200, blank=True)
-    model_number    = models.CharField(max_length=200, blank=True)
+    title = models.CharField(max_length=500)
+    description = models.TextField(blank=True)
+    brand = models.CharField(max_length=200, blank=True)
+    model_number = models.CharField(max_length=200, blank=True)
 
     # Price & stock
-    price           = models.DecimalField(max_digits=10, decimal_places=2)
-    original_price  = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    currency        = models.CharField(max_length=10, default='USD')
-    quantity        = models.PositiveIntegerField(default=1)
-    condition       = models.CharField(max_length=20, choices=CONDITION_CHOICES, default='NEW')
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    original_price = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=10, default='USD')
+    quantity = models.PositiveIntegerField(default=1)
+    condition = models.CharField(
+        max_length=20, choices=CONDITION_CHOICES, default='NEW')
 
     # Images
-    main_image      = models.ImageField(upload_to='seller_products/', blank=True, null=True)
+    main_image = models.ImageField(
+        upload_to='seller_products/', blank=True, null=True)
 
     # Shipping
-    free_shipping   = models.BooleanField(default=False)
-    shipping_cost   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    estimated_delivery_days = models.PositiveIntegerField(null=True, blank=True)
+    free_shipping = models.BooleanField(default=False)
+    shipping_cost = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    estimated_delivery_days = models.PositiveIntegerField(
+        null=True, blank=True)
 
     # Returns
-    returns_accepted    = models.BooleanField(default=True)
-    return_period_days  = models.PositiveIntegerField(default=7)
+    returns_accepted = models.BooleanField(default=True)
+    return_period_days = models.PositiveIntegerField(default=7)
 
     # Admin review
-    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
-    admin_note      = models.TextField(blank=True)
-    reviewed_by     = models.ForeignKey(
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    admin_note = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(
         User, on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='reviewed_seller_products'
     )
-    reviewed_at     = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     # Link to global Product & Listing (approve হলে তৈরি হবে)
-    linked_product  = models.ForeignKey(
+    linked_product = models.ForeignKey(
         Product, on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='seller_products'
     )
-    linked_listing  = models.ForeignKey(
+    linked_listing = models.ForeignKey(
         ProductListing, on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='seller_product_source'
     )
 
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
-        verbose_name        = 'Seller Product'
+        verbose_name = 'Seller Product'
         verbose_name_plural = 'Seller Products'
 
     def __str__(self):
@@ -210,14 +224,14 @@ class SellerProduct(models.Model):
 
     def approve(self, admin_user):
         """
-        Admin approve করলে:
-        1. api_integration.Product তৈরি/খোঁজা হবে
-        2. 'local' Platform এ ProductListing তৈরি হবে
-        3. linked_product ও linked_listing set হবে
+        Admin Approval:
+            1. api_integration.Product will be created/searched
+            2. Productlisting will be on 'local' platform
+            3. linked_product + linked_listing will be set
         """
         from django.utils.text import slugify
 
-        self.status      = 'APPROVED'
+        self.status = 'APPROVED'
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
 
@@ -283,8 +297,8 @@ class SellerProduct(models.Model):
         self.seller.save(update_fields=['total_products'])
 
     def reject(self, admin_user, note=''):
-        self.status      = 'REJECTED'
-        self.admin_note  = note
+        self.status = 'REJECTED'
+        self.admin_note = note
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
         self.save()
@@ -295,11 +309,12 @@ class SellerProduct(models.Model):
 # ============================================================================
 
 class SellerProductImage(models.Model):
-    product     = models.ForeignKey(SellerProduct, on_delete=models.CASCADE, related_name='images')
-    image       = models.ImageField(upload_to='seller_product_images/')
-    alt_text    = models.CharField(max_length=300, blank=True)
-    order       = models.PositiveIntegerField(default=0)
-    created_at  = models.DateTimeField(auto_now_add=True)
+    product = models.ForeignKey(
+        SellerProduct, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='seller_product_images/')
+    alt_text = models.CharField(max_length=300, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['order', 'id']
@@ -322,27 +337,32 @@ class Order(models.Model):
         ('REFUNDED',   'Refunded'),
     ]
 
-    buyer           = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
-    seller          = models.ForeignKey(SellerProfile, on_delete=models.SET_NULL, null=True, related_name='orders')
+    buyer = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='orders')
+    seller = models.ForeignKey(
+        SellerProfile, on_delete=models.SET_NULL, null=True, related_name='orders')
 
     # Snapshot of listing at time of order
-    seller_product  = models.ForeignKey(SellerProduct, on_delete=models.SET_NULL, null=True)
-    listing         = models.ForeignKey(ProductListing, on_delete=models.SET_NULL, null=True)
+    seller_product = models.ForeignKey(
+        SellerProduct, on_delete=models.SET_NULL, null=True)
+    listing = models.ForeignKey(
+        ProductListing, on_delete=models.SET_NULL, null=True)
 
-    quantity        = models.PositiveIntegerField(default=1)
-    unit_price      = models.DecimalField(max_digits=10, decimal_places=2)
-    total_price     = models.DecimalField(max_digits=10, decimal_places=2)
-    currency        = models.CharField(max_length=10, default='USD')
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=10, default='USD')
 
     # Shipping address snapshot
     shipping_address = models.TextField()
 
-    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='PENDING')
     tracking_number = models.CharField(max_length=200, blank=True)
-    note            = models.TextField(blank=True)   # buyer note
+    note = models.TextField(blank=True)   # buyer note
 
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -358,7 +378,7 @@ class Order(models.Model):
 
 
 # ============================================================================
-# Coupon — Seller নিজে coupon দিতে পারবে
+# Coupon — Seller can give coupon himself
 # ============================================================================
 
 class Coupon(models.Model):
@@ -367,16 +387,21 @@ class Coupon(models.Model):
         ('FIXED',      'Fixed Amount'),
     ]
 
-    seller          = models.ForeignKey(SellerProfile, on_delete=models.CASCADE, related_name='coupons')
-    code            = models.CharField(max_length=50, unique=True)
-    discount_type   = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='PERCENTAGE')
-    discount_value  = models.DecimalField(max_digits=10, decimal_places=2)  # % বা টাকা
-    min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    max_uses        = models.PositiveIntegerField(null=True, blank=True)     # None = unlimited
-    used_count      = models.PositiveIntegerField(default=0)
-    is_active       = models.BooleanField(default=True)
-    expires_at      = models.DateTimeField(null=True, blank=True)
-    created_at      = models.DateTimeField(auto_now_add=True)
+    seller = models.ForeignKey(
+        SellerProfile, on_delete=models.CASCADE, related_name='coupons')
+    code = models.CharField(max_length=50, unique=True)
+    discount_type = models.CharField(
+        max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='PERCENTAGE')
+    discount_value = models.DecimalField(
+        max_digits=10, decimal_places=2)  # % বা টাকা
+    min_order_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    max_uses = models.PositiveIntegerField(
+        null=True, blank=True)     # None = unlimited
+    used_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']

@@ -577,7 +577,7 @@ class ProfileSetupView(APIView):
                 "data": {"email": ["No user found with this email."]}
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # ✅ চেক করুন OTP verify করেছে কিনা
+        # ✅ Check if the OTP has been verified.
         if not user.is_active:
             return Response({
                 "success": False,
@@ -587,7 +587,7 @@ class ProfileSetupView(APIView):
                 "data": {}
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # ✅ চেক করুন profile setup আগেই করা হয়েছে কিনা
+        # ✅ Check if the profile setup has already been done.
         if user.profile_setup_completed:
             return Response({
                 "success": False,
@@ -610,7 +610,7 @@ class ProfileSetupView(APIView):
 
         try:
             with transaction.atomic():
-                # Profile তৈরি বা আপডেট
+                # Create or update profile
                 profile, created = Profile.objects.get_or_create(user=user)
 
                 address = serializer.validated_data.get('address')
@@ -631,14 +631,14 @@ class ProfileSetupView(APIView):
 
                 profile.save()
 
-                # ✅ রেফারাল বোনাস প্রসেস (শুধুমাত্র একবার)
+                # ✅ Referral Bonus Process (Only Once)
                 print(
                     f"[DEBUG] referred_by_code from request: {referred_by_code}")
                 print(
                     f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
 
                 if referred_by_code and not user.has_claimed_referral:
-                    # রেফারাল কোড ট্রিম করুন
+                    # Trim referral code
                     referred_by_code = referred_by_code.strip()
                     print(
                         f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
@@ -654,13 +654,13 @@ class ProfileSetupView(APIView):
                         }, status=status.HTTP_400_BAD_REQUEST)
 
                     try:
-                        # যার কোড ব্যবহার করা হচ্ছে তাকে খোঁজা
+                        # Find the person whose code is being used
                         referrer = User.objects.get(
                             referral_code=referred_by_code)
                         print(
                             f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
 
-                        # নিজের কোড নিজে ব্যবহার করা যাবে না
+                        # You cannot use your own code.
                         if referrer == user:
                             print(f"[DEBUG] User trying to use own code")
                             return Response({
@@ -671,7 +671,7 @@ class ProfileSetupView(APIView):
                                 "data": {"referred_by_code": ["Invalid referral code."]}
                             }, status=status.HTTP_400_BAD_REQUEST)
 
-                        # ✅ বোনাস দিন (atomic transaction এ আছে)
+                        # ✅ Bonus day (in atomic transaction)
                         print(f"[DEBUG] Adding bonus to referrer and new user")
                         print(
                             f"[DEBUG] Referrer old balance: {referrer.balance}")
@@ -699,7 +699,7 @@ class ProfileSetupView(APIView):
                             "data": {"referred_by_code": ["Referral code not found."]}
                         }, status=status.HTTP_400_BAD_REQUEST)
 
-                # ✅ Profile setup complete মার্ক করুন
+                # ✅ Mark Profile setup complete.
                 user.profile_setup_completed = True
                 user.save()
 

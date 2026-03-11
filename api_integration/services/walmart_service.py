@@ -7,7 +7,7 @@ class WalmartService:
         self.client_secret = settings.WALMART_CLIENT_SECRET
 
     def search_products(self, query, limit=10):
-        # Walmart Affiliate API URL (Client এর দেওয়া URL বসান)
+        # Walmart Affiliate API URL (insert URL provided by the client)
         url = "https://developer.api.walmart.com/api-proxy/service/affil/product/v2/search"
         headers = {"WM_SEC.KEY_VERSION": "1", "WM_CONSUMER.ID": self.client_id} # Auth লজিক ক্লায়েন্টের ডক অনুযায়ী দিবেন
         params = {"query": query, "numItems": limit}

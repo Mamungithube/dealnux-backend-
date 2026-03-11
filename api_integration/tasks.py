@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def sync_ebay_task(query, limit=10):
-    """Background এ eBay sync"""
+    """Background eBay sync"""
     try:
         platform, _ = Platform.objects.get_or_create(
             code='ebay',
@@ -81,7 +81,7 @@ def sync_amazon_task(query, limit=10):
         items = service.search_products(query, limit=limit)
         
         synced = 0
-        from .views import save_generic_product_to_db # আগের দেওয়া জেনেরিক সেভ ফাংশন
+        from .views import save_generic_product_to_db 
         
         for item in items:
             try:
@@ -129,7 +129,7 @@ def sync_homedepot_task(query, limit=10):
 
 @shared_task
 def sync_all_platforms_task(query, limit=10):
-    """সব platform একসাথে parallel এ sync"""
+    """Sync all platforms together in parallel"""
     job = group(
         sync_ebay_task.s(query, limit),
         sync_clickbank_task.s(query, limit),
@@ -143,7 +143,7 @@ def sync_all_platforms_task(query, limit=10):
 
 @shared_task
 def hourly_fixed_category_sync():
-    """সবগুলো ই-কমার্স ক্যাটাগরির ডাটা প্রতি ঘণ্টায় নিয়ে আসবে"""
+    """Sync data for all e-commerce categories every hour"""
     
     FIXED_CATEGORIES = [
         "Smartphones", "Laptops", "Desktop Computers", "Tablets", 

@@ -12,8 +12,8 @@ class HomeDepotService:
     Host: home-depot-product-lookup.p.rapidapi.com
     Subscribe: https://rapidapi.com/maple-rope-maple-rope-default/api/home-depot-product-lookup
 
-    ⚠️ এই API শুধু numeric productId দিয়ে কাজ করে — text search সম্ভব না।
-    hourly_fixed_category_sync এ text query আসলে এই platform skip হবে।
+    ⚠️ This API only works with numeric productIds — text searches are not possible.
+        Text queries to hourly_fixed_category_sync will actually skip this platform.
     """
 
     def __init__(self):
@@ -27,9 +27,9 @@ class HomeDepotService:
 
     def search_products(self, query, limit=10):
         """
-        ⚠️ এই API তে text search নেই।
-        শুধু numeric productId দিলে কাজ করবে।
-        Text query দিলে empty list রিটার্ন করবে।
+        ⚠️ This API does not support text searches.
+        It only works with numeric productIds.
+        Text queries will return an empty list.
         """
         # Numeric ID হলেই শুধু call করবে
         if not str(query).strip().isdigit():
@@ -94,7 +94,7 @@ class HomeDepotService:
 
                 if res.status_code == 200:
                     data = res.json()
-                    # Data ready কিনা চেক করো
+                    # Check if data is ready.
                     if data and data != {'status': 'pending'}:
                         return data
                     logger.debug(f"HomeDepot: data not ready yet (attempt {attempt+1})")
@@ -108,7 +108,7 @@ class HomeDepotService:
     def extract_product_data(self, item):
         """Home Depot product data কে আমাদের DB format এ convert করে"""
 
-        # Price বের করা
+        # Find out the price
         price = 0.0
         price_raw = (
             item.get('price')

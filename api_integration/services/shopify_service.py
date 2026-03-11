@@ -18,7 +18,7 @@ class ShopifyService:
             'x-rapidapi-host': self.host,
             'x-rapidapi-key': self.api_key
         }
-        # Default stores — query দিয়ে filter হবে
+        # Default stores — will filter by query
         self.default_stores = [
             'https://shop.flipperzero.one',
             'https://row.gymshark.com',
@@ -28,8 +28,8 @@ class ShopifyService:
     def search_products(self, query, limit=10):
         """
         GET /store?url=STORE_URL&page=1
-        query তে store URL দিলে সেই store থেকে আনবে,
-        না দিলে default stores থেকে আনবে এবং title দিয়ে filter করবে।
+        If you provide a store URL in the query, it will fetch from that store,
+        otherwise it will fetch from default stores and filter by title.
         """
         store_url = query if query.startswith('http') else None
         stores_to_search = [store_url] if store_url else self.default_stores
@@ -63,7 +63,7 @@ class ShopifyService:
                         logger.error(f"Shopify unexpected response type: {type(data)}")
                         continue
 
-                    # store URL টা প্রতিটা product এ attach করো
+                    # Attach the store URL to each product.
                     for p in products:
                         p['_store_url'] = store
 
@@ -92,7 +92,7 @@ class ShopifyService:
         return all_products[:limit]
 
     def extract_product_data(self, item, store_url=None):
-        """Shopify product data কে আমাদের DB format এ convert করে"""
+        """Shopify converts product data to our DB format"""
         store = (
             store_url
             or item.get('_store_url')
