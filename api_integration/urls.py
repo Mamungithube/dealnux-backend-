@@ -21,4 +21,5 @@ urlpatterns = [
     path('task-status/<str:task_id>/', views.task_status, name='task_status'),
     path('products/<slug:slug>/price-history/', views.product_price_history, name='product_price_history'),
     path('dashboard/', views.DashboardSavingsView.as_view(), name='dashboard-savings'),
+    path('products/category/<slug:slug>/compare_prices/', views.category_compare_prices, name='category-compare-prices'),
 ]

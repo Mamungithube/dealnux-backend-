@@ -105,7 +105,7 @@ class AmazonService:
             )
         except (ValueError, TypeError):
             price = 0.0
-
+        
         # ── Original / list price ─────────────────────────────────────────
         original_price_str = (
             item.get('product_original_price')
@@ -123,7 +123,12 @@ class AmazonService:
                 )
             except (ValueError, TypeError):
                 original_price = None
-
+        
+        # ── Price 0 হলে original_price দিয়ে replace ─────────────────────
+        if price == 0.0 and original_price:
+            price = original_price
+            original_price = None
+        
         # ── Discount ──────────────────────────────────────────────────────
         discount_percentage = None
         if original_price and price and original_price > price:
@@ -166,8 +171,6 @@ class AmazonService:
         # ── Brand ────────────────────────────────────────────────────────
         brand = (
             item.get('product_brand')
-            or item.get('brand')
-            or item.get('manufacturer')
             or ''
         )
 
@@ -210,6 +213,7 @@ class AmazonService:
                 or item.get('url')
                 or (f"https://www.amazon.com/dp/{external_id}" if external_id else '')
             ),
+            
             'price': price,
             'currency': 'USD',
             'original_price': original_price,
