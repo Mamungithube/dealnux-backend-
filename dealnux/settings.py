@@ -13,8 +13,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from datetime import timedelta
+from datetime import datetime
 from dotenv import load_dotenv
 from decouple import config
+
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -218,14 +220,7 @@ UNFOLD = {
 }
 
 # Add this to settings.py
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
-}
+
 
 # WSGI_APPLICATION = 'dealnux.wsgi.application'
 ASGI_APPLICATION = 'dealnux.asgi.application'
@@ -271,18 +266,35 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+# --- ১. Internationalization (এটি Celery এর উপরে থাকবে) ---
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE = 'UTC' # <--- এটি এখন উপরে ডিফাইন করা হলো
+USE_I18N = True
+USE_TZ = True
+
+# --- ২. Redis ও Celery কনফিগারেশন ---
+# .env থেকে REDIS_URL নিবে, না থাকলে ডকারের সার্ভিস নাম 'redis' ব্যবহার করবে
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# --- ৩. Channel Layers (Chat এর জন্য) ---
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("redis", 6379)], # <--- নিশ্চিত করুন এখানে 'redis' আছে
+        },
+    },
+}
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
-USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
