@@ -132,7 +132,7 @@ class WalmartService:
             'quantity':            1,
             'main_image':          item.get('image') or item.get('main_image') or '',
             'additional_images':   [],
-            'brand':               item.get('brand') or item.get('sellerName') or '',
+            'brand':               item.get('brand') or '',
             'model_number':        external_id,
             'category_path':       item.get('category_path') or '',
             'is_available':        is_available,

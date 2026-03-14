@@ -6,13 +6,17 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Min, Count, Avg
 from django.db import transaction
-
 from api_integration.services.walmart_service import WalmartService
 from api_integration.services.amazon_service import AmazonService
 from api_integration.services.shopify_service import ShopifyService
 from api_integration.services.homedepot_service import HomeDepotService
 from api_integration.services.sephora_service import SephoraService
 from .services.ebay_service import EbayRapidService 
+from api_integration.services.target_service import TargetService
+from api_integration.services.wayfair_service import WayfairService
+from api_integration.services.aliexpress_service import AliExpressService
+from .tasks import sync_all_platforms_task, sync_ebay_task, sync_clickbank_task
+from django.core.cache import cache
 from .models import (
     Product, ProductListing, Platform, Category,
     PriceHistory, ProductImage, ProductSpecification,
@@ -258,17 +262,28 @@ Auto-merges variations of the same product.
         title_lower = title.lower().strip()
 
         brand_products = Product.objects.filter(
-            brand__iexact=brand_lower
+            Q(brand__iexact=brand_lower) |
+            Q(brand__icontains=brand_lower.split()[0]) |  # "Apple" matches "Apple iPhone"
+            Q(title__icontains=brand_lower.split()[0])    # title তেও খোঁজো
         ).only('id', 'title', 'brand', 'gtin', 'asin')
 
         noise_words = {
-            'for', 'the', 'a', 'an', 'and', 'or', 'with', 'by', 'in',
-            'of', 'to', 'dry', 'damaged', 'color', 'treated', 'hair',
-            'fine', 'thick', 'medium', 'mini', 'large', 'small',
-            'lightweight', 'nourishing', 'moisturizing', 'hydrating',
-            'strengthening', 'repairing', 'protective', 'sulfate',
-            'free', 'vegan', 'certified', 'formula', 'set', '-'
-        }
+                    'for', 'the', 'a', 'an', 'and', 'or', 'with', 'by', 'in',
+                    'of', 'to', 'dry', 'damaged', 'color', 'treated', 'hair',
+                    'fine', 'thick', 'medium', 'mini', 'large', 'small',
+                    'lightweight', 'nourishing', 'moisturizing', 'hydrating',
+                    'strengthening', 'repairing', 'protective', 'sulfate',
+                    'free', 'vegan', 'certified', 'formula', 'set', '-',
+                    'unlocked', 'locked', 'us', 'version', 'esim', 'sim',
+                    'renewed', 'refurbished', 'restored', 'pre', 'owned',
+                    'prepaid', 'wireless', 'smartphone', 'phone', '5g', '4g',
+                    'tmobile', 'verizon', 'att', 'sprint', 'straight', 'talk',
+                    'total', 'tracfone', 'boost', 'cricket', 'metro',
+                    'black', 'white', 'blue', 'pink', 'green', 'yellow',
+                    'red', 'purple', 'silver', 'gold', 'titanium', 'lavender',
+                    'midnight', 'starlight', 'mist', 'cosmic', 'desert',
+                    'premium', 'excellent', 'good', 'fair', 'condition',
+                }
 
         def get_keywords(t):
             words = t.lower().replace('-', ' ').replace('&', '').replace('amp', '').split()
@@ -290,7 +305,7 @@ Auto-merges variations of the same product.
             union        = len(title_keywords | existing_keywords)
             score        = intersection / union if union > 0 else 0
 
-            if score > 0.5 and score > best_score:
+            if score > 0.35 and score > best_score:
                 best_score  = score
                 best_match  = existing
 
@@ -308,7 +323,7 @@ Auto-merges variations of the same product.
 def save_generic_product_to_db(product_data, platform, query=None, category_slug=None, all_categories=None):
     """
     Advanced Search Save Helper — Amazon, Walmart, Sephora, HomeDepot.
-Automatically merges by matching brand + title.
+        Automatically merges by matching brand + title.
     """
     external_id = product_data.get('external_id')
     if not external_id:
@@ -811,8 +826,24 @@ def sync_sephora_products(platform, query, limit):
         not_found_msg="No Sephora products found",
     )
 
-
-
+def sync_target_products(platform, query, limit):
+    return _normalize_and_sync_generic(
+        TargetService(), platform, query, limit,
+        success_msg="Target sync completed",
+        not_found_msg="No Target products found",
+    )
+def sync_wayfair_products(platform, query, limit):
+    return _normalize_and_sync_generic(
+        WayfairService(), platform, query, limit,
+        success_msg="Wayfair sync completed",
+        not_found_msg="No Wayfair products found",
+    )
+def sync_aliexpress_products(platform, query, limit):
+    return _normalize_and_sync_generic(
+        AliExpressService(), platform, query, limit,
+        success_msg="AliExpress sync completed",
+        not_found_msg="No AliExpress products found",
+    )
 # ── Register sync functions ──────────────────────────────────────────────────
 
 PLATFORM_SYNC_CONFIG = {
@@ -821,6 +852,9 @@ PLATFORM_SYNC_CONFIG = {
     'walmart':   {'sync_func': sync_walmart_products,    'name': 'Walmart'},
     'amazon':    {'sync_func': sync_amazon_products,     'name': 'Amazon'},
     'sephora': {'sync_func': sync_sephora_products, 'name': 'Sephora'},
+    'target': {'sync_func': sync_target_products, 'name': 'Target'},
+    'wayfair': {'sync_func': sync_wayfair_products, 'name': 'Wayfair'},
+    'aliexpress': {'sync_func': sync_aliexpress_products, 'name': 'AliExpress'},
     # 'shopify':   {'sync_func': sync_shopify_products,    'name': 'Shopify'},
     # 'homedepot': {'sync_func': sync_homedepot_products,  'name': 'Home Depot'},
 }
@@ -1482,8 +1516,6 @@ def product_price_history(request, slug):
     }, message="Price history fetched")
 
 
-from .tasks import sync_all_platforms_task, sync_ebay_task, sync_clickbank_task
-from django.core.cache import cache
 
 
 @api_view(['GET'])
@@ -1494,7 +1526,7 @@ def smart_search(request):
     if not query:
         return error_response('q is required', code=400)
 
-    cache_key = f'smart_search_v2_{query}_{limit}'
+    cache_key = f'smart_search_v3_{query}_{limit}'
     cached = cache.get(cache_key)
     if cached:
         return success_response({
@@ -1503,6 +1535,7 @@ def smart_search(request):
             'results': cached,
         }, message="Results from cache")
 
+    # DB তে আছে কিনা চেক করো
     existing_products = Product.objects.filter(
         Q(title__icontains=query) | Q(description__icontains=query),
         is_active=True,
@@ -1513,11 +1546,8 @@ def smart_search(request):
         # Background sync
         sync_all_platforms_task.delay(query, limit)
 
-        query_words = query.lower().split()
-
-        grouped = {}  # key = normalized_title, value = {product, listings: [...]}
-
-        for product in existing_products:
+        results = []
+        for product in existing_products[:limit]:
             listings = product.listings.filter(
                 is_available=True
             ).select_related('platform').order_by('price')
@@ -1525,87 +1555,47 @@ def smart_search(request):
             if not listings.exists():
                 continue
 
+            # Duplicate URL বাদ দাও
+            seen_urls = set()
+            price_comparison = []
             for listing in listings:
-                platform_code = listing.platform.code
-
-                price_entry = {
-                    'platform':      listing.platform.name,
-                    'platform_code': platform_code,
-                    'price':         float(listing.price) if listing.price else 0,
-                    'currency':      listing.currency,
-                    'original_price': float(listing.original_price) if listing.original_price else None,
+                if listing.external_url in seen_urls:
+                    continue
+                seen_urls.add(listing.external_url)
+                price_comparison.append({
+                    'platform':            listing.platform.name,
+                    'platform_code':       listing.platform.code,
+                    'price':               float(listing.price) if listing.price else 0,
+                    'currency':            listing.currency,
+                    'original_price':      float(listing.original_price) if listing.original_price else None,
                     'discount_percentage': float(listing.discount_percentage) if listing.discount_percentage else None,
-                    'free_shipping': listing.free_shipping,
-                    'shipping_cost': float(listing.shipping_cost),
-                    'total_price':   float(listing.get_total_price()),
-                    'url':           listing.external_url,
-                    'condition':     listing.condition,
-                    'seller':        listing.seller_username,
-                    'product_id':    product.id,
-                    'product_title': product.title,
-                    'product_slug':  product.slug,
-                    'main_image':    product.main_image,
-                }
+                    'free_shipping':       listing.free_shipping,
+                    'shipping_cost':       float(listing.shipping_cost),
+                    'total_price':         float(listing.get_total_price()),
+                    'url':                 listing.external_url,
+                    'condition':           listing.condition,
+                    'seller':              listing.seller_username,
+                    'product_id':          product.id,
+                    'product_title':       product.title,
+                    'product_slug':        product.slug,
+                    'main_image':          product.main_image,
+                })
 
-                # Normalize title for grouping
-                # "Apple iPhone 15 128GB Black" → "apple iphone 15 128gb"
-                title_lower = product.title.lower()
-                # Remove the words color/carrier and find the core title.
-                noise_words = ['black', 'white', 'blue', 'pink', 'green', 'yellow', 
-                               'red', 'purple', 'silver', 'gold', 'titanium', 'natural',
-                               'verizon', 'at&t', 't-mobile', 'unlocked', 'boost',
-                               'refurbished', 'renewed', 'restored', 'pre-owned',
-                               'factory', 'carrier', 'us model', 'excellent', 'condition']
-                
-                normalized = title_lower
-                for word in noise_words:
-                    normalized = normalized.replace(word, '')
-                
-                # Group by storage size (128gb, 256gb separately)
-                import re
-                storage_match = re.search(r'\d+\s*gb', normalized)
-                storage = storage_match.group() if storage_match else 'unknown'
-                
-                words = normalized.split()
-                core_words = [w for w in words if len(w) > 2 and w.isalnum()][:5]
-                group_key = ' '.join(sorted(core_words[:4]))
-
-                if group_key not in grouped:
-                    grouped[group_key] = {
-                        'representative_product': product,
-                        'price_comparison': [],
-                    }
-
-                grouped[group_key]['price_comparison'].append(price_entry)
-
-        # Build result
-        results = []
-        for group_key, group_data in list(grouped.items())[:limit]:
-            price_comparison = group_data['price_comparison']
-            
-            # price 0 remove
             valid_prices = [p for p in price_comparison if p['price'] > 0]
             if not valid_prices:
                 continue
-            
-            # price wise sorting
+
             valid_prices.sort(key=lambda x: x['total_price'])
-            
             best_deal = valid_prices[0]
-            
-            # Collect all unique platforms
             platforms = list({p['platform_code'] for p in valid_prices})
-            
-            # representative product (best deal)
-            rep = group_data['representative_product']
 
             results.append({
-                'id':              best_deal['product_id'],
-                'title':           best_deal['product_title'],
-                'slug':            best_deal['product_slug'],
-                'main_image':      best_deal['main_image'],
-                'category':        rep.category_id,
-                'category_name':   rep.category.name if rep.category else '',
+                'id':              product.id,
+                'title':           product.title,
+                'slug':            product.slug,
+                'main_image':      product.main_image,
+                'category':        product.category_id,
+                'category_name':   product.category.name if product.category else '',
                 'platforms_count': len(platforms),
                 'available_on':    platforms,
                 'lowest_price':    best_deal['price'],
@@ -1619,9 +1609,7 @@ def smart_search(request):
                 'price_comparison': valid_prices,
             })
 
-        # Sort by lowest_price
         results.sort(key=lambda x: x['lowest_price'] or 0)
-
         cache.set(cache_key, results, 300)
 
         return success_response({
@@ -1632,7 +1620,7 @@ def smart_search(request):
             'results': results,
         }, message="Results from database")
 
-    # Not in DB — sync
+    # DB তে নেই — sync করো
     task = sync_all_platforms_task.delay(query, limit)
     return success_response({
         'source':        'syncing',
@@ -1642,6 +1630,7 @@ def smart_search(request):
         'check_status':  f'/api/v1/fetch-products/task-status/{task.id}/',
         'fetch_results': f'/api/v1/fetch-products/smart-search/?q={query}&limit={limit}',
     }, message="Sync started", code=202)
+
 
 
 @api_view(['GET'])

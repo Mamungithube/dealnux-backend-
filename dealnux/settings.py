@@ -16,6 +16,7 @@ from datetime import timedelta
 from datetime import datetime
 from dotenv import load_dotenv
 from decouple import config
+from celery.schedules import crontab
 
 
 # Build paths inside the project
@@ -292,6 +293,13 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+CELERY_BEAT_SCHEDULE = {
+    'hourly-category-sync': {
+        'task': 'api_integration.tasks.hourly_fixed_category_sync',
+        'schedule': crontab(minute=0, hour='*/15'),  # প্রতি ১ ঘণ্টায়
+    },
+}
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -336,25 +344,25 @@ REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
 REVENUECAT_WEBHOOK_AUTH_HEADER = os.getenv('REVENUECAT_WEBHOOK_AUTH_HEADER')
 
 # eBay API Configuration
-EBAY_ENV = config('EBAY_ENV', default='SANDBOX')
-EBAY_APP_ID = config('EBAY_APP_ID')
-EBAY_CERT_ID = config('EBAY_CERT_ID')
-EBAY_DEV_ID = config('EBAY_DEV_ID', default='')
+# EBAY_ENV = config('EBAY_ENV', default='SANDBOX')
+# EBAY_APP_ID = config('EBAY_APP_ID')
+# EBAY_CERT_ID = config('EBAY_CERT_ID')
+# EBAY_DEV_ID = config('EBAY_DEV_ID', default='')
 
-if EBAY_ENV == 'SANDBOX':
-    EBAY_BASE_URL = 'https://api.sandbox.ebay.com'
-else:
-    EBAY_BASE_URL = 'https://api.ebay.com'
+# if EBAY_ENV == 'SANDBOX':
+#     EBAY_BASE_URL = 'https://api.sandbox.ebay.com'
+# else:
+#     EBAY_BASE_URL = 'https://api.ebay.com'
 
 
 # ClickBank API Configuration
-CLICKBANK_API_KEY = config('CLICKBANK_API_KEY', default='')
-CLICKBANK_DEV_KEY = config('CLICKBANK_DEV_KEY', default='DEV-123456789012345678901234567890123456')
+# CLICKBANK_API_KEY = config('CLICKBANK_API_KEY', default='')
+# CLICKBANK_DEV_KEY = config('CLICKBANK_DEV_KEY', default='DEV-123456789012345678901234567890123456')
 
 # RapidAPI and Walmart API Configuration (future)
 RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
-WALMART_CLIENT_ID = os.getenv('WALMART_CLIENT_ID')
-WALMART_CLIENT_SECRET = os.getenv('WALMART_CLIENT_SECRET')
+# WALMART_CLIENT_ID = os.getenv('WALMART_CLIENT_ID')
+# WALMART_CLIENT_SECRET = os.getenv('WALMART_CLIENT_SECRET')
 
 # # AliExpress API Configuration (future)
 # ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')

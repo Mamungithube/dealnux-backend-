@@ -4,11 +4,13 @@ from .services.clickbank_service import ClickBankService
 from .services.amazon_service import AmazonService
 from .services.walmart_service import WalmartService
 from .services.sephora_service import SephoraService
+from .services.target_service import TargetService
+from .services.wayfair_service import WayfairService
+from .services.aliexpress_service import AliExpressService
 from .models import Platform
 import logging
 
 logger = logging.getLogger(__name__)
-
 
 @shared_task
 def sync_ebay_task(query, limit=10):
@@ -155,8 +157,94 @@ def sync_sephora_task(query, limit=10):
         return {'platform': 'sephora', 'error': str(e)}
 
 
+
 @shared_task
-def sync_all_platforms_task(query, limit=10):
+def sync_target_task(query, limit=10):
+    try:
+        platform, _ = Platform.objects.get_or_create(
+            code='target',
+            defaults={'name': 'Target', 'api_enabled': True}
+        )
+        if not platform.api_enabled:
+            return {'platform': 'target', 'skipped': 'disabled'}
+
+        service = TargetService()
+        items   = service.search_products(query, limit=limit)
+
+        synced = 0
+        from .views import save_generic_product_to_db
+        for item in items:
+            try:
+                product_data = service.extract_product_data(item)
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                    synced += 1
+            except Exception as e:
+                logger.error(f"Target item sync failed: {e}")
+
+        return {'platform': 'target', 'synced': synced}
+    except Exception as e:
+        logger.error(f"Target sync task failed: {e}")
+        return {'platform': 'target', 'error': str(e)}
+
+@shared_task
+def sync_wayfair_task(query, limit=10):
+    try:
+        platform, _ = Platform.objects.get_or_create(
+            code='wayfair',
+            defaults={'name': 'Wayfair', 'api_enabled': True}
+        )
+        if not platform.api_enabled:
+            return {'platform': 'wayfair', 'skipped': 'disabled'}
+
+        service = WayfairService()
+        items   = service.search_products(query, limit=limit)
+
+        synced = 0
+        from .views import save_generic_product_to_db
+        for item in items:
+            try:
+                product_data = service.extract_product_data(item)
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                    synced += 1
+            except Exception as e:
+                logger.error(f"Wayfair item sync failed: {e}")
+
+        return {'platform': 'wayfair', 'synced': synced}
+    except Exception as e:
+        logger.error(f"Wayfair sync task failed: {e}")
+        return {'platform': 'wayfair', 'error': str(e)} 
+
+@shared_task
+def sync_aliexpress_task(query, limit=10):
+    try:
+        platform, _ = Platform.objects.get_or_create(
+            code='aliexpress',
+            defaults={'name': 'AliExpress', 'api_enabled': True}
+        )
+        if not platform.api_enabled:
+            return {'platform': 'aliexpress', 'skipped': 'disabled'}
+
+        service = AliExpressService()
+        items   = service.search_products(query, limit=limit)
+
+        synced = 0
+        from .views import save_generic_product_to_db
+        for item in items:
+            try:
+                product_data = service.extract_product_data(item)
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                    synced += 1
+            except Exception as e:
+                logger.error(f"AliExpress item sync failed: {e}")
+
+        return {'platform': 'aliexpress', 'synced': synced}
+    except Exception as e:
+        logger.error(f"AliExpress sync task failed: {e}")
+        return {'platform': 'aliexpress', 'error': str(e)}
+    
+
+@shared_task
+def sync_all_platforms_task(query, limit=1000):
     """সব platform একসাথে parallel এ sync করে"""
     job = group(
         sync_amazon_task.s(query, limit),
@@ -164,6 +252,9 @@ def sync_all_platforms_task(query, limit=10):
         sync_ebay_task.s(query, limit),
         sync_clickbank_task.s(query, limit),
         sync_sephora_task.s(query, limit),
+        sync_target_task.s(query, limit),
+        sync_wayfair_task.s(query, limit),
+        sync_aliexpress_task.s(query, limit),
     )
     result = job.apply_async()
     return result.id
@@ -200,7 +291,7 @@ def hourly_fixed_category_sync():
     ]
 
     for index, category_name in enumerate(FIXED_CATEGORIES):
-        delay_seconds = index * 30
+        delay_seconds = index * 10
         sync_all_platforms_task.apply_async(
             args=[category_name, 10],
             countdown=delay_seconds
