@@ -7,7 +7,7 @@ class Platform(models.Model):
     """E-commerce platform (eBay, Amazon, etc.)"""
     
     name = models.CharField(max_length=50, unique=True)
-    code = models.CharField(max_length=20, unique=True)  # ebay, amazon, aliexpress
+    code = models.CharField(max_length=20, unique=True)
     logo = models.ImageField(upload_to='platform_logos/', blank=True)
     api_enabled = models.BooleanField(default=True)
     
@@ -61,6 +61,9 @@ class Product(models.Model):
     
     # Images
     main_image = models.URLField(max_length=1000, blank=True ,default='')
+
+    gtin = models.CharField(max_length=50, unique=True, null=True, blank=True, db_index=True)
+    asin = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     
     # Meta
     is_active = models.BooleanField(default=True)

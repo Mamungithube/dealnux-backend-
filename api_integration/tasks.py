@@ -1,9 +1,9 @@
 from celery import shared_task, group
-from .services.ebay_service import EbayService
+from .services.ebay_service import EbayRapidService
 from .services.clickbank_service import ClickBankService
 from .services.amazon_service import AmazonService
-from .services.shopify_service import ShopifyService
-from .services.homedepot_service import HomeDepotService
+from .services.walmart_service import WalmartService
+from .services.sephora_service import SephoraService
 from .models import Platform
 import logging
 
@@ -20,16 +20,16 @@ def sync_ebay_task(query, limit=10):
         if not platform.api_enabled:
             return {'platform': 'ebay', 'skipped': 'disabled'}
 
-        service = EbayService()
-        results = service.search_products(query, limit=limit)
-        items = results.get('itemSummaries', []) if results else []
+        service = EbayRapidService()
+        items   = service.search_products(query, limit=limit)
 
         synced = 0
+        from .views import save_generic_product_to_db
         for item in items:
             try:
-                from .views import save_ebay_product_to_db
-                save_ebay_product_to_db(item, platform, query=query)  # ✅ query
-                synced += 1
+                product_data = service.extract_product_data(item)
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                    synced += 1
             except Exception as e:
                 logger.error(f"eBay item sync failed: {e}")
 
@@ -50,16 +50,14 @@ def sync_clickbank_task(query, limit=10):
             return {'platform': 'clickbank', 'skipped': 'disabled'}
 
         service = ClickBankService()
-        items = service.search_products(query, limit=limit)
-        if not items:
-            items = service.search_mock_products(query, limit)
+        items   = service.search_mock_products(query, limit)
 
         synced = 0
         for item in items:
             try:
                 from .views import save_clickbank_product_to_db
                 product_data = service.extract_product_data(item)
-                save_clickbank_product_to_db(product_data, platform, query=query)  # ✅ query
+                save_clickbank_product_to_db(product_data, platform)
                 synced += 1
             except Exception as e:
                 logger.error(f"ClickBank item sync failed: {e}")
@@ -81,14 +79,14 @@ def sync_amazon_task(query, limit=10):
             return {'platform': 'amazon', 'skipped': 'disabled'}
 
         service = AmazonService()
-        items = service.search_products(query, limit=limit)
+        items   = service.search_products(query, limit=limit)
 
         synced = 0
         from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:  # ✅ query
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"Amazon item sync failed: {e}")
@@ -100,73 +98,72 @@ def sync_amazon_task(query, limit=10):
 
 
 @shared_task
-def sync_shopify_task(query, limit=10):
+def sync_walmart_task(query, limit=10):
     try:
         platform, _ = Platform.objects.get_or_create(
-            code='shopify',
-            defaults={'name': 'Shopify', 'api_enabled': True}
+            code='walmart',
+            defaults={'name': 'Walmart', 'api_enabled': True}
         )
         if not platform.api_enabled:
-            return {'platform': 'shopify', 'skipped': 'disabled'}
+            return {'platform': 'walmart', 'skipped': 'disabled'}
 
-        service = ShopifyService()
-        items = service.search_products(query, limit)
+        service = WalmartService()
+        items   = service.search_products(query, limit=limit)
 
         synced = 0
         from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:  # ✅ query
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
-                logger.error(f"Shopify item sync failed: {e}")
+                logger.error(f"Walmart item sync failed: {e}")
 
-        return {'platform': 'shopify', 'synced': synced}
+        return {'platform': 'walmart', 'synced': synced}
     except Exception as e:
-        logger.error(f"Shopify sync task failed: {e}")
-        return {'platform': 'shopify', 'error': str(e)}
+        logger.error(f"Walmart sync task failed: {e}")
+        return {'platform': 'walmart', 'error': str(e)}
 
 
 @shared_task
-def sync_homedepot_task(query, limit=10):
+def sync_sephora_task(query, limit=10):
     try:
         platform, _ = Platform.objects.get_or_create(
-            code='homedepot',
-            defaults={'name': 'Home Depot', 'api_enabled': True}
+            code='sephora',
+            defaults={'name': 'Sephora', 'api_enabled': True}
         )
         if not platform.api_enabled:
-            return {'platform': 'homedepot', 'skipped': 'disabled'}
+            return {'platform': 'sephora', 'skipped': 'disabled'}
 
-        service = HomeDepotService()
-        items = service.search_products(query, limit)
+        service = SephoraService()
+        items   = service.search_products(query, limit=limit)
 
         synced = 0
         from .views import save_generic_product_to_db
         for item in items:
             try:
-                if item:
-                    product_data = service.extract_product_data(item)
-                    if save_generic_product_to_db(product_data, platform, query=query)[0]:  # ✅ query
-                        synced += 1
+                product_data = service.extract_product_data(item)
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                    synced += 1
             except Exception as e:
-                logger.error(f"HomeDepot item sync failed: {e}")
+                logger.error(f"Sephora item sync failed: {e}")
 
-        return {'platform': 'homedepot', 'synced': synced}
+        return {'platform': 'sephora', 'synced': synced}
     except Exception as e:
-        logger.error(f"HomeDepot sync task failed: {e}")
-        return {'platform': 'homedepot', 'error': str(e)}
+        logger.error(f"Sephora sync task failed: {e}")
+        return {'platform': 'sephora', 'error': str(e)}
 
 
 @shared_task
 def sync_all_platforms_task(query, limit=10):
     """সব platform একসাথে parallel এ sync করে"""
     job = group(
+        sync_amazon_task.s(query, limit),
+        sync_walmart_task.s(query, limit),
         sync_ebay_task.s(query, limit),
         sync_clickbank_task.s(query, limit),
-        sync_amazon_task.s(query, limit),
-        sync_shopify_task.s(query, limit),
-        sync_homedepot_task.s(query, limit),
+        sync_sephora_task.s(query, limit),
     )
     result = job.apply_async()
     return result.id
@@ -195,14 +192,11 @@ def hourly_fixed_category_sync():
         "Exercise & Fitness Equipment", "Cycling & Bicycles", "Camping & Hiking",
         "Fishing Equipment", "Water Sports", "Team Sports", "Golf Equipment",
         "Baby Products & Accessories", "Toys & Games", "Kids Clothing",
-        "Action Figures & Collectibles", "Puzzles & Board Games", "Baby Gear & Strollers",
-        "Car Electronics & GPS", "Car Interior Accessories", "Car Exterior Accessories",
+        "Puzzles & Board Games", "Baby Gear & Strollers",
+        "Car Electronics & GPS", "Car Interior Accessories",
         "Motorcycle Parts & Accessories", "Automotive Tools & Equipment",
-        "Fiction Books", "Non-Fiction & Educational Books", "Movies & TV Shows",
-        "Music & Vinyl Records", "Musical Instruments",
-        "Snack Foods", "Beverages & Coffee", "Pantry Staples", "Household Cleaning Supplies",
-        "E-Business & E-Marketing", "Self-Help & Personal Development",
-        "Software & Services", "Online Courses",
+        "Fiction Books", "Non-Fiction & Educational Books",
+        "Snack Foods", "Beverages & Coffee", "Household Cleaning Supplies",
     ]
 
     for index, category_name in enumerate(FIXED_CATEGORIES):

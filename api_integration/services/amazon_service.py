@@ -196,6 +196,13 @@ class AmazonService:
 
         return {
             'external_id': external_id,
+            'asin': external_id,   # ← Amazon এ external_id মানেই ASIN
+            'gtin': (
+                item.get('upc')
+                or item.get('ean')
+                or item.get('gtin')
+                or None
+            ),
             'title': (
                 item.get('product_title')
                 or item.get('title')

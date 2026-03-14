@@ -11,6 +11,8 @@ from api_integration.services.walmart_service import WalmartService
 from api_integration.services.amazon_service import AmazonService
 from api_integration.services.shopify_service import ShopifyService
 from api_integration.services.homedepot_service import HomeDepotService
+from api_integration.services.sephora_service import SephoraService
+from .services.ebay_service import EbayRapidService 
 from .models import (
     Product, ProductListing, Platform, Category,
     PriceHistory, ProductImage, ProductSpecification,
@@ -25,7 +27,7 @@ from .serializers import (
     PriceHistorySerializer,
     CartItemSerializer,
 )
-from .services.ebay_service import EbayService
+from .services.ebay_service import EbayRapidService as EbayService
 from .services.clickbank_service import ClickBankService
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
@@ -60,17 +62,17 @@ def error_response(message="Error", data=None, code=400):
 
 
 # ============================================================================
-# Category Cache — লুপের ভেতরে বারবার DB কল বন্ধ করতে
+# Category Cache — To stop repeated DB calls inside a loop
 # ============================================================================
 
-_CATEGORY_CACHE = None  # মডিউল-লেভেল ক্যাশ
+_CATEGORY_CACHE = None 
 
 
 def _get_category_cache():
     """
-    সব Category একবার মেমোরিতে লোড করে রাখে।
-    প্রতিটি sync রিকোয়েস্টে মাত্র ১টি DB কল হবে।
-    পুরনো ক্যাশ ৫ মিনিটের বেশি হলে রিফ্রেশ করে।
+    All Categories are loaded into memory once.
+    Each sync request will only make 1 DB call.
+    Refreshes old cache if it is older than 5 minutes.
     """
     global _CATEGORY_CACHE
     now = time.time()
@@ -89,8 +91,8 @@ def _get_category_cache():
 
 
 # ── Keyword → Category slug map ─────────────────────────────────────────────
-# Product title-এ এই keyword গুলো থাকলে সংশ্লিষ্ট category slug খোঁজা হবে।
-# slug গুলো আপনার Category seeder script এর slugify(name) এর সাথে মিলতে হবে।
+# If these keywords are present in the product title, the corresponding category slug will be found.
+# The slugs must match the slugify(name) of your Category seeder script.
 _KEYWORD_CATEGORY_MAP = [
     # Electronics
     (['smartphone', 'iphone', 'android phone', 'mobile phone'], 'smartphones'),
@@ -188,19 +190,18 @@ _KEYWORD_CATEGORY_MAP = [
 
 def _resolve_category(category_path, title, cache):
     """
-    category_path এবং title থেকে সবচেয়ে ভালো Category মিলিয়ে দেয়।
-    একটিও DB কল করে না — শুধু ইন-মেমোরি ডিকশনারি ব্যবহার করে।
+Matches the best category from category_path and title.
+Doesn't make any DB calls — just uses an in-memory dictionary.
 
-    অগ্রাধিকার ক্রম:
-    ১. category_path → slug exact match
-    ২. category_path → name exact match
-    ৩. category_path → partial match
-    ৪. title → keyword map (সবচেয়ে নির্ভরযোগ্য Amazon/Walmart/Shopify এর জন্য)
-    ৫. title → category name partial match (fallback)
+Priority order:
+1. category_path → slug exact match
+2. category_path → name exact match
+3. category_path → partial match
+4. title → keyword map (most reliable for Amazon/Walmart/Shopify)
+5. title → category name partial match (fallback)
     """
     title_lower = (title or '').lower()
 
-    # ── Step 1-3: category_path দিয়ে চেষ্টা ─────────────────────────────
     if category_path:
         clean_name = category_path.split('>')[0].strip()
         slug_key = slugify(clean_name)
@@ -216,7 +217,6 @@ def _resolve_category(category_path, title, cache):
             if cat_name_lower in lower_key or lower_key in cat_name_lower:
                 return cat_obj
 
-    # ── Step 4: Keyword map দিয়ে title match ─────────────────────────────
     if title_lower:
         for keywords, target_slug in _KEYWORD_CATEGORY_MAP:
             for kw in keywords:
@@ -229,7 +229,6 @@ def _resolve_category(category_path, title, cache):
                         if target_slug.replace('-', ' ') in cat_name_lower:
                             return cat_obj
 
-    # ── Step 5: title তে category-এর যেকোনো শব্দ আছে কিনা (final fallback) ──
     if title_lower:
         for cat_name_lower, cat_obj in cache['by_name_lower'].items():
             # ছোট category name গুলো বাদ দাও (false positive এড়াতে)
@@ -238,7 +237,200 @@ def _resolve_category(category_path, title, cache):
 
     return None
 
+def _find_matching_product(title, brand, gtin, asin):
+    """
+    Search for existing products by GTIN → ASIN → Brand+Title similarity.
+Auto-merges variations of the same product.
+    """
 
+    if gtin:
+        product = Product.objects.filter(gtin=gtin).first()
+        if product:
+            return product
+
+    if asin:
+        product = Product.objects.filter(asin=asin).first()
+        if product:
+            return product
+
+    if brand and title:
+        brand_lower = brand.lower().strip()
+        title_lower = title.lower().strip()
+
+        brand_products = Product.objects.filter(
+            brand__iexact=brand_lower
+        ).only('id', 'title', 'brand', 'gtin', 'asin')
+
+        noise_words = {
+            'for', 'the', 'a', 'an', 'and', 'or', 'with', 'by', 'in',
+            'of', 'to', 'dry', 'damaged', 'color', 'treated', 'hair',
+            'fine', 'thick', 'medium', 'mini', 'large', 'small',
+            'lightweight', 'nourishing', 'moisturizing', 'hydrating',
+            'strengthening', 'repairing', 'protective', 'sulfate',
+            'free', 'vegan', 'certified', 'formula', 'set', '-'
+        }
+
+        def get_keywords(t):
+            words = t.lower().replace('-', ' ').replace('&', '').replace('amp', '').split()
+            return {w for w in words if len(w) > 2 and w not in noise_words}
+
+        title_keywords = get_keywords(title_lower)
+
+        best_match  = None
+        best_score  = 0
+
+        for existing in brand_products:
+            existing_keywords = get_keywords(existing.title.lower())
+
+            if not existing_keywords or not title_keywords:
+                continue
+
+            # Jaccard similarity
+            intersection = len(title_keywords & existing_keywords)
+            union        = len(title_keywords | existing_keywords)
+            score        = intersection / union if union > 0 else 0
+
+            if score > 0.5 and score > best_score:
+                best_score  = score
+                best_match  = existing
+
+        if best_match:
+            logger.debug(
+                f"Auto-merged: '{title[:40]}' → '{best_match.title[:40]}' "
+                f"(score={best_score:.2f}, brand={brand})"
+            )
+            return best_match
+
+    slug = slugify(title)[:500]
+    return Product.objects.filter(slug=slug).first()
+
+
+def save_generic_product_to_db(product_data, platform, query=None, category_slug=None, all_categories=None):
+    """
+    Advanced Search Save Helper — Amazon, Walmart, Sephora, HomeDepot.
+Automatically merges by matching brand + title.
+    """
+    external_id = product_data.get('external_id')
+    if not external_id:
+        return None, None, False
+
+    title = product_data.get('title', 'Unknown Product')
+    brand = (product_data.get('brand') or '').strip()
+    gtin  = (product_data.get('gtin') or '').strip() or None
+    asin  = (product_data.get('asin') or '').strip() or None
+
+    if not brand and title != 'Unknown Product':
+        brand = ' '.join(title.split()[:2])
+
+    # ── Category ──────────────────────────────────────────────────────────
+    category = None
+    if all_categories is None:
+        all_categories = list(Category.objects.all())
+
+    if category_slug:
+        category = next((c for c in all_categories if c.slug == category_slug), None)
+    else:
+        category = _resolve_category(
+            product_data.get('category_path'), title, _get_category_cache()
+        )
+    product = _find_matching_product(title, brand, gtin, asin)
+
+    if product:
+        created        = False
+        updated_fields = []
+
+        if gtin and not product.gtin:
+            product.gtin = gtin
+            updated_fields.append('gtin')
+        if asin and not product.asin:
+            product.asin = asin
+            updated_fields.append('asin')
+        if brand and not product.brand:
+            product.brand = brand
+            updated_fields.append('brand')
+        if not product.category and category:
+            product.category = category
+            updated_fields.append('category')
+
+        if updated_fields:
+            product.save(update_fields=updated_fields)
+
+    else:
+        created   = True
+        base_slug = slugify(title)[:490]
+        slug = (
+            f"{base_slug}-{str(external_id)[:8]}"
+            if Product.objects.filter(slug=base_slug).exists()
+            else base_slug
+        )
+        product = Product.objects.create(
+            title        = title,
+            slug         = slug,
+            brand        = brand,
+            model_number = product_data.get('model_number') or external_id,
+            main_image   = product_data.get('main_image', ''),
+            category     = category,
+            gtin         = gtin,
+            asin         = asin,
+        )
+
+    # ── Listing ───────────────────────────────────────────────────────────
+    shipping = product_data.get('shipping_info', {})
+    listing, listing_created = ProductListing.objects.update_or_create(
+        platform=platform,
+        external_id=external_id,
+        defaults={
+            'product':          product,
+            'external_url':     product_data.get('external_url', ''),
+            'price':            product_data.get('price', 0),
+            'currency':         product_data.get('currency', 'USD'),
+            'original_price':   product_data.get('original_price'),
+            'discount_percentage': product_data.get('discount_percentage'),
+            'condition':        product_data.get('condition', 'NEW'),
+            'quantity':         int(product_data.get('quantity') or 1),
+            'seller_username':  product_data.get('seller_username', 'Merchant'),
+            'seller_rating':    product_data.get('seller_rating'),
+            'seller_feedback_count': product_data.get('seller_feedback_count', 0),
+            'item_location':    product_data.get('item_location', ''),
+            'ships_from_country': product_data.get('ships_from_country', ''),
+            'shipping_cost':    shipping.get('cost', 0),
+            'shipping_currency': shipping.get('currency', 'USD'),
+            'free_shipping':    bool(shipping.get('free_shipping', False)),
+            'estimated_delivery_days': shipping.get('estimated_days'),
+            'returns_accepted': product_data.get('returns_accepted', False),
+            'return_period_days': product_data.get('return_period_days'),
+            'is_available':     bool(product_data.get('is_available', True)),
+        }
+    )
+
+    # ── Price History ─────────────────────────────────────────────────────
+    if listing_created:
+        PriceHistory.objects.create(
+            listing=listing, price=listing.price, currency=listing.currency
+        )
+
+    # ── Images ────────────────────────────────────────────────────────────
+    additional_images = product_data.get('additional_images', [])
+    if additional_images and created:
+        for order, img_url in enumerate(additional_images[:10]):
+            if img_url:
+                ProductImage.objects.get_or_create(
+                    product=product,
+                    image_url=img_url,
+                    defaults={'order': order}
+                )
+
+    # ── Specifications ────────────────────────────────────────────────────
+    specs = product_data.get('specifications', {})
+    if specs:
+        for name, value in specs.items():
+            ProductSpecification.objects.update_or_create(
+                product=product,
+                name=name,
+                defaults={'value': str(value)}
+            )
+
+    return product, listing, created
 # ============================================================================
 # DB Save Helpers
 # ============================================================================
@@ -312,26 +504,39 @@ def save_ebay_product_to_db(item_data, platform):
 
     product_data = ebay_service.extract_product_data(detailed_item)
 
-    brand = (product_data.get('brand') or '').strip()
+    gtin         = (product_data.get('gtin') or '').strip() or None
+    brand        = (product_data.get('brand') or '').strip()
     model_number = (product_data.get('model_number') or '').strip()
+    title        = product_data.get('title', 'Unknown Product')
 
     product = None
-    if brand and model_number:
+
+    if gtin:
+        product = Product.objects.filter(gtin=gtin).first()
+
+    if not product and brand and model_number:
         product = Product.objects.filter(
-            brand__iexact=brand, model_number__iexact=model_number
+            brand__iexact=brand,
+            model_number__iexact=model_number
         ).first()
 
     if not product:
         product, _ = Product.objects.get_or_create(
-            title=product_data.get('title', 'Unknown Product'),
+            title=title,
             defaults={
                 'description': product_data.get('description', '') or '',
                 'brand': brand,
                 'model_number': model_number,
                 'main_image': product_data.get('main_image', '') or '',
+                'gtin': gtin,
             }
         )
+    else:
+        if gtin and not product.gtin:
+            product.gtin = gtin
+            product.save(update_fields=['gtin'])
 
+    # ── Listing ──────────────────────────────────────────────────────────
     shipping_info = product_data.get('shipping_info', {})
 
     listing, listing_created = ProductListing.objects.update_or_create(
@@ -339,28 +544,29 @@ def save_ebay_product_to_db(item_data, platform):
         platform=platform,
         external_id=product_data.get('external_id'),
         defaults={
-            'external_url': product_data.get('external_url', ''),
-            'price': product_data.get('price', 0),
-            'currency': product_data.get('currency', 'USD'),
-            'original_price': product_data.get('original_price'),
-            'discount_percentage': product_data.get('discount_percentage'),
-            'condition': product_data.get('condition', 'NEW'),
-            'quantity': product_data.get('quantity', 0),
-            'seller_username': product_data.get('seller_username', ''),
-            'seller_rating': product_data.get('seller_rating'),
-            'seller_feedback_count': product_data.get('seller_feedback_count', 0),
-            'item_location': product_data.get('item_location', ''),
-            'ships_from_country': product_data.get('ships_from_country', ''),
-            'shipping_cost': shipping_info.get('cost', 0),
-            'shipping_currency': shipping_info.get('currency', 'USD'),
-            'free_shipping': shipping_info.get('free_shipping', False),
-            'estimated_delivery_days': shipping_info.get('estimated_days'),
-            'returns_accepted': product_data.get('returns_accepted', False),
-            'return_period_days': product_data.get('return_period_days'),
-            'is_available': product_data.get('is_available', True),
+            'external_url':           product_data.get('external_url', ''),
+            'price':                  product_data.get('price', 0),
+            'currency':               product_data.get('currency', 'USD'),
+            'original_price':         product_data.get('original_price'),
+            'discount_percentage':    product_data.get('discount_percentage'),
+            'condition':              product_data.get('condition', 'NEW'),
+            'quantity':               product_data.get('quantity', 0),
+            'seller_username':        product_data.get('seller_username', ''),
+            'seller_rating':          product_data.get('seller_rating'),
+            'seller_feedback_count':  product_data.get('seller_feedback_count', 0),
+            'item_location':          product_data.get('item_location', ''),
+            'ships_from_country':     product_data.get('ships_from_country', ''),
+            'shipping_cost':          shipping_info.get('cost', 0),
+            'shipping_currency':      shipping_info.get('currency', 'USD'),
+            'free_shipping':          shipping_info.get('free_shipping', False),
+            'estimated_delivery_days':shipping_info.get('estimated_days'),
+            'returns_accepted':       product_data.get('returns_accepted', False),
+            'return_period_days':     product_data.get('return_period_days'),
+            'is_available':           product_data.get('is_available', True),
         }
     )
 
+    # ── Price History ─────────────────────────────────────────────────────
     if listing_created:
         PriceHistory.objects.create(
             listing=listing, price=listing.price, currency=listing.currency
@@ -372,11 +578,13 @@ def save_ebay_product_to_db(item_data, platform):
                 listing=listing, price=listing.price, currency=listing.currency
             )
 
+    # ── Images ────────────────────────────────────────────────────────────
     if product_data.get('additional_images'):
         ProductImage.objects.filter(product=product).delete()
         for order, image_url in enumerate(product_data['additional_images'][:10]):
             ProductImage.objects.create(product=product, image_url=image_url, order=order)
 
+    # ── Specifications ────────────────────────────────────────────────────
     if product_data.get('specifications'):
         ProductSpecification.objects.filter(product=product).delete()
         for name, value in product_data['specifications'].items():
@@ -385,114 +593,6 @@ def save_ebay_product_to_db(item_data, platform):
     return product, listing, listing_created
 
 
-def save_generic_product_to_db(product_data, platform, query=None, category_slug=None):
-    """Generic product save with category support"""
-    
-    external_id = product_data.get('external_id')
-    if not external_id:
-        return None, False
-
-    # ── Category assign ──────────────────────────────────────────
-    cache = _get_category_cache()
-    category = None
-
-    if category_slug:
-        category_name = category_slug.replace('-', ' ').title()
-        category, _ = Category.objects.get_or_create(
-            slug=category_slug,
-            defaults={'name': category_name}
-        )
-    elif query:
-        # ১. query দিয়ে exact match চেষ্টা
-        query_slug = slugify(query)
-        category = cache['by_slug'].get(query_slug)
-
-        # ২. না পেলে _resolve_category দিয়ে title থেকে detect
-        if not category:
-            category = _resolve_category(query, product_data.get('title', ''), cache)
-
-        # ৩. তাও না পেলে query থেকে নতুন category তৈরি
-        if not category:
-            category, _ = Category.objects.get_or_create(
-                slug=query_slug,
-                defaults={'name': query.replace('-', ' ').title()}
-            )
-    else:
-        # query নেই — শুধু title দিয়ে auto detect
-        category = _resolve_category(None, product_data.get('title', ''), cache)
-
-    # ── Product create/update ────────────────────────────────────
-    product, created = Product.objects.get_or_create(
-        slug=slugify(product_data['title'])[:500],
-        defaults={
-            'title': product_data['title'],
-            'description': product_data.get('description', ''),
-            'brand': product_data.get('brand', ''),
-            'model_number': product_data.get('model_number', ''),
-            'main_image': product_data.get('main_image', ''),
-            'category': category,  # ← এখানে category set হচ্ছে
-        }
-    )
-
-    # যদি category না থাকে update করুন
-    if not created and not product.category and category:
-        product.category = category
-        product.save(update_fields=['category'])
-
-    # ── Listing create/update ────────────────────────────────────
-    shipping = product_data.get('shipping_info', {})
-    listing, listing_created = ProductListing.objects.update_or_create(
-        platform=platform,
-        external_id=external_id,
-        defaults={
-            'product': product,
-            'external_url': product_data.get('external_url', ''),
-            'price': product_data.get('price', 0),
-            'currency': product_data.get('currency', 'USD'),
-            'original_price': product_data.get('original_price'),
-            'discount_percentage': product_data.get('discount_percentage'),
-            'condition': product_data.get('condition', 'NEW'),
-            'quantity': product_data.get('quantity', 0),
-            'seller_username': product_data.get('seller_username', ''),
-            'seller_rating': product_data.get('seller_rating'),
-            'seller_feedback_count': product_data.get('seller_feedback_count', 0),
-            'item_location': product_data.get('item_location', ''),
-            'ships_from_country': product_data.get('ships_from_country', ''),
-            'shipping_cost': shipping.get('cost', 0),
-            'shipping_currency': shipping.get('currency', 'USD'),
-            'free_shipping': shipping.get('free_shipping', False),
-            'estimated_delivery_days': shipping.get('estimated_days'),
-            'returns_accepted': product_data.get('returns_accepted', False),
-            'return_period_days': product_data.get('return_period_days'),
-            'is_available': product_data.get('is_available', True),
-        }
-    )
-
-    # Price history
-    if listing_created:
-        PriceHistory.objects.create(
-            listing=listing,
-            price=listing.price,
-            currency=listing.currency
-        )
-
-    # Images
-    additional_images = product_data.get('additional_images', [])
-    if additional_images and created:
-        for order, img_url in enumerate(additional_images[:10]):
-            if img_url:
-                ProductImage.objects.get_or_create(product=product, image_url=img_url, defaults={'order': order})
-
-    # Specifications
-    specs = product_data.get('specifications', {})
-    if specs:
-        for name, value in specs.items():
-            ProductSpecification.objects.update_or_create(
-                product=product, name=name,
-                defaults={'value': str(value)}
-            )
-
-    return product, created
 
 # ============================================================================
 # Platform-specific sync helpers
@@ -513,70 +613,58 @@ def _build_result_template(query, platform_code, limit):
 
 def _generic_sync_loop(items, platform, external_id_key, save_callable, use_category_cache=False, query=None):
     result = _build_result_template('', platform.code, 0)
+    cat_cache = list(Category.objects.all()) # স্পিড বাড়ানোর জন্য
 
     for item in items:
         external_id = item.get(external_id_key)
+        if not external_id: continue
         result['external_ids'].append(external_id)
-        logger.debug(f"Syncing {platform.code} item {external_id}")
 
         try:
             with transaction.atomic():
-                if use_category_cache:
-                    product, created = save_callable(item, platform, query=query)
-                    listing = None
-                    if product:
-                        listing = product.listings.filter(platform=platform).order_by('-created_at').first()
-                else:
-                    product, listing, created = save_callable(item, platform)
+                product, listing, created = save_callable(
+                    item, 
+                    platform, 
+                    query=query, 
+                    all_categories=cat_cache
+                )
 
                 if product and listing:
-                    if created:
-                        result['synced'] += 1
-                    else:
-                        result['updated'] += 1
-
+                    if created: result['synced'] += 1
+                    else: result['updated'] += 1
                     result['products'].append({
-                        'product_id': product.id,
-                        'listing_id': listing.id,
-                        'external_id': external_id,
-                        'title': product.title,
-                        'slug': product.slug,
-                        'price': float(listing.price),
-                        'currency': listing.currency,
+                        'product_id':   product.id,
+                        'title':        product.title,
+                        'brand':        product.brand,
+                        'main_image':   product.main_image,
                         'external_url': listing.external_url,
-                        'main_image': product.main_image,
-                        'status': 'created' if created else 'updated',
+                        'price':        float(listing.price),
+                        'currency':     listing.currency,
+                        'slug':         product.slug,
+                        'status':       'created' if created else 'updated',
                     })
-                else:
-                    result['failed'] += 1
-                    logger.warning(
-                        f"No product/listing returned for {platform.code} item {external_id}"
-                    )
-
+                else: result['failed'] += 1
         except Exception as e:
             result['failed'] += 1
-            logger.error(
-                f"Failed to sync {platform.code} item {external_id}: {e}", exc_info=True
-            )
+            logger.error(f"Sync failed for ID {external_id}: {str(e)}")
 
     return result
 
 
 def sync_ebay_products(platform, query, limit):
-    ebay_service = EbayService()
-    search_results = ebay_service.search_products(query, limit=limit)
-
-    if not search_results:
-        return error_response("Failed to fetch products from eBay", code=500)
-
-    items = search_results.get('itemSummaries', [])
-    result = _generic_sync_loop(
-        items, platform, 'itemId', save_ebay_product_to_db,
-        use_category_cache=False  # eBay নিজস্ব save helper ব্যবহার করে
-    )
-    result['query'] = query
-    result['limit'] = limit
-    return success_response(result, message="eBay sync completed")
+    """
+    eBay timeout বেশি তাই background task এ চালাও।
+    """
+    from .tasks import sync_ebay_task
+    task = sync_ebay_task.delay(query, limit)
+    
+    return success_response({
+        'query':        query,
+        'platform':     'ebay',
+        'task_id':      task.id,
+        'message':      'eBay sync started in background (takes ~60s)',
+        'check_status': f'/api/v1/fetch-products/task-status/{task.id}/',
+    }, message="eBay sync started")
 
 
 def sync_clickbank_products(platform, query, limit):
@@ -626,11 +714,24 @@ def _normalize_and_sync_generic(service, platform, query, limit, success_msg, no
 
 
 def sync_walmart_products(platform, query, limit):
-    return _normalize_and_sync_generic(
-        WalmartService(), platform, query, limit,
-        success_msg="Walmart sync completed",
-        not_found_msg="No Walmart products found",
-    )
+    service = WalmartService()
+    items = service.search_products(query, limit=limit)
+    
+    if not items:
+        return error_response("No Walmart products found", code=404)
+
+    all_categories = list(Category.objects.all())
+    
+    normalized = []
+    for item in items:
+        try:
+            p_data = service.extract_product_data(item)
+            normalized.append(p_data)
+        except: continue
+
+    result = _generic_sync_loop(normalized, platform, 'external_id', save_generic_product_to_db)
+    result['query'] = query
+    return success_response(result, message="Walmart sync completed")
 
 
 def sync_amazon_products(platform, query, limit):
@@ -689,7 +790,7 @@ def sync_shopify_products(platform, query, limit):
 
 def sync_homedepot_products(platform, query, limit):
     """
-    Home Depot sync — শুধু numeric productId দিয়ে কাজ করে।
+    Home Depot sync — only works with numeric productId.
     """
     if not str(query).strip().isdigit():
         logger.info(f"HomeDepot skipped for non-numeric query: '{query}'")
@@ -703,13 +804,23 @@ def sync_homedepot_products(platform, query, limit):
         not_found_msg="No Home Depot products found",
     )
 
+def sync_sephora_products(platform, query, limit):
+    return _normalize_and_sync_generic(
+        SephoraService(), platform, query, limit,
+        success_msg="Sephora sync completed",
+        not_found_msg="No Sephora products found",
+    )
+
+
 
 # ── Register sync functions ──────────────────────────────────────────────────
+
 PLATFORM_SYNC_CONFIG = {
-    # 'ebay':      {'sync_func': sync_ebay_products,      'name': 'eBay'},
+    'ebay': {'sync_func': sync_ebay_products, 'name': 'eBay'},
     # 'clickbank': {'sync_func': sync_clickbank_products,  'name': 'ClickBank'},
-    # 'walmart':   {'sync_func': sync_walmart_products,    'name': 'Walmart'},
+    'walmart':   {'sync_func': sync_walmart_products,    'name': 'Walmart'},
     'amazon':    {'sync_func': sync_amazon_products,     'name': 'Amazon'},
+    'sephora': {'sync_func': sync_sephora_products, 'name': 'Sephora'},
     # 'shopify':   {'sync_func': sync_shopify_products,    'name': 'Shopify'},
     # 'homedepot': {'sync_func': sync_homedepot_products,  'name': 'Home Depot'},
 }
@@ -902,7 +1013,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 def search_and_sync(request):
     query = request.GET.get('q', '')
     limit = min(int(request.GET.get('limit', 10)), 50)
-    platform_code = request.GET.get('platform', 'ebay')
+    platform_code = request.GET.get('platform', 'amazon')
 
     if not query:
         return error_response('Query parameter "q" is required', code=400)
@@ -917,201 +1028,206 @@ def search_and_sync(request):
 
     sync_func = PLATFORM_SYNC_CONFIG.get(platform_code, {}).get('sync_func')
     if not sync_func:
-        return error_response(f'Platform "{platform_code}" is not supported for sync', code=400)
-
-    # query টা request এ attach করুন যাতে sync_func এর ভেতরে access করা যায়
-    request._sync_query = query  # ← এই line add করুন
+        return error_response(
+            f'Platform "{platform_code}" is not supported for sync', code=400
+        )
 
     return sync_func(platform, query, limit)
 
 @api_view(['POST'])
 def bulk_sync_products(request):
     platform_code = request.data.get('platform')
-    product_ids = request.data.get('product_ids') or request.data.get('external_ids', [])
-
+    product_ids   = request.data.get('product_ids') or request.data.get('external_ids', [])
+ 
     if not platform_code or not product_ids:
         return error_response('Both "platform" and "product_ids" are required', code=400)
-
+ 
     try:
         platform = Platform.objects.get(code=platform_code)
     except Platform.DoesNotExist:
         return error_response(f'Platform "{platform_code}" not found', code=404)
-
+ 
     service_map = {
-        'ebay': EbayService,
-        'clickbank': ClickBankService,
+        'ebay':    EbayRapidService,
         'walmart': WalmartService,
-        'amazon': AmazonService,
-        'shopify': ShopifyService,
-        'homedepot': HomeDepotService,
+        'amazon':  AmazonService,
+        'sephora': SephoraService,
     }
-
+ 
     service_class = service_map.get(platform_code)
     if not service_class:
         return error_response(f'Platform "{platform_code}" not supported for bulk sync', code=400)
-
+ 
     service = service_class()
-
-    # generic প্ল্যাটফর্মের জন্য bulk শুরুর আগে একবার category cache লোড
-    needs_cat_cache = platform_code not in ('ebay', 'clickbank')
-    cat_cache = _get_category_cache() if needs_cat_cache else None
-
+ 
     result = {
         'platform': platform_code,
-        'total': len(product_ids),
-        'synced': 0,
-        'updated': 0,
-        'failed': 0,
+        'total':    len(product_ids),
+        'synced':   0,
+        'updated':  0,
+        'failed':   0,
         'products': [],
     }
-
+ 
     for external_id in product_ids:
         try:
             if platform_code == 'ebay':
-                item_data = service.get_item_details(external_id)
-                if not item_data:
+                raw = service.search_products(str(external_id), limit=1)
+                if not raw:
                     result['failed'] += 1
                     continue
+                product_data = service.extract_product_data(raw[0])
+                product_data['external_id'] = external_id
                 with transaction.atomic():
-                    product, listing, created = save_ebay_product_to_db(item_data, platform)
-
-            elif platform_code == 'clickbank':
+                    product, listing, created = save_generic_product_to_db(
+                        product_data, platform
+                    )
+ 
+            elif platform_code == 'walmart':
                 item_data = service.get_product_details(external_id)
                 if not item_data:
                     result['failed'] += 1
                     continue
                 product_data = service.extract_product_data(item_data)
+                product_data['external_id'] = external_id
                 with transaction.atomic():
-                    product, listing, created = save_clickbank_product_to_db(product_data, platform)
-
+                    product, listing, created = save_generic_product_to_db(
+                        product_data, platform
+                    )
+ 
             else:
                 hits = service.search_products(str(external_id), limit=1)
                 if not hits:
                     result['failed'] += 1
                     continue
-                product_data = service.extract_product_data(hits[0])
+                raw_item     = hits[0]
+                product_data = (
+                    service.extract_product_data(raw_item)
+                    if hasattr(service, 'extract_product_data') else raw_item
+                )
                 with transaction.atomic():
                     product, listing, created = save_generic_product_to_db(
-                        product_data, platform, cat_cache
+                        product_data, platform
                     )
-
+ 
             if product and listing:
                 if created:
                     result['synced'] += 1
                 else:
                     result['updated'] += 1
                 result['products'].append({
-                    'id': product.id,
-                    'title': product.title,
-                    'slug': product.slug,
-                    'external_id': external_id,
-                    'price': float(listing.price),
-                    'currency': listing.currency,
+                    'id':           product.id,
+                    'title':        product.title,
+                    'slug':         product.slug,
+                    'external_id':  external_id,
+                    'price':        float(listing.price),
+                    'currency':     listing.currency,
                     'external_url': listing.external_url,
-                    'main_image': product.main_image,
-                    'status': 'created' if created else 'updated',
+                    'main_image':   product.main_image,
+                    'status':       'created' if created else 'updated',
                 })
             else:
                 result['failed'] += 1
-
-        
-
+ 
         except Exception as e:
             result['failed'] += 1
             logger.error(f"Failed to bulk sync {external_id}: {e}", exc_info=True)
-
+ 
     return success_response(result, message="Bulk sync completed")
 
 
 @api_view(['POST'])
 def sync_from_search_results(request):
-    query = request.data.get('query', '')
-    limit = min(int(request.data.get('limit', 10)), 50)
+    query         = request.data.get('query', '')
+    limit         = min(int(request.data.get('limit', 10)), 50)
     platform_code = request.data.get('platform', 'ebay')
-
+ 
     if not query:
         return error_response('Query is required', code=400)
-
+ 
     try:
         platform = Platform.objects.get(code=platform_code)
     except Platform.DoesNotExist:
         return error_response(f'Platform "{platform_code}" not found', code=404)
-
+ 
     if platform_code == 'ebay':
-        service = EbayService()
-        search_results = service.search_products(query, limit=limit)
-        items = search_results.get('itemSummaries', []) if search_results else []
-        id_key = 'itemId'
-
+        service    = EbayRapidService()
+        raw_items  = service.search_products(query, limit=limit)
+        items      = [service.extract_product_data(i) for i in (raw_items or [])]
+        id_key     = 'external_id'
+        search_results = {'total': len(items)}
+ 
     elif platform_code == 'clickbank':
-        service = ClickBankService()
-        items = service.search_mock_products(query, limit)
-        id_key = 'site'
+        service        = ClickBankService()
+        items          = service.search_mock_products(query, limit)
+        id_key         = 'site'
         search_results = {'total': len(items)}
-
+ 
     elif platform_code == 'walmart':
-        service = WalmartService()
-        items = service.search_products(query, limit=limit)
-        id_key = 'itemId'
+        service        = WalmartService()
+        items          = service.search_products(query, limit=limit)
+        id_key         = 'itemId'
         search_results = {'total': len(items)}
-
+ 
     elif platform_code == 'amazon':
-        service = AmazonService()
-        items = service.search_products(query, limit=limit)
-        id_key = 'asin'
+        service        = AmazonService()
+        items          = service.search_products(query, limit=limit)
+        id_key         = 'asin'
         search_results = {'total': len(items)}
-
+ 
     elif platform_code == 'shopify':
-        service = ShopifyService()
-        items = service.search_products(query, limit=limit)
-        id_key = 'id'
+        service        = ShopifyService()
+        items          = service.search_products(query, limit=limit)
+        id_key         = 'id'
         search_results = {'total': len(items)}
-
+ 
     else:
         return error_response(f'Platform "{platform_code}" sync not implemented', code=501)
-
-    # generic প্ল্যাটফর্মের জন্য loop শুরুর আগে একবার cache লোড
+ 
     needs_cat_cache = platform_code not in ('ebay', 'clickbank')
-    cat_cache = _get_category_cache() if needs_cat_cache else None
-
+    cat_cache       = _get_category_cache() if needs_cat_cache else None
+ 
     result = {
-        'query': query,
-        'platform': platform_code,
+        'query':       query,
+        'platform':    platform_code,
         'total_found': search_results.get('total', len(items)) if isinstance(search_results, dict) else len(items),
         'items_fetched': len(items),
-        'synced': 0,
-        'updated': 0,
-        'skipped': 0,
-        'failed': 0,
-        'products': [],
+        'synced':      0,
+        'updated':     0,
+        'skipped':     0,
+        'failed':      0,
+        'products':    [],
         'external_ids': [],
     }
-
+ 
     for item in items:
         external_id = item.get(id_key)
         result['external_ids'].append(external_id)
-
+ 
         try:
             existing = ProductListing.objects.filter(
                 platform=platform, external_id=external_id
             ).first()
-
+ 
             if existing:
                 result['skipped'] += 1
                 result['products'].append({
                     'product_id': existing.product.id,
                     'listing_id': existing.id,
                     'external_id': external_id,
-                    'title': existing.product.title,
-                    'price': float(existing.price),
-                    'currency': existing.currency,
-                    'status': 'already_exists',
+                    'title':      existing.product.title,
+                    'price':      float(existing.price),
+                    'currency':   existing.currency,
+                    'status':     'already_exists',
                 })
                 continue
-
+ 
             with transaction.atomic():
                 if platform_code == 'ebay':
-                    product, listing, created = save_ebay_product_to_db(item, platform)
+                    # eBay: item is already extracted (dict with external_id etc.)
+                    product, listing, created = save_generic_product_to_db(
+                        item, platform, cat_cache
+                    )
                 elif platform_code == 'clickbank':
                     product_data = service.extract_product_data(item)
                     product, listing, created = save_clickbank_product_to_db(product_data, platform)
@@ -1120,88 +1236,91 @@ def sync_from_search_results(request):
                     product, listing, created = save_generic_product_to_db(
                         product_data, platform, cat_cache
                     )
-
+ 
             if product and listing:
                 status_text = 'created' if created else 'updated'
                 if created:
                     result['synced'] += 1
                 else:
                     result['updated'] += 1
-
+ 
                 result['products'].append({
                     'product_id': product.id,
                     'listing_id': listing.id,
                     'external_id': external_id,
-                    'title': product.title,
-                    'slug': product.slug,
-                    'price': float(listing.price),
-                    'currency': listing.currency,
-                    'seller': listing.seller_username,
-                    'condition': listing.condition,
-                    'status': status_text,
+                    'title':      product.title,
+                    'slug':       product.slug,
+                    'price':      float(listing.price),
+                    'currency':   listing.currency,
+                    'seller':     listing.seller_username,
+                    'condition':  listing.condition,
+                    'status':     status_text,
                 })
             else:
                 result['failed'] += 1
-
+ 
         except Exception as e:
             result['failed'] += 1
             logger.error(f"Failed to sync {external_id}: {e}", exc_info=True)
-
+ 
     return success_response(result, message="Sync from search completed")
+ 
 
 
 @api_view(['GET'])
 def get_external_ids(request):
-    query = request.GET.get('q', '')
-    limit = min(int(request.GET.get('limit', 10)), 50)
+    query         = request.GET.get('q', '')
+    limit         = min(int(request.GET.get('limit', 10)), 50)
     platform_code = request.GET.get('platform', 'ebay')
-
+ 
     if not query:
         return error_response('Query parameter "q" is required', code=400)
-
+ 
     if platform_code == 'all':
         all_items = []
-        errors = {}
-
+        errors    = {}
+ 
         # ── eBay ─────────────────────────────────────────────────────────────
         try:
-            ebay_service = EbayService()
-            ebay_results = ebay_service.search_products(query, limit=limit)
-            for item in (ebay_results.get('itemSummaries', []) if ebay_results else []):
+            ebay_service = EbayRapidService()
+            raw_ebay     = ebay_service.search_products(query, limit=limit)
+            for item in (raw_ebay or []):
+                d = ebay_service.extract_product_data(item)
                 all_items.append({
-                    'external_id': item.get('itemId'),
-                    'platform': 'ebay',
-                    'title': item.get('title'),
-                    'price': item.get('price', {}).get('value'),
-                    'currency': item.get('price', {}).get('currency', 'USD'),
-                    'condition': item.get('condition'),
-                    'url': item.get('itemWebUrl'),
+                    'external_id': d.get('external_id', ''),
+                    'platform':    'ebay',
+                    'title':       d.get('title'),
+                    'price':       d.get('price', 0),
+                    'currency':    'USD',
+                    'condition':   d.get('condition'),
+                    'url':         d.get('external_url', ''),
+                    'image':       d.get('main_image', ''),
                 })
         except Exception as e:
             logger.error(f"eBay search failed: {e}")
             errors['ebay'] = str(e)
-
+ 
         # ── ClickBank ─────────────────────────────────────────────────────────
         try:
             cb_service = ClickBankService()
             for item in cb_service.search_mock_products(query, limit):
                 all_items.append({
                     'external_id': item.get('site'),
-                    'platform': 'clickbank',
-                    'title': item.get('title'),
-                    'price': item.get('price'),
-                    'currency': 'USD',
-                    'condition': 'NEW',
-                    'url': item.get('url'),
+                    'platform':    'clickbank',
+                    'title':       item.get('title'),
+                    'price':       item.get('price'),
+                    'currency':    'USD',
+                    'condition':   'NEW',
+                    'url':         item.get('url'),
                 })
         except Exception as e:
             logger.error(f"ClickBank search failed: {e}")
             errors['clickbank'] = str(e)
-
+ 
         # ── Amazon ────────────────────────────────────────────────────────────
         try:
             amazon_service = AmazonService()
-            amazon_items = amazon_service.search_products(query, limit=limit)
+            amazon_items   = amazon_service.search_products(query, limit=limit)
             for item in (amazon_items or []):
                 price_raw = item.get('product_price') or item.get('price') or '0'
                 try:
@@ -1210,128 +1329,124 @@ def get_external_ids(request):
                     price_val = 0.0
                 all_items.append({
                     'external_id': item.get('asin'),
-                    'platform': 'amazon',
-                    'title': item.get('product_title') or item.get('title'),
-                    'price': price_val,
-                    'currency': 'USD',
-                    'condition': 'NEW',
-                    'url': item.get('product_url') or item.get('url'),
-                    'image': item.get('product_photo') or item.get('thumbnail'),
-                    'rating': item.get('product_star_rating'),
+                    'platform':    'amazon',
+                    'title':       item.get('product_title') or item.get('title'),
+                    'price':       price_val,
+                    'currency':    'USD',
+                    'condition':   'NEW',
+                    'url':         item.get('product_url') or item.get('url'),
+                    'image':       item.get('product_photo') or item.get('thumbnail'),
+                    'rating':      item.get('product_star_rating'),
                 })
         except Exception as e:
             logger.error(f"Amazon search failed: {e}")
             errors['amazon'] = str(e)
-
+ 
         # ── Walmart ───────────────────────────────────────────────────────────
         try:
             walmart_service = WalmartService()
-            walmart_items = walmart_service.search_products(query, limit=limit)
+            walmart_items   = walmart_service.search_products(query, limit=limit)
             for item in (walmart_items or []):
                 all_items.append({
-                    'external_id': str(item.get('itemId') or item.get('external_id') or ''),
-                    'platform': 'walmart',
-                    'title': item.get('name') or item.get('title'),
-                    'price': item.get('salePrice') or item.get('price') or 0,
-                    'currency': 'USD',
-                    'condition': 'NEW',
-                    'url': item.get('productUrl') or item.get('external_url'),
-                    'image': item.get('thumbnailImage') or item.get('main_image'),
+                    'external_id': str(item.get('usItemId') or item.get('id') or ''),
+                    'platform':    'walmart',
+                    'title':       item.get('name') or item.get('title'),
+                    'price':       item.get('price') or item.get('originalPrice') or 0,
+                    'currency':    'USD',
+                    'condition':   'NEW',
+                    'url':         item.get('canonicalUrl') or item.get('productUrl') or '',
+                    'image':       item.get('image') or item.get('main_image'),
                 })
         except Exception as e:
             logger.error(f"Walmart search failed: {e}")
             errors['walmart'] = str(e)
-
-        # ── Shopify ───────────────────────────────────────────────────────────
+ 
+        # ── Sephora ───────────────────────────────────────────────────────────
         try:
-            shopify_service = ShopifyService()
-            shopify_items = shopify_service.search_products(query, limit=limit)
-            for item in (shopify_items or []):
-                variants = item.get('variants', [])
-                price_val = 0.0
-                if variants:
-                    try:
-                        price_val = float(variants[0].get('price', 0) or 0)
-                    except (ValueError, TypeError):
-                        price_val = 0.0
-                images = item.get('images', [])
-                main_image = images[0].get('src', '') if images else ''
+            sephora_service = SephoraService()
+            sephora_items   = sephora_service.search_products(query, limit=limit)
+            for item in (sephora_items or []):
+                d = sephora_service.extract_product_data(item)
                 all_items.append({
-                    'external_id': str(item.get('id') or ''),
-                    'platform': 'shopify',
-                    'title': item.get('title'),
-                    'price': price_val,
-                    'currency': 'USD',
-                    'condition': 'NEW',
-                    'url': f"{shopify_service.default_store}/products/{item.get('handle', '')}",
-                    'image': main_image,
-                    'vendor': item.get('vendor'),
+                    'external_id': d.get('external_id', ''),
+                    'platform':    'sephora',
+                    'title':       d.get('title'),
+                    'price':       d.get('price', 0),
+                    'currency':    'USD',
+                    'condition':   'NEW',
+                    'url':         d.get('external_url', ''),
+                    'image':       d.get('main_image', ''),
                 })
         except Exception as e:
-            logger.error(f"Shopify search failed: {e}")
-            errors['shopify'] = str(e)
-
+            logger.error(f"Sephora search failed: {e}")
+            errors['sephora'] = str(e)
+ 
         response_data = {
-            'query': query,
-            'platform': 'all',
+            'query':          query,
+            'platform':       'all',
             'items_returned': len(all_items),
-            'items': all_items,
+            'items':          all_items,
         }
         if errors:
             response_data['platform_errors'] = errors
-
+ 
         return success_response(response_data, message="External IDs fetched")
-
-    # Single platform
+ 
+    # ── Single platform ───────────────────────────────────────────────────────
     platform_config = {
-        'ebay':      (EbayService,      'itemId'),
+        'ebay':      (EbayRapidService, 'external_id'),
         'clickbank': (ClickBankService, 'site'),
-        'walmart':   (WalmartService,   'itemId'),
+        'walmart':   (WalmartService,   'usItemId'),
         'amazon':    (AmazonService,    'asin'),
-        'shopify':   (ShopifyService,   'id'),
+        'sephora':   (SephoraService,   'external_id'),
     }
-
+ 
     if platform_code not in platform_config:
         return error_response(f'Platform "{platform_code}" not supported', code=400)
-
+ 
     service_class, id_key = platform_config[platform_code]
-    service = service_class()
-
+    service               = service_class()
+ 
     if platform_code == 'ebay':
-        search_results = service.search_products(query, limit=limit)
-        items = search_results.get('itemSummaries', []) if search_results else []
+        raw_items      = service.search_products(query, limit=limit)
+        items          = [service.extract_product_data(i) for i in (raw_items or [])]
+        search_results = {'total': len(items)}
     elif platform_code == 'clickbank':
-        items = service.search_mock_products(query, limit)
+        items          = service.search_mock_products(query, limit)
+        search_results = {'total': len(items)}
+    elif platform_code == 'sephora':
+        raw_items      = service.search_products(query, limit=limit)
+        items          = [service.extract_product_data(i) for i in (raw_items or [])]
         search_results = {'total': len(items)}
     else:
-        items = service.search_products(query, limit=limit) or []
+        items          = service.search_products(query, limit=limit) or []
         search_results = {'total': len(items)}
-
+ 
     external_ids = []
     items_detail = []
-
+ 
     for item in items:
         item_id = item.get(id_key)
         external_ids.append(item_id)
         items_detail.append({
             'external_id': item_id,
-            'title': item.get('title'),
-            'categories': item.get('categories', []),
-            'price': item.get('price', {}).get('value') if platform_code == 'ebay' else item.get('price'),
-            'currency': item.get('price', {}).get('currency') if platform_code == 'ebay' else 'USD',
-            'condition': item.get('condition'),
-            'url': item.get('itemWebUrl') if platform_code == 'ebay' else item.get('url'),
+            'title':       item.get('title') or item.get('name'),
+            'price':       item.get('price', 0),
+            'currency':    'USD',
+            'condition':   item.get('condition', 'NEW'),
+            'url':         item.get('external_url') or item.get('url') or item.get('canonicalUrl', ''),
+            'image':       item.get('main_image') or item.get('image', ''),
         })
-
+ 
     return success_response({
-        'query': query,
-        'platform': platform_code,
-        'total_found': search_results.get('total', len(items)) if isinstance(search_results, dict) else len(items),
+        'query':          query,
+        'platform':       platform_code,
+        'total_found':    search_results.get('total', len(items)) if isinstance(search_results, dict) else len(items),
         'items_returned': len(items),
-        'external_ids': external_ids,
-        'items': items_detail,
+        'external_ids':   external_ids,
+        'items':          items_detail,
         'bulk_sync_body': {
-            'platform': platform_code,
+            'platform':    platform_code,
             'product_ids': external_ids,
         },
     }, message="External IDs fetched")
@@ -1379,9 +1494,8 @@ def smart_search(request):
     if not query:
         return error_response('q is required', code=400)
 
-    cache_key = f'smart_search_{query}_{limit}'
+    cache_key = f'smart_search_v2_{query}_{limit}'
     cached = cache.get(cache_key)
-
     if cached:
         return success_response({
             'source': 'cache',
@@ -1391,30 +1505,141 @@ def smart_search(request):
 
     existing_products = Product.objects.filter(
         Q(title__icontains=query) | Q(description__icontains=query),
-        is_active=True
-    ).prefetch_related('listings__platform')[:limit]
+        is_active=True,
+        listings__is_available=True,
+    ).prefetch_related('listings__platform').distinct()
 
     if existing_products.exists():
+        # Background sync
         sync_all_platforms_task.delay(query, limit)
-        results = ProductSerializer(existing_products, many=True).data
+
+        query_words = query.lower().split()
+
+        grouped = {}  # key = normalized_title, value = {product, listings: [...]}
+
+        for product in existing_products:
+            listings = product.listings.filter(
+                is_available=True
+            ).select_related('platform').order_by('price')
+
+            if not listings.exists():
+                continue
+
+            for listing in listings:
+                platform_code = listing.platform.code
+
+                price_entry = {
+                    'platform':      listing.platform.name,
+                    'platform_code': platform_code,
+                    'price':         float(listing.price) if listing.price else 0,
+                    'currency':      listing.currency,
+                    'original_price': float(listing.original_price) if listing.original_price else None,
+                    'discount_percentage': float(listing.discount_percentage) if listing.discount_percentage else None,
+                    'free_shipping': listing.free_shipping,
+                    'shipping_cost': float(listing.shipping_cost),
+                    'total_price':   float(listing.get_total_price()),
+                    'url':           listing.external_url,
+                    'condition':     listing.condition,
+                    'seller':        listing.seller_username,
+                    'product_id':    product.id,
+                    'product_title': product.title,
+                    'product_slug':  product.slug,
+                    'main_image':    product.main_image,
+                }
+
+                # Normalize title for grouping
+                # "Apple iPhone 15 128GB Black" → "apple iphone 15 128gb"
+                title_lower = product.title.lower()
+                # Remove the words color/carrier and find the core title.
+                noise_words = ['black', 'white', 'blue', 'pink', 'green', 'yellow', 
+                               'red', 'purple', 'silver', 'gold', 'titanium', 'natural',
+                               'verizon', 'at&t', 't-mobile', 'unlocked', 'boost',
+                               'refurbished', 'renewed', 'restored', 'pre-owned',
+                               'factory', 'carrier', 'us model', 'excellent', 'condition']
+                
+                normalized = title_lower
+                for word in noise_words:
+                    normalized = normalized.replace(word, '')
+                
+                # Group by storage size (128gb, 256gb separately)
+                import re
+                storage_match = re.search(r'\d+\s*gb', normalized)
+                storage = storage_match.group() if storage_match else 'unknown'
+                
+                words = normalized.split()
+                core_words = [w for w in words if len(w) > 2 and w.isalnum()][:5]
+                group_key = ' '.join(sorted(core_words[:4]))
+
+                if group_key not in grouped:
+                    grouped[group_key] = {
+                        'representative_product': product,
+                        'price_comparison': [],
+                    }
+
+                grouped[group_key]['price_comparison'].append(price_entry)
+
+        # Build result
+        results = []
+        for group_key, group_data in list(grouped.items())[:limit]:
+            price_comparison = group_data['price_comparison']
+            
+            # price 0 remove
+            valid_prices = [p for p in price_comparison if p['price'] > 0]
+            if not valid_prices:
+                continue
+            
+            # price wise sorting
+            valid_prices.sort(key=lambda x: x['total_price'])
+            
+            best_deal = valid_prices[0]
+            
+            # Collect all unique platforms
+            platforms = list({p['platform_code'] for p in valid_prices})
+            
+            # representative product (best deal)
+            rep = group_data['representative_product']
+
+            results.append({
+                'id':              best_deal['product_id'],
+                'title':           best_deal['product_title'],
+                'slug':            best_deal['product_slug'],
+                'main_image':      best_deal['main_image'],
+                'category':        rep.category_id,
+                'category_name':   rep.category.name if rep.category else '',
+                'platforms_count': len(platforms),
+                'available_on':    platforms,
+                'lowest_price':    best_deal['price'],
+                'best_deal': {
+                    'platform':      best_deal['platform'],
+                    'platform_code': best_deal['platform_code'],
+                    'price':         best_deal['price'],
+                    'url':           best_deal['url'],
+                    'free_shipping': best_deal['free_shipping'],
+                },
+                'price_comparison': valid_prices,
+            })
+
+        # Sort by lowest_price
+        results.sort(key=lambda x: x['lowest_price'] or 0)
+
         cache.set(cache_key, results, 300)
 
         return success_response({
-            'source': 'database',
-            'query': query,
-            'count': len(results),
-            'note': 'Background sync started for fresh data',
+            'source':  'database',
+            'query':   query,
+            'count':   len(results),
+            'note':    'Background sync started for fresh data',
             'results': results,
         }, message="Results from database")
 
+    # Not in DB — sync
     task = sync_all_platforms_task.delay(query, limit)
-
     return success_response({
-        'source': 'syncing',
-        'query': query,
-        'task_id': task.id,
-        'message': 'Data fetching started from all platforms',
-        'check_status': f'/api/v1/fetch-products/task-status/{task.id}/',
+        'source':        'syncing',
+        'query':         query,
+        'task_id':       task.id,
+        'message':       'Data fetching started from all platforms',
+        'check_status':  f'/api/v1/fetch-products/task-status/{task.id}/',
         'fetch_results': f'/api/v1/fetch-products/smart-search/?q={query}&limit={limit}',
     }, message="Sync started", code=202)
 
