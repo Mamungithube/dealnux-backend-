@@ -7,6 +7,7 @@ from .services.sephora_service import SephoraService
 from .services.target_service import TargetService
 from .services.wayfair_service import WayfairService
 from .services.aliexpress_service import AliExpressService
+from .services.bestbuy_service import BestBuyService
 from .models import Platform
 import logging
 
@@ -241,11 +242,38 @@ def sync_aliexpress_task(query, limit=10):
     except Exception as e:
         logger.error(f"AliExpress sync task failed: {e}")
         return {'platform': 'aliexpress', 'error': str(e)}
-    
+
+@shared_task
+def sync_bestbuy_task(query, limit=10):
+    try:
+        platform, _ = Platform.objects.get_or_create(
+            code='bestbuy',
+            defaults={'name': 'BestBuy', 'api_enabled': True}
+        )
+        if not platform.api_enabled:
+            return {'platform': 'bestbuy', 'skipped': 'disabled'}
+
+        service = BestBuyService()
+        items   = service.search_products(query, limit=limit)
+
+        synced = 0
+        from .views import save_generic_product_to_db
+        for item in items:
+            try:
+                product_data = service.extract_product_data(item)
+                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                    synced += 1
+            except Exception as e:
+                logger.error(f"BestBuy item sync failed: {e}")
+
+        return {'platform': 'bestbuy', 'synced': synced}
+    except Exception as e:
+        logger.error(f"BestBuy sync task failed: {e}")
+        return {'platform': 'bestbuy', 'error': str(e)}  
 
 @shared_task
 def sync_all_platforms_task(query, limit=1000):
-    """সব platform একসাথে parallel এ sync করে"""
+    """Syncs across all platforms in parallel."""
     job = group(
         sync_amazon_task.s(query, limit),
         sync_walmart_task.s(query, limit),
@@ -255,6 +283,7 @@ def sync_all_platforms_task(query, limit=1000):
         sync_target_task.s(query, limit),
         sync_wayfair_task.s(query, limit),
         sync_aliexpress_task.s(query, limit),
+        sync_bestbuy_task.s(query, limit),
     )
     result = job.apply_async()
     return result.id
@@ -262,7 +291,7 @@ def sync_all_platforms_task(query, limit=1000):
 
 @shared_task
 def hourly_fixed_category_sync():
-    """প্রতি ঘণ্টায় সব e-commerce category sync করে"""
+    """Syncs all e-commerce categories every hour."""
 
     FIXED_CATEGORIES = [
         "Smartphones", "Laptops", "Desktop Computers", "Tablets",

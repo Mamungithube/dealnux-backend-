@@ -40,7 +40,7 @@ services:
   celery_worker:
     build: .
     container_name: dealnux_celery_worker
-    command: celery -A dealnux worker -l info
+    command: celery -A dealnux worker -l info --concurrency=4
     volumes:
       - .:/app
     env_file:
@@ -60,6 +60,18 @@ services:
     depends_on:
       - db
       - redis
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dealnux_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
 
 volumes:
   postgres_data:

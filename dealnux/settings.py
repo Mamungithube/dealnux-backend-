@@ -289,15 +289,22 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)], # <--- নিশ্চিত করুন এখানে 'redis' আছে
+            "hosts": [("redis", 6379)],
         },
     },
 }
 
+# CELERY_BEAT_SCHEDULE = {
+#     'hourly-category-sync': {
+#         'task': 'api_integration.tasks.hourly_fixed_category_sync',
+#         'schedule': crontab(minute='*/1'),  # প্রতি ১ ঘণ্টায়
+#     },
+# }
+
 CELERY_BEAT_SCHEDULE = {
     'hourly-category-sync': {
         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-        'schedule': crontab(minute=0, hour='*/15'),  # প্রতি ১ ঘণ্টায়
+        'schedule': crontab(minute=0, hour='*/24'), 
     },
 }
 # Internationalization

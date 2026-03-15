@@ -15,6 +15,7 @@ from .services.ebay_service import EbayRapidService
 from api_integration.services.target_service import TargetService
 from api_integration.services.wayfair_service import WayfairService
 from api_integration.services.aliexpress_service import AliExpressService
+from api_integration.services.bestbuy_service import BestBuyService
 from .tasks import sync_all_platforms_task, sync_ebay_task, sync_clickbank_task
 from django.core.cache import cache
 from .models import (
@@ -66,17 +67,16 @@ def error_response(message="Error", data=None, code=400):
 
 
 # ============================================================================
-# Category Cache — To stop repeated DB calls inside a loop
+#       Category Cache — To stop repeated DB calls inside a loop
 # ============================================================================
 
 _CATEGORY_CACHE = None 
 
-
 def _get_category_cache():
     """
-    All Categories are loaded into memory once.
-    Each sync request will only make 1 DB call.
-    Refreshes old cache if it is older than 5 minutes.
+        All Categories are loaded into memory once.
+        Each sync request will only make 1 DB call.
+        Refreshes old cache if it is older than 5 minutes.
     """
     global _CATEGORY_CACHE
     now = time.time()
@@ -97,6 +97,7 @@ def _get_category_cache():
 # ── Keyword → Category slug map ─────────────────────────────────────────────
 # If these keywords are present in the product title, the corresponding category slug will be found.
 # The slugs must match the slugify(name) of your Category seeder script.
+
 _KEYWORD_CATEGORY_MAP = [
     # Electronics
     (['smartphone', 'iphone', 'android phone', 'mobile phone'], 'smartphones'),
@@ -191,18 +192,17 @@ _KEYWORD_CATEGORY_MAP = [
     (['weight loss', 'diet plan', 'keto', 'fat burner', 'slimming'], 'vitamins-dietary-supplements'),
 ]
 
-
 def _resolve_category(category_path, title, cache):
     """
-Matches the best category from category_path and title.
-Doesn't make any DB calls — just uses an in-memory dictionary.
+        Matches the best category from category_path and title.
+        Doesn't make any DB calls — just uses an in-memory dictionary.
 
-Priority order:
-1. category_path → slug exact match
-2. category_path → name exact match
-3. category_path → partial match
-4. title → keyword map (most reliable for Amazon/Walmart/Shopify)
-5. title → category name partial match (fallback)
+        Priority order:
+        1. category_path → slug exact match
+        2. category_path → name exact match
+        3. category_path → partial match
+        4. title → keyword map (most reliable for Amazon/Walmart/Shopify)
+        5. title → category name partial match (fallback)
     """
     title_lower = (title or '').lower()
 
@@ -228,14 +228,12 @@ Priority order:
                     cat = cache['by_slug'].get(target_slug)
                     if cat:
                         return cat
-                    # slug না পেলে name দিয়ে চেষ্টা
                     for cat_name_lower, cat_obj in cache['by_name_lower'].items():
                         if target_slug.replace('-', ' ') in cat_name_lower:
                             return cat_obj
 
     if title_lower:
         for cat_name_lower, cat_obj in cache['by_name_lower'].items():
-            # ছোট category name গুলো বাদ দাও (false positive এড়াতে)
             if len(cat_name_lower) >= 5 and cat_name_lower in title_lower:
                 return cat_obj
 
@@ -244,7 +242,7 @@ Priority order:
 def _find_matching_product(title, brand, gtin, asin):
     """
     Search for existing products by GTIN → ASIN → Brand+Title similarity.
-Auto-merges variations of the same product.
+        Auto-merges variations of the same product.
     """
 
     if gtin:
@@ -263,8 +261,8 @@ Auto-merges variations of the same product.
 
         brand_products = Product.objects.filter(
             Q(brand__iexact=brand_lower) |
-            Q(brand__icontains=brand_lower.split()[0]) |  # "Apple" matches "Apple iPhone"
-            Q(title__icontains=brand_lower.split()[0])    # title তেও খোঁজো
+            Q(brand__icontains=brand_lower.split()[0]) |
+            Q(title__icontains=brand_lower.split()[0])  
         ).only('id', 'title', 'brand', 'gtin', 'asin')
 
         noise_words = {
@@ -318,7 +316,6 @@ Auto-merges variations of the same product.
 
     slug = slugify(title)[:500]
     return Product.objects.filter(slug=slug).first()
-
 
 def save_generic_product_to_db(product_data, platform, query=None, category_slug=None, all_categories=None):
     """
@@ -449,7 +446,6 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
 # ============================================================================
 # DB Save Helpers
 # ============================================================================
-
 def save_clickbank_product_to_db(product_data, platform):
     brand = (product_data.get('brand') or '').strip()
     model_number = (product_data.get('model_number') or '').strip()
@@ -523,7 +519,6 @@ def save_ebay_product_to_db(item_data, platform):
     brand        = (product_data.get('brand') or '').strip()
     model_number = (product_data.get('model_number') or '').strip()
     title        = product_data.get('title', 'Unknown Product')
-
     product = None
 
     if gtin:
@@ -610,7 +605,7 @@ def save_ebay_product_to_db(item_data, platform):
 
 
 # ============================================================================
-# Platform-specific sync helpers
+#   Platform-specific sync helpers
 # ============================================================================
 
 def _build_result_template(query, platform_code, limit):
@@ -628,7 +623,7 @@ def _build_result_template(query, platform_code, limit):
 
 def _generic_sync_loop(items, platform, external_id_key, save_callable, use_category_cache=False, query=None):
     result = _build_result_template('', platform.code, 0)
-    cat_cache = list(Category.objects.all()) # স্পিড বাড়ানোর জন্য
+    cat_cache = list(Category.objects.all())
 
     for item in items:
         external_id = item.get(external_id_key)
@@ -668,7 +663,7 @@ def _generic_sync_loop(items, platform, external_id_key, save_callable, use_cate
 
 def sync_ebay_products(platform, query, limit):
     """
-    eBay timeout বেশি তাই background task এ চালাও।
+        eBay timeout is high so run it in background task.
     """
     from .tasks import sync_ebay_task
     task = sync_ebay_task.delay(query, limit)
@@ -844,6 +839,13 @@ def sync_aliexpress_products(platform, query, limit):
         success_msg="AliExpress sync completed",
         not_found_msg="No AliExpress products found",
     )
+
+def sync_bestbuy_products(platform, query, limit):
+    return _normalize_and_sync_generic(
+        BestBuyService(), platform, query, limit,
+        success_msg="BestBuy sync completed",
+        not_found_msg="No BestBuy products found",
+    )
 # ── Register sync functions ──────────────────────────────────────────────────
 
 PLATFORM_SYNC_CONFIG = {
@@ -855,6 +857,7 @@ PLATFORM_SYNC_CONFIG = {
     'target': {'sync_func': sync_target_products, 'name': 'Target'},
     'wayfair': {'sync_func': sync_wayfair_products, 'name': 'Wayfair'},
     'aliexpress': {'sync_func': sync_aliexpress_products, 'name': 'AliExpress'},
+    'bestbuy': {'sync_func': sync_bestbuy_products, 'name': 'BestBuy'},
     # 'shopify':   {'sync_func': sync_shopify_products,    'name': 'Shopify'},
     # 'homedepot': {'sync_func': sync_homedepot_products,  'name': 'Home Depot'},
 }
