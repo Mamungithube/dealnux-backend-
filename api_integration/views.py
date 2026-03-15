@@ -113,6 +113,7 @@ _KEYWORD_CATEGORY_MAP = [
     (['printer', 'ink cartridge', 'toner', 'scanner'], 'printers-ink'),
     (['drone', 'quadcopter', 'rc car', 'remote control'], 'drones-rc'),
     (['smart home', 'alexa', 'google home', 'smart plug', 'smart bulb', 'ring doorbell'], 'smart-home-devices'),
+    (['phone case', 'mobile case', 'tpu case', 'screen protector', 'tempered glass', 'lcd display', 'digitizer'], 'computer-accessories'),
 
     # Fashion — Men
     (['men\'s shirt', 'men\'s jacket', 'men\'s pants', 'men\'s suit', 'men\'s clothing'], 'mens-clothing'),
@@ -707,16 +708,38 @@ def _normalize_and_sync_generic(service, platform, query, limit, success_msg, no
         return error_response(not_found_msg, code=404)
 
     normalized = []
+    query_words = set(query.lower().split())
+
     for item in items:
         try:
-            normalized.append(service.extract_product_data(item))
+            product_data = service.extract_product_data(item)
+
+            # ── Relevance check ──────────────────────────────────────────
+            # title বা brand এ query এর অন্তত একটা word থাকতে হবে
+            title_lower = (product_data.get('title') or '').lower()
+            brand_lower = (product_data.get('brand') or '').lower()
+
+            is_relevant = any(
+                word in title_lower or word in brand_lower
+                for word in query_words
+                if len(word) > 2  # ছোট words বাদ
+            )
+
+            if not is_relevant:
+                logger.debug(f"Skipped irrelevant: '{product_data.get('title', '')[:50]}'")
+                continue
+
+            normalized.append(product_data)
         except Exception:
             continue
+
+    if not normalized:
+        return error_response(not_found_msg, code=404)
 
     result = _generic_sync_loop(
         normalized, platform, 'external_id', save_generic_product_to_db,
         use_category_cache=True,
-        query=query  # ← query pass হচ্ছে
+        query=query
     )
     result['query'] = query
     result['limit'] = limit
@@ -1031,9 +1054,16 @@ class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class PlatformViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Platform.objects.filter(api_enabled=True)
     serializer_class = PlatformSerializer
     lookup_field = 'code'
+
+    def get_queryset(self):
+        # local seller platforms ও দেখাও
+        return Platform.objects.filter(
+            api_enabled=True
+        ) | Platform.objects.filter(
+            code__startswith='local-seller-'
+        )
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
