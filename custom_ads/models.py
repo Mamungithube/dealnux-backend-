@@ -13,49 +13,33 @@ class CustomAd(models.Model):
         ('rejected', 'Rejected'),   
     ]
     
-    advertiser = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='ads'
-    )
-    title       = models.CharField(max_length=255)
-    description = models.TextField(blank=True, default="")
-    image       = models.ImageField(
-        upload_to='ads/', help_text="Recommended size: 1200x628px")
-    target_url  = models.URLField(help_text="Valid URL required")
-    target_section = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True
-    )
+    advertiser      = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='ads')
+    title           = models.CharField(max_length=255)
+    description     = models.TextField(blank=True, default="")
+    image           = models.ImageField(upload_to='ads/', help_text="Recommended size: 1200x628px")
+    target_url      = models.URLField(help_text="Valid URL required")
+    target_section  = models.CharField(max_length=100, blank=True, null=True)
 
     # Budget & Priority Logic
-    total_budget = models.DecimalField(max_digits=10, decimal_places=2)
-    spent_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0)
-    priority_weight = models.PositiveIntegerField(
-        default=1,
-        help_text="Higher value = higher priority (1-100)"
+    total_budget    = models.DecimalField(max_digits=10, decimal_places=2)
+    spent_amount    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    priority_weight = models.PositiveIntegerField(default=1,help_text="Higher value = higher priority (1-100)"
     )
-    is_premium = models.BooleanField(
-        default=False,
-        help_text="Premium ads get 5x weight boost"
-    )
+    is_premium      = models.BooleanField(default=False,help_text="Premium ads get 5x weight boost")
 
     # Performance Tracking
-    clicks      = models.PositiveIntegerField(default=0)
-    impressions = models.PositiveIntegerField(default=0)
+    clicks          = models.PositiveIntegerField(default=0)
+    impressions     = models.PositiveIntegerField(default=0)
 
     # Validity & Approval
-    start_date  = models.DateTimeField(default=timezone.now)
-    end_date    = models.DateTimeField()
-    is_approved = models.BooleanField(default=False)
-    status      = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
-    cta_text    = models.CharField(max_length=50, default="Learn More")
+    start_date      = models.DateTimeField(default=timezone.now)
+    end_date        = models.DateTimeField()
+    is_approved     = models.BooleanField(default=False)
+    status          = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    cta_text        = models.CharField(max_length=50, default="Learn More")
 
-    # Meta
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -117,11 +101,7 @@ class AdSetting(models.Model):
 
 
 class AdvertiserRequest(models.Model):
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='advertiser_request'
-    )
+    user             = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='advertiser_request')
     business_name    = models.CharField(max_length=255)
     business_details = models.TextField()
     website          = models.URLField(blank=True, null=True)
