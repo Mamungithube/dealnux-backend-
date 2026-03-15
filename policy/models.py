@@ -4,8 +4,8 @@ from django.db import models
 
 
 class Privacy_Policy(models.Model):
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -14,8 +14,8 @@ class Privacy_Policy(models.Model):
 
 
 class Terms_Of_Service(models.Model):
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -24,8 +24,8 @@ class Terms_Of_Service(models.Model):
 
 
 class Cookie_Policy(models.Model):
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):

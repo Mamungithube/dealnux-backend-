@@ -18,11 +18,11 @@ class CustomAd(models.Model):
         on_delete=models.CASCADE,
         related_name='ads'
     )
-    title = models.CharField(max_length=255)
+    title       = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
-    image = models.ImageField(
+    image       = models.ImageField(
         upload_to='ads/', help_text="Recommended size: 1200x628px")
-    target_url = models.URLField(help_text="Valid URL required")
+    target_url  = models.URLField(help_text="Valid URL required")
     target_section = models.CharField(
         max_length=100,
         blank=True,
@@ -43,15 +43,15 @@ class CustomAd(models.Model):
     )
 
     # Performance Tracking
-    clicks = models.PositiveIntegerField(default=0)
+    clicks      = models.PositiveIntegerField(default=0)
     impressions = models.PositiveIntegerField(default=0)
 
     # Validity & Approval
-    start_date = models.DateTimeField(default=timezone.now)
-    end_date = models.DateTimeField()
+    start_date  = models.DateTimeField(default=timezone.now)
+    end_date    = models.DateTimeField()
     is_approved = models.BooleanField(default=False)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
-    cta_text = models.CharField(max_length=50, default="Learn More")
+    status      = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    cta_text    = models.CharField(max_length=50, default="Learn More")
 
     # Meta
     created_at = models.DateTimeField(auto_now_add=True)
@@ -122,12 +122,12 @@ class AdvertiserRequest(models.Model):
         on_delete=models.CASCADE,
         related_name='advertiser_request'
     )
-    business_name = models.CharField(max_length=255)
+    business_name    = models.CharField(max_length=255)
     business_details = models.TextField()
-    website = models.URLField(blank=True, null=True)
-    applied_at = models.DateTimeField(auto_now_add=True)
-    is_reviewed = models.BooleanField(default=False)
-    reviewed_at = models.DateTimeField(null=True, blank=True)
+    website          = models.URLField(blank=True, null=True)
+    applied_at       = models.DateTimeField(auto_now_add=True)
+    is_reviewed      = models.BooleanField(default=False)
+    reviewed_at      = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True, null=True)
 
     class Meta:
@@ -171,8 +171,8 @@ class AdReview(models.Model):
         ('needs_changes', 'Needs Changes')
     ]
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
-    feedback = models.TextField()
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    feedback    = models.TextField()
     reviewed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -188,9 +188,9 @@ class AdDailyPerformance(models.Model):
         on_delete=models.CASCADE, 
         related_name='daily_performance'
     )
-    date = models.DateField()
+    date        = models.DateField()
     impressions = models.PositiveIntegerField(default=0)
-    clicks = models.PositiveIntegerField(default=0)
+    clicks      = models.PositiveIntegerField(default=0)
 
     class Meta:
         unique_together = ('ad', 'date')

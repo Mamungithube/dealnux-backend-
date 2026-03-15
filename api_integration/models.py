@@ -2,17 +2,19 @@ from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
+from django.db import models
+from account.models import User
+from api_integration.models import ProductListing, Product
 
 class Platform(models.Model):
-    """E-commerce platform (eBay, Amazon, etc.)"""
+    """ 3rd party/E-commerce platform """
     
-    name = models.CharField(max_length=50, unique=True)
-    code = models.CharField(max_length=20, unique=True)
-    logo = models.ImageField(upload_to='platform_logos/', blank=True)
-    api_enabled = models.BooleanField(default=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    name        = models.CharField(max_length=50, unique=True)
+    code        = models.CharField(max_length=20, unique=True)
+    logo        = models.ImageField(upload_to='platform_logos/', blank=True)
+    api_enabled = models.BooleanField(default=True) 
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['name']
@@ -22,14 +24,15 @@ class Platform(models.Model):
 
 
 class Category(models.Model):
-    """Product categories"""
+    """ Product categories - hierarchical with parent-child relationships """
     
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(max_length=200, unique=True)
-    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='children')
+    name        = models.CharField(max_length=200)
+    slug        = models.SlugField(max_length=200, unique=True)
+    parent      = models.ForeignKey('self', null=True, blank=True, 
+                                    on_delete=models.CASCADE, related_name='children')
     
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
     
     class Meta:
         verbose_name_plural = 'Categories'
@@ -48,27 +51,28 @@ class Product(models.Model):
     """Main product model - normalized data across platforms"""
     
     # Basic Information
-    title = models.CharField(max_length=500)
-    slug = models.SlugField(max_length=500, unique=True)
+    title       = models.CharField(max_length=500)
+    slug        = models.SlugField(max_length=500, unique=True)
     description = models.TextField(blank=True)
     
     # Category
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
+    category    = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, 
+                                    blank=True, related_name='products')
     
     # Identifiers
-    brand = models.CharField(max_length=200, blank=True)
-    model_number = models.CharField(max_length=200, blank=True)
+    brand       = models.CharField(max_length=200, blank=True)
+    model_number= models.CharField(max_length=200, blank=True)
     
     # Images
-    main_image = models.URLField(max_length=1000, blank=True ,default='')
+    main_image  = models.URLField(max_length=1000, blank=True ,default='')
 
-    gtin = models.CharField(max_length=50, unique=True, null=True, blank=True, db_index=True)
-    asin = models.CharField(max_length=50, null=True, blank=True, db_index=True)
+    gtin        = models.CharField(max_length=50, unique=True, null=True, blank=True, db_index=True)
+    asin        = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     
     # Meta
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    is_active   = models.BooleanField(default=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
     last_synced = models.DateTimeField(auto_now=True)
     
     class Meta:
@@ -111,50 +115,50 @@ class ProductListing(models.Model):
     ]
     
     # Relations
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='listings')
-    platform = models.ForeignKey(Platform, on_delete=models.CASCADE, related_name='listings')
-    
+    product           = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='listings')
+    platform          = models.ForeignKey(Platform, on_delete=models.CASCADE, related_name='listings')
+
     # Platform-specific ID
-    external_id = models.CharField(max_length=200)  # Item ID from platform
-    external_url = models.URLField(max_length=1000)  # Link to product on platform
-    
-    # Price
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    currency = models.CharField(max_length=10, default='USD')
-    original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    external_id       = models.CharField(max_length=200)  # Item ID from platform
+    external_url      = models.URLField(max_length=1000)  # Link to product on platform
+
+    # Price     
+    price             = models.DecimalField(max_digits=10, decimal_places=2)
+    currency          = models.CharField(max_length=10, default='USD')
+    original_price    = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    
-    # Product Details
-    condition = models.CharField(max_length=20, choices=CONDITION_CHOICES, default='NEW')
-    quantity = models.IntegerField(default=0)
-    
-    # Seller
-    seller_username = models.CharField(max_length=200, blank=True)
-    seller_rating = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, 
+
+    # Product Details   
+    condition         = models.CharField(max_length=20, choices=CONDITION_CHOICES, default='NEW')
+    quantity          = models.IntegerField(default=0)
+
+    # Seller    
+    seller_username   = models.CharField(max_length=200, blank=True)
+    seller_rating     = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, 
                                        validators=[MinValueValidator(0), MaxValueValidator(100)])
     seller_feedback_count = models.IntegerField(default=0)
-    
-    # Location
-    item_location = models.CharField(max_length=500, blank=True)
+
+    # Location  
+    item_location      = models.CharField(max_length=500, blank=True)
     ships_from_country = models.CharField(max_length=10, blank=True)
-    
-    # Shipping
-    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Shipping  
+    shipping_cost     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     shipping_currency = models.CharField(max_length=10, default='USD')
-    free_shipping = models.BooleanField(default=False)
+    free_shipping     = models.BooleanField(default=False)
     estimated_delivery_days = models.IntegerField(null=True, blank=True)
     
     # Returns
-    returns_accepted = models.BooleanField(default=False)
+    returns_accepted   = models.BooleanField(default=False)
     return_period_days = models.IntegerField(null=True, blank=True)
-    
-    # Availability
-    is_available = models.BooleanField(default=True)
-    last_checked = models.DateTimeField(auto_now=True)
-    
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+    # Availability 
+    is_available     = models.BooleanField(default=True)
+    last_checked     = models.DateTimeField(auto_now=True)
+
+    # Timestamps   
+    created_at       = models.DateTimeField(auto_now_add=True)
+    updated_at       = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['price']
@@ -176,11 +180,11 @@ class ProductListing(models.Model):
 class ProductImage(models.Model):
     """Additional product images"""
     
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
+    product   = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
     image_url = models.URLField(max_length=1000)
-    alt_text = models.CharField(max_length=500, blank=True)
-    order = models.IntegerField(default=0)
-    
+    alt_text  = models.CharField(max_length=500, blank=True)
+    order     = models.IntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -194,8 +198,8 @@ class ProductSpecification(models.Model):
     """Product specifications/attributes"""
     
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='specifications')
-    name = models.CharField(max_length=200)  # e.g., "Screen Size", "Processor"
-    value = models.CharField(max_length=500)  # e.g., "15.6 inch", "Intel Core i7"
+    name    = models.CharField(max_length=200)  # e.g., "Screen Size", "Processor"
+    value   = models.CharField(max_length=500)  # e.g., "15.6 inch", "Intel Core i7"
     
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -210,9 +214,9 @@ class ProductSpecification(models.Model):
 class PriceHistory(models.Model):
     """Track price changes over time"""
     
-    listing = models.ForeignKey(ProductListing, on_delete=models.CASCADE, related_name='price_history')
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    currency = models.CharField(max_length=10)
+    listing    = models.ForeignKey(ProductListing, on_delete=models.CASCADE, related_name='price_history')
+    price      = models.DecimalField(max_digits=10, decimal_places=2)
+    currency   = models.CharField(max_length=10)
     recorded_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -224,16 +228,14 @@ class PriceHistory(models.Model):
     
 
 
-from django.db import models
-from account.models import User
-from api_integration.models import ProductListing, Product
+
 
 class CartItem(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cart_items')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cart_items')
+    product      = models.ForeignKey(Product, on_delete=models.CASCADE)
     selected_listing = models.ForeignKey(ProductListing, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField(default=1)
-    created_at = models.DateTimeField(auto_now_add=True)
+    quantity     = models.PositiveIntegerField(default=1)
+    created_at   = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('user', 'product') 
@@ -243,10 +245,10 @@ class CartItem(models.Model):
     
 
 class SavingsActivity(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='savings_activities')
-    title = models.CharField(max_length=255)
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='savings_activities')
+    title        = models.CharField(max_length=255)
     saved_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']

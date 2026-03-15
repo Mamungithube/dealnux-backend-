@@ -35,17 +35,17 @@ class UserManager(BaseUserManager):
 
 """---------Custom User Model---------"""
 class User(AbstractUser):
-    username = None
-    email = models.EmailField(unique=True)
-    name = models.CharField(max_length=255)
-    address = models.TextField(blank=True, null=True)
-    referral_code = models.CharField(max_length=12, unique=True, blank=True, null=True)
+    username        = None
+    email           = models.EmailField(unique=True)
+    name            = models.CharField(max_length=255)
+    address         = models.TextField(blank=True, null=True)
+    referral_code   = models.CharField(max_length=12, unique=True, blank=True, null=True)
     has_claimed_referral = models.BooleanField(default=False)
-    referred_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals')
-    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    ads_provided = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=False)
-    otp = models.CharField(max_length=4, blank=True, null=True) 
+    referred_by     = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals')
+    balance         = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    ads_provided    = models.BooleanField(default=False)
+    is_active       = models.BooleanField(default=False)
+    otp             = models.CharField(max_length=4, blank=True, null=True) 
     profile_setup_completed = models.BooleanField(default=False)
 
     total_lifetime_savings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -70,9 +70,9 @@ class User(AbstractUser):
 """----------------------Profile Model----------------------------------"""
 
 class Profile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    address = models.TextField(blank=True, null=True)
-    interests = models.TextField(default=list, blank=True, null=True)
+    user            = models.OneToOneField(User, on_delete=models.CASCADE)
+    address         = models.TextField(blank=True, null=True)
+    interests       = models.TextField(default=list, blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
 
     def __str__(self):

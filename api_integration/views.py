@@ -678,27 +678,27 @@ def sync_ebay_products(platform, query, limit):
     }, message="eBay sync started")
 
 
-def sync_clickbank_products(platform, query, limit):
-    clickbank_service = ClickBankService()
-    search_results = clickbank_service.search_mock_products(query, limit)
+# def sync_clickbank_products(platform, query, limit):
+#     clickbank_service = ClickBankService()
+#     search_results = clickbank_service.search_mock_products(query, limit)
 
-    if not search_results:
-        return error_response("No ClickBank products found", code=404)
+#     if not search_results:
+#         return error_response("No ClickBank products found", code=404)
 
-    normalized_items = []
-    for item in search_results:
-        try:
-            normalized_items.append(clickbank_service.extract_product_data(item))
-        except Exception:
-            continue
+#     normalized_items = []
+#     for item in search_results:
+#         try:
+#             normalized_items.append(clickbank_service.extract_product_data(item))
+#         except Exception:
+#             continue
 
-    result = _generic_sync_loop(
-        normalized_items, platform, 'external_id', save_clickbank_product_to_db,
-        use_category_cache=False
-    )
-    result['query'] = query
-    result['limit'] = limit
-    return success_response(result, message="ClickBank sync completed")
+#     result = _generic_sync_loop(
+#         normalized_items, platform, 'external_id', save_clickbank_product_to_db,
+#         use_category_cache=False
+#     )
+#     result['query'] = query
+#     result['limit'] = limit
+#     return success_response(result, message="ClickBank sync completed")
 
 
 def _normalize_and_sync_generic(service, platform, query, limit, success_msg, not_found_msg):
@@ -821,21 +821,21 @@ def sync_shopify_products(platform, query, limit):
     return success_response(result, message="Shopify sync completed")
 
 
-def sync_homedepot_products(platform, query, limit):
-    """
-    Home Depot sync — only works with numeric productId.
-    """
-    if not str(query).strip().isdigit():
-        logger.info(f"HomeDepot skipped for non-numeric query: '{query}'")
-        result = _build_result_template(query, 'homedepot', limit)
-        result['note'] = 'HomeDepot requires numeric productId — text query skipped'
-        return success_response(result, message="Home Depot sync skipped (non-numeric query)")
+# def sync_homedepot_products(platform, query, limit):
+#     """
+#     Home Depot sync — only works with numeric productId.
+#     """
+#     if not str(query).strip().isdigit():
+#         logger.info(f"HomeDepot skipped for non-numeric query: '{query}'")
+#         result = _build_result_template(query, 'homedepot', limit)
+#         result['note'] = 'HomeDepot requires numeric productId — text query skipped'
+#         return success_response(result, message="Home Depot sync skipped (non-numeric query)")
 
-    return _normalize_and_sync_generic(
-        HomeDepotService(), platform, query, limit,
-        success_msg="Home Depot sync completed",
-        not_found_msg="No Home Depot products found",
-    )
+#     return _normalize_and_sync_generic(
+#         HomeDepotService(), platform, query, limit,
+#         success_msg="Home Depot sync completed",
+#         not_found_msg="No Home Depot products found",
+#     )
 
 def sync_sephora_products(platform, query, limit):
     return _normalize_and_sync_generic(
@@ -874,7 +874,7 @@ def sync_bestbuy_products(platform, query, limit):
 PLATFORM_SYNC_CONFIG = {
     'ebay': {'sync_func': sync_ebay_products, 'name': 'eBay'},
     # 'clickbank': {'sync_func': sync_clickbank_products,  'name': 'ClickBank'},
-    'walmart':   {'sync_func': sync_walmart_products,    'name': 'Walmart'},
+    # 'walmart':   {'sync_func': sync_walmart_products,    'name': 'Walmart'},
     'amazon':    {'sync_func': sync_amazon_products,     'name': 'Amazon'},
     'sephora': {'sync_func': sync_sephora_products, 'name': 'Sephora'},
     'target': {'sync_func': sync_target_products, 'name': 'Target'},
@@ -1333,7 +1333,6 @@ def sync_from_search_results(request):
     return success_response(result, message="Sync from search completed")
  
 
-
 @api_view(['GET'])
 def get_external_ids(request):
     query         = request.GET.get('q', '')
@@ -1518,7 +1517,6 @@ def get_external_ids(request):
         },
     }, message="External IDs fetched")
 
-
 @api_view(['GET'])
 def product_price_history(request, slug):
     try:
@@ -1547,8 +1545,6 @@ def product_price_history(request, slug):
         'total_records': len(history_data),
         'price_history': history_data,
     }, message="Price history fetched")
-
-
 
 
 @api_view(['GET'])
