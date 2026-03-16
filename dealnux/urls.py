@@ -22,7 +22,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('secret-admin-portal/', admin.site.urls),
     path('api/v1/account/', include('account.urls')),
     path('api/v1/ads/', include('custom_ads.urls')),
     path('api/v1/policy/', include('policy.urls')),

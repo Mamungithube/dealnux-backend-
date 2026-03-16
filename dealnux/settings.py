@@ -267,24 +267,21 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# --- ১. Internationalization (এটি Celery এর উপরে থাকবে) ---
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC' # <--- এটি এখন উপরে ডিফাইন করা হলো
-USE_I18N = True
-USE_TZ = True
+TIME_ZONE     = 'UTC'
+USE_I18N      = True
+USE_TZ        = True
 
-# --- ২. Redis ও Celery কনফিগারেশন ---
-# .env থেকে REDIS_URL নিবে, না থাকলে ডকারের সার্ভিস নাম 'redis' ব্যবহার করবে
-REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 
-CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND = CELERY_BROKER_URL
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
+REDIS_URL                = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+
+CELERY_BROKER_URL        = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND    = CELERY_BROKER_URL
+CELERY_ACCEPT_CONTENT    = ['json']
+CELERY_TASK_SERIALIZER   = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
+CELERY_TIMEZONE          = 'UTC'
 
-# --- ৩. Channel Layers (Chat এর জন্য) ---
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -315,10 +312,10 @@ CELERY_BEAT_SCHEDULE = {
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL  = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL   = '/media/'
+MEDIA_ROOT  = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -332,23 +329,37 @@ CACHES = {
     }
 }
 
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
-EMAIL_HOST = os.getenv('EMAIL_HOST')
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS') == 'True'
-EMAIL_PORT = os.getenv('EMAIL_PORT')
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_BACKEND       = os.getenv('EMAIL_BACKEND')
+EMAIL_HOST          = os.getenv('EMAIL_HOST')
+EMAIL_USE_TLS       = os.getenv('EMAIL_USE_TLS') == 'True'
+EMAIL_PORT          = os.getenv('EMAIL_PORT')
+EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER')
 
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 
-GOOGLE_OAUTH2_CLIENT_ID = os.getenv('GOOGLE_OAUTH2_CLIENT_ID')
+GOOGLE_OAUTH2_CLIENT_ID     = os.getenv('GOOGLE_OAUTH2_CLIENT_ID')
 GOOGLE_OAUTH2_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH2_CLIENT_SECRET')
-GOOGLE_OAUTH2_REDIRECT_URI = os.getenv('GOOGLE_OAUTH2_REDIRECT_URI')
+GOOGLE_OAUTH2_REDIRECT_URI  = os.getenv('GOOGLE_OAUTH2_REDIRECT_URI')
 
 
 # revinewcat credential 
 REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
 REVENUECAT_WEBHOOK_AUTH_HEADER = os.getenv('REVENUECAT_WEBHOOK_AUTH_HEADER')
+
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
+
+
+STRIPE_PUBLIC_KEY          = os.getenv('STRIPE_PUBLIC_KEY')
+STRIPE_SECRET_KEY          = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET      = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_SUCCESS_URL         = os.getenv('STRIPE_SUCCESS_URL')
+STRIPE_CANCEL_URL          = os.getenv('STRIPE_CANCEL_URL')
+STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
+STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
+
+
+
 
 # eBay API Configuration
 # EBAY_ENV = config('EBAY_ENV', default='SANDBOX')
@@ -367,7 +378,6 @@ REVENUECAT_WEBHOOK_AUTH_HEADER = os.getenv('REVENUECAT_WEBHOOK_AUTH_HEADER')
 # CLICKBANK_DEV_KEY = config('CLICKBANK_DEV_KEY', default='DEV-123456789012345678901234567890123456')
 
 # RapidAPI and Walmart API Configuration (future)
-RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
 # WALMART_CLIENT_ID = os.getenv('WALMART_CLIENT_ID')
 # WALMART_CLIENT_SECRET = os.getenv('WALMART_CLIENT_SECRET')
 
@@ -375,11 +385,3 @@ RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
 # ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')
 # ALIEXPRESS_APP_SECRET = config('ALIEXPRESS_APP_SECRET', default='')
 
-
-STRIPE_PUBLIC_KEY          = os.getenv('STRIPE_PUBLIC_KEY')
-STRIPE_SECRET_KEY          = os.getenv('STRIPE_SECRET_KEY')
-STRIPE_WEBHOOK_SECRET      = os.getenv('STRIPE_WEBHOOK_SECRET')
-STRIPE_SUCCESS_URL         = os.getenv('STRIPE_SUCCESS_URL')
-STRIPE_CANCEL_URL          = os.getenv('STRIPE_CANCEL_URL')
-STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
-STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
