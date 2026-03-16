@@ -4,7 +4,6 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 from django.db import models
 from account.models import User
-from api_integration.models import ProductListing, Product
 
 class Platform(models.Model):
     """ 3rd party/E-commerce platform """
