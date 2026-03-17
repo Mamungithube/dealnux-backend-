@@ -21,7 +21,7 @@ class SellerProductImageInline(TabularInline):
     model  = SellerProductImage
     extra  = 0
     fields = ['image', 'alt_text', 'order']
-    tab    = True  # Unfold: show inline in tab
+    tab    = True
 
 
 # ============================================================================
@@ -36,8 +36,8 @@ class SellerRequestAdmin(ModelAdmin):
     list_filter_submit = True
 
     list_display = [
-        'display_user',
         'shop_name',
+        'display_user',
         'phone_number',
         'display_documents',
         'display_status',
@@ -71,18 +71,10 @@ class SellerRequestAdmin(ModelAdmin):
         }),
     )
 
-    # Unfold row actions — প্রতিটা row এ approve/reject বাটন
     actions_row  = ['action_approve_row', 'action_reject_row']
-    # Unfold list action — উপরে একটা "Approve all" বাটন
     actions_list = ['action_approve_all_pending']
 
-
     def save_model(self, request, obj, form, change):
-        """
-        When manually setting status in admin panel dropdown,
-        the approve()/reject() method will be called correctly —
-        so SellerProfile will be created automatically.
-        """
         if change and 'status' in form.changed_data:
             if obj.status == 'APPROVED':
                 obj.status = 'PENDING'
@@ -96,8 +88,6 @@ class SellerRequestAdmin(ModelAdmin):
                 obj.reject(admin_user=request.user, note=note)
                 return
         super().save_model(request, obj, form, change)
-
-    # ── @display decorators ───────────────────────────────────────────────
 
     @display(description=_('User'), ordering='user__email')
     def display_user(self, obj):
@@ -130,8 +120,6 @@ class SellerRequestAdmin(ModelAdmin):
         text = ', '.join(parts) if parts else 'None'
         return format_html('<small style="color:#6b7280">{}</small>', text)
 
-    # ── Row actions ───────────────────────────────────────────────────────
-
     @action(
         description=_('Approve'),
         url_path='approve-row',
@@ -156,19 +144,19 @@ class SellerRequestAdmin(ModelAdmin):
             obj.reject(admin_user=request.user, note='Rejected by admin.')
             self.message_user(request, f'✗ {obj.user.email} request rejected.')
 
-    # ── List actions ──────────────────────────────────────────────────────
-
     @action(
         description=_('Approve all PENDING'),
         icon='done_all',
         variant=ActionVariant.PRIMARY,
     )
     def action_approve_all_pending(self, request):
+        from django.http import HttpResponseRedirect
         pending = SellerRequest.objects.filter(status='PENDING')
         count   = pending.count()
         for sr in pending:
             sr.approve(admin_user=request.user)
         self.message_user(request, f'✓ {count} request(s) approved.')
+        return HttpResponseRedirect('../..')
 
 
 # ============================================================================
@@ -256,8 +244,8 @@ class SellerProductAdmin(ModelAdmin):
     list_filter_submit = True
 
     list_display = [
-        'display_product',
         'display_seller',
+        'display_product',
         'display_price',
         'quantity',
         'display_condition',
@@ -271,7 +259,7 @@ class SellerProductAdmin(ModelAdmin):
         'reviewed_by', 'reviewed_at',
         'created_at', 'updated_at',
     ]
-    inlines = [SellerProductImageInline]
+    inlines  = [SellerProductImageInline]
     ordering = ['-created_at']
 
     fieldsets = (
@@ -303,8 +291,6 @@ class SellerProductAdmin(ModelAdmin):
 
     actions_row  = ['action_approve_product', 'action_reject_product']
     actions_list = ['action_approve_all_pending_products']
-
-    # ── @display decorators ───────────────────────────────────────────────
 
     @display(description=_('Product'), ordering='title')
     def display_product(self, obj):
@@ -367,8 +353,6 @@ class SellerProductAdmin(ModelAdmin):
     def display_status(self, obj):
         return obj.status
 
-    # ── Row actions ───────────────────────────────────────────────────────
-
     @action(
         description=_('Approve'),
         url_path='approve-product',
@@ -393,19 +377,19 @@ class SellerProductAdmin(ModelAdmin):
             obj.reject(admin_user=request.user, note='Rejected by admin.')
             self.message_user(request, f'✗ "{obj.title[:40]}" rejected.')
 
-    # ── List action ───────────────────────────────────────────────────────
-
     @action(
         description=_('Approve all PENDING products'),
         icon='done_all',
         variant=ActionVariant.PRIMARY,
     )
     def action_approve_all_pending_products(self, request):
+        from django.http import HttpResponseRedirect
         pending = SellerProduct.objects.filter(status='PENDING')
         count   = pending.count()
         for p in pending:
             p.approve(admin_user=request.user)
         self.message_user(request, f'✓ {count} product(s) approved and listed.')
+        return HttpResponseRedirect('../..')
 
 
 # ============================================================================
@@ -419,8 +403,8 @@ class OrderAdmin(ModelAdmin):
     list_filter_submit = True
 
     list_display = [
-        'display_order_id',
         'display_buyer',
+        'display_order_id',
         'display_seller',
         'display_amount',
         'quantity',
@@ -431,6 +415,7 @@ class OrderAdmin(ModelAdmin):
     search_fields = [
         'buyer__email', 'buyer__name',
         'seller__shop_name', 'tracking_number',
+        'seller_product__title',
     ]
     readonly_fields = [
         'buyer', 'seller', 'unit_price',
@@ -457,7 +442,6 @@ class OrderAdmin(ModelAdmin):
         }),
     )
 
-    # Submit line action
     actions_submit_line = ['action_mark_shipped']
 
     @display(description=_('Order'), ordering='id')
@@ -518,17 +502,19 @@ class CouponAdmin(ModelAdmin):
     list_fullwidth    = True
 
     list_display = [
-        'display_code',
         'display_seller',
+        'display_code',
         'display_discount',
         'used_count',
         'max_uses',
         'display_valid',
+        'is_active',
         'expires_at',
     ]
     list_filter   = ['discount_type', 'is_active', 'created_at']
     search_fields = ['code', 'seller__shop_name']
     readonly_fields = ['used_count', 'created_at']
+    list_editable = ['is_active']
 
     fieldsets = (
         (_('🎟️ Coupon Info'), {
@@ -545,7 +531,7 @@ class CouponAdmin(ModelAdmin):
     @display(description=_('Code'), ordering='code')
     def display_code(self, obj):
         return format_html(
-            '<code style="background:#f3f4f6;padding:3px 8px;'
+            '<code style="background:#7489B4;padding:3px 8px;'
             'border-radius:4px;font-weight:600;letter-spacing:1px">{}</code>',
             obj.code,
         )
@@ -572,16 +558,14 @@ class CouponAdmin(ModelAdmin):
 
 
 # ============================================================================
-# Sidebar Badge Functions — referenced in settings.py UNFOLD config
+# Sidebar Badge Functions
 # ============================================================================
 
 def pending_seller_requests_count(request):
-    """Pending seller request count — will show in sidebar badge"""
     count = SellerRequest.objects.filter(status='PENDING').count()
     return str(count) if count > 0 else None
 
 
 def pending_products_count(request):
-    """Pending product review count — will show in sidebar badge"""
     count = SellerProduct.objects.filter(status='PENDING').count()
     return str(count) if count > 0 else None

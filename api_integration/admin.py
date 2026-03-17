@@ -9,7 +9,6 @@ from .models import (
     ProductImage, ProductSpecification, PriceHistory , Favorite
 )
 
-
 @admin.register(Platform)
 class PlatformAdmin(ModelAdmin):
     list_display = ['name', 'code', 'api_enabled',
