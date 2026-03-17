@@ -262,3 +262,17 @@ class SavingsActivity(models.Model):
         elif diff.days == 1:
             return "Yesterday"
         return f"{diff.days} days ago"
+
+
+
+class Favorite(models.Model):
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
+    product    = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='favorited_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'product')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} → {self.product.title}"

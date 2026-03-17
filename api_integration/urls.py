@@ -8,6 +8,7 @@ router.register(r'listings', views.ProductListingViewSet, basename='listing')
 router.register(r'platforms', views.PlatformViewSet, basename='platform')
 router.register(r'categories', views.CategoryViewSet, basename='category')
 router.register(r'cart', views.CartViewSet, basename='cart')
+router.register(r'favorites', views.FavoriteViewSet, basename='favorite')
 
 app_name = 'api_integration'
 

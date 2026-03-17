@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Platform, Category, Product, ProductListing,
-    ProductImage, ProductSpecification, PriceHistory
+    ProductImage, ProductSpecification, PriceHistory , Favorite
 )
 from rest_framework.validators import UniqueTogetherValidator
 from rest_framework import serializers
@@ -196,3 +196,15 @@ class CartItemSerializer(serializers.ModelSerializer):
                 })
 
         return attrs
+
+
+class FavoriteSerializer(serializers.ModelSerializer):
+    product = ProductSerializer(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source='product', write_only=True
+    )
+
+    class Meta:
+        model = Favorite
+        fields = ['id', 'product', 'product_id', 'created_at']
+        read_only_fields = ['id', 'created_at']

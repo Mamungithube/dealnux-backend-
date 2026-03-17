@@ -21,7 +21,7 @@ from django.core.cache import cache
 from .models import (
     Product, ProductListing, Platform, Category,
     PriceHistory, ProductImage, ProductSpecification,
-    CartItem, SavingsActivity
+    CartItem, SavingsActivity , Favorite
 )
 from .serializers import (
     ProductSerializer,
@@ -31,6 +31,7 @@ from .serializers import (
     CategorySerializer,
     PriceHistorySerializer,
     CartItemSerializer,
+    FavoriteSerializer
 )
 from .services.ebay_service import EbayRapidService as EbayService
 from .services.clickbank_service import ClickBankService
@@ -1918,6 +1919,7 @@ class DashboardSavingsView(APIView):
 
 @api_view(['GET'])
 def category_compare_prices(request, slug):
+    
     try:
         category = Category.objects.get(slug=slug)
     except Category.DoesNotExist:
@@ -2048,3 +2050,118 @@ def category_compare_prices(request, slug):
         'best_overall_deal': best_overall_deal,
         'results': results,
     }, message=f"Price comparison for '{category.name}'")
+
+
+# ============================================================================
+# Favorite ViewSet
+# ============================================================================
+
+class FavoriteViewSet(viewsets.ModelViewSet):
+    serializer_class = FavoriteSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete']
+
+    def get_queryset(self):
+        return Favorite.objects.filter(
+            user=self.request.user
+        ).select_related('product')
+
+    def create(self, request, *args, **kwargs):
+        product_id = request.data.get('product_id')
+        if not product_id:
+            return error_response("product_id is required", code=400)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return error_response("Product not found", code=404)
+
+        favorite, created = Favorite.objects.get_or_create(
+            user=request.user,
+            product=product
+        )
+
+        if not created:
+            return error_response("Product already in favorites", code=400)
+
+        serializer = self.get_serializer(favorite)
+        return Response({
+            "success": True,
+            "code": 201,
+            "message": "Added to favorites",
+            "timestamp": int(time.time()),
+            "data": serializer.data,
+        }, status=201)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Removed from favorites",
+            "timestamp": int(time.time()),
+            "data": {},
+        }, status=200)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Favorites fetched",
+            "timestamp": int(time.time()),
+            "data": {
+                "count": queryset.count(),
+                "favorites": serializer.data,
+            },
+        }, status=200)
+
+    @action(detail=False, methods=['get'], url_path='check/(?P<product_id>[^/.]+)')
+    def check(self, request, product_id=None):
+        """কোনো product favorite কিনা check করুন"""
+        is_favorite = Favorite.objects.filter(
+            user=request.user,
+            product_id=product_id
+        ).exists()
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Checked",
+            "timestamp": int(time.time()),
+            "data": {"is_favorite": is_favorite, "product_id": product_id},
+        })
+
+    @action(detail=False, methods=['post'], url_path='toggle')
+    def toggle(self, request):
+        """Favorite add/remove toggle"""
+        product_id = request.data.get('product_id')
+        if not product_id:
+            return error_response("product_id is required", code=400)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return error_response("Product not found", code=404)
+
+        favorite = Favorite.objects.filter(user=request.user, product=product).first()
+
+        if favorite:
+            favorite.delete()
+            return Response({
+                "success": True,
+                "code": 200,
+                "message": "Removed from favorites",
+                "timestamp": int(time.time()),
+                "data": {"is_favorite": False, "product_id": product_id},
+            })
+        else:
+            Favorite.objects.create(user=request.user, product=product)
+            return Response({
+                "success": True,
+                "code": 201,
+                "message": "Added to favorites",
+                "timestamp": int(time.time()),
+                "data": {"is_favorite": True, "product_id": product_id},
+            }, status=201)
