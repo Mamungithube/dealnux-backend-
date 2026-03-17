@@ -296,15 +296,6 @@ class SellerProductAdmin(ModelAdmin):
     actions_row  = ['action_approve_product', 'action_reject_product']
     actions_list = ['action_approve_all_pending_products']
 
-    def action_approve_all_pending_products(self, request):
-        from django.http import HttpResponseRedirect
-        pending = SellerProduct.objects.filter(status='PENDING')
-        count = pending.count()
-        for p in pending:
-            p.approve(admin_user=request.user)
-        self.message_user(request, f'✓ {count} product(s) approved and listed.')
-        return HttpResponseRedirect('../..')
-
     @display(description=_('Product'), ordering='title')
     def display_product(self, obj):
         if obj.main_image:
@@ -387,22 +378,25 @@ class SellerProductAdmin(ModelAdmin):
         variant=ActionVariant.DANGER,
     )
     def action_reject_product(self, request, object_id):
+        from django.http import HttpResponseRedirect
         obj = SellerProduct.objects.get(pk=object_id)
         if obj.status != 'REJECTED':
             obj.reject(admin_user=request.user, note='Rejected by admin.')
             self.message_user(request, f'✗ "{obj.title[:40]}" rejected.')
+        return HttpResponseRedirect('../..')
 
     @action(
         description=_('Approve all PENDING products'),
         icon='done_all',
         variant=ActionVariant.PRIMARY,
     )
-    def action_reject_product(self, request, object_id):
+    def action_approve_all_pending_products(self, request):
         from django.http import HttpResponseRedirect
-        obj = SellerProduct.objects.get(pk=object_id)
-        if obj.status != 'REJECTED':
-            obj.reject(admin_user=request.user, note='Rejected by admin.')
-            self.message_user(request, f'✗ "{obj.title[:40]}" rejected.')
+        pending = SellerProduct.objects.filter(status='PENDING')
+        count   = pending.count()
+        for p in pending:
+            p.approve(admin_user=request.user)
+        self.message_user(request, f'✓ {count} product(s) approved and listed.')
         return HttpResponseRedirect('../..')
 
 
@@ -460,7 +454,7 @@ class OrderAdmin(ModelAdmin):
 
     @display(description=_('Order'), ordering='id')
     def display_order_id(self, obj):
-        return format_html('<strong>#{};</strong>', obj.id)
+        return format_html('<strong>#{}</strong>', obj.id)
 
     @display(description=_('Buyer'), ordering='buyer__email')
     def display_buyer(self, obj):
