@@ -16,7 +16,7 @@ from api_integration.services.target_service import TargetService
 from api_integration.services.wayfair_service import WayfairService
 from api_integration.services.aliexpress_service import AliExpressService
 from api_integration.services.bestbuy_service import BestBuyService
-from .tasks import sync_all_platforms_task, sync_ebay_task, sync_clickbank_task
+from .tasks import sync_all_platforms_task, sync_ebay_task
 from django.core.cache import cache
 from .models import (
     Product, ProductListing, Platform, Category,
