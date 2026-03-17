@@ -43,35 +43,6 @@ def sync_ebay_task(query, limit=10):
 
 
 @shared_task
-def sync_clickbank_task(query, limit=10):
-    try:
-        platform, _ = Platform.objects.get_or_create(
-            code='clickbank',
-            defaults={'name': 'ClickBank', 'api_enabled': True}
-        )
-        if not platform.api_enabled:
-            return {'platform': 'clickbank', 'skipped': 'disabled'}
-
-        service = ClickBankService()
-        items   = service.search_mock_products(query, limit)
-
-        synced = 0
-        for item in items:
-            try:
-                from .views import save_clickbank_product_to_db
-                product_data = service.extract_product_data(item)
-                save_clickbank_product_to_db(product_data, platform)
-                synced += 1
-            except Exception as e:
-                logger.error(f"ClickBank item sync failed: {e}")
-
-        return {'platform': 'clickbank', 'synced': synced}
-    except Exception as e:
-        logger.error(f"ClickBank sync task failed: {e}")
-        return {'platform': 'clickbank', 'error': str(e)}
-
-
-@shared_task
 def sync_amazon_task(query, limit=10):
     try:
         platform, _ = Platform.objects.get_or_create(
@@ -271,20 +242,32 @@ def sync_bestbuy_task(query, limit=10):
         logger.error(f"BestBuy sync task failed: {e}")
         return {'platform': 'bestbuy', 'error': str(e)}  
 
+SEPHORA_CATEGORIES = {
+    "Beauty & Makeup", "Skincare", "Hair Care", "Fragrances & Perfumes",
+    "Personal Care & Hygiene", "Oral Care", "Men's Grooming",
+}
+
+WAYFAIR_CATEGORIES = {
+    "Furniture", "Home Decor", "Kitchen & Dining", "Bedding & Bath",
+    "Garden & Outdoor", "Lighting & Ceiling Fans", "Smart Home Devices",
+}
+
 @shared_task
-def sync_all_platforms_task(query, limit=1000):
+def sync_all_platforms_task(query, limit=30):
     """Syncs across all platforms in parallel."""
-    job = group(
+    tasks = [
         sync_amazon_task.s(query, limit),
         sync_walmart_task.s(query, limit),
         sync_ebay_task.s(query, limit),
-        sync_clickbank_task.s(query, limit),
-        sync_sephora_task.s(query, limit),
         sync_target_task.s(query, limit),
-        sync_wayfair_task.s(query, limit),
         sync_aliexpress_task.s(query, limit),
         sync_bestbuy_task.s(query, limit),
-    )
+    ]
+    if query in SEPHORA_CATEGORIES:
+        tasks.append(sync_sephora_task.s(query, limit))
+    if query in WAYFAIR_CATEGORIES:
+        tasks.append(sync_wayfair_task.s(query, limit))
+    job = group(*tasks)
     result = job.apply_async()
     return result.id
 
@@ -294,33 +277,21 @@ def hourly_fixed_category_sync():
     """Syncs all e-commerce categories every hour."""
 
     FIXED_CATEGORIES = [
-        "Smartphones", "Laptops", "Desktop Computers", "Tablets",
-        "Audio & Headphones", "Cameras & Photo", "Smartwatches",
-        "TV & Home Theater", "Video Games & Consoles", "Computer Accessories",
-        "Printers & Ink", "Drones & RC", "Wearable Technology",
-        "Men's Clothing", "Men's Shoes", "Men's Watches",
-        "Men's Accessories & Belts", "Men's Sunglasses", "Men's Grooming",
-        "Women's Clothing", "Women's Shoes", "Handbags & Wallets",
-        "Women's Watches", "Fine Jewelry", "Fashion Accessories",
-        "Lingerie & Sleepwear", "Beauty & Makeup",
+        "Smartphones", "Laptops", "Tablets", "Audio & Headphones",
+        "Smartwatches", "TV & Home Theater", "Video Games & Consoles",
+        "Men's Clothing", "Men's Shoes", "Women's Clothing", "Women's Shoes",
+        "Handbags & Wallets", "Fine Jewelry", "Men's Grooming",
+        "Beauty & Makeup", "Skincare", "Hair Care", "Fragrances & Perfumes",
+        "Personal Care & Hygiene",
         "Furniture", "Home Decor", "Kitchen & Dining", "Bedding & Bath",
-        "Garden & Outdoor", "Tools & Home Improvement", "Lighting & Ceiling Fans",
-        "Smart Home Devices", "Pet Supplies",
-        "Skincare", "Hair Care", "Fragrances & Perfumes",
-        "Vitamins & Dietary Supplements", "Personal Care & Hygiene",
-        "Medical Supplies & Equipment", "Oral Care",
-        "Exercise & Fitness Equipment", "Cycling & Bicycles", "Camping & Hiking",
-        "Fishing Equipment", "Water Sports", "Team Sports", "Golf Equipment",
-        "Baby Products & Accessories", "Toys & Games", "Kids Clothing",
-        "Puzzles & Board Games", "Baby Gear & Strollers",
-        "Car Electronics & GPS", "Car Interior Accessories",
-        "Motorcycle Parts & Accessories", "Automotive Tools & Equipment",
-        "Fiction Books", "Non-Fiction & Educational Books",
-        "Snack Foods", "Beverages & Coffee", "Household Cleaning Supplies",
+        "Garden & Outdoor", "Smart Home Devices",
+        "Exercise & Fitness Equipment", "Camping & Hiking", "Team Sports",
+        "Baby Products & Accessories", "Toys & Games",
+        "Car Electronics & GPS", "Pet Supplies", "Household Cleaning Supplies",
     ]
 
     for index, category_name in enumerate(FIXED_CATEGORIES):
-        delay_seconds = index * 10
+        delay_seconds = index * 30
         sync_all_platforms_task.apply_async(
             args=[category_name, 10],
             countdown=delay_seconds

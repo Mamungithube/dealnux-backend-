@@ -40,7 +40,7 @@ class WayfairService:
 
         try:
             response = requests.get(
-                url, headers=self.headers, params=params, timeout=20
+                url, headers=self.headers, params=params, timeout=30
             )
             logger.debug(f"Wayfair search '{query}': {response.status_code}")
 
@@ -50,8 +50,6 @@ class WayfairService:
                     data.get('data', {})
                         .get('keyword', {})
                         .get('results', {})
-                        .get('category', {})
-                        .get('browse', {})
                         .get('products', [])
                 )
                 logger.info(f"Wayfair search '{query}': {len(products)} results")

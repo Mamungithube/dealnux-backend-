@@ -291,19 +291,19 @@ CHANNEL_LAYERS = {
     },
 }
 
-# CELERY_BEAT_SCHEDULE = {
-#     'hourly-category-sync': {
-#         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-#         'schedule': crontab(minute='*/30'), 
-#     },
-# }
-
 CELERY_BEAT_SCHEDULE = {
     'hourly-category-sync': {
         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-        'schedule': crontab(minute=0, hour='*/24'), 
+        'schedule': crontab(minute=0, hour='*/1'), 
     },
 }
+
+# CELERY_BEAT_SCHEDULE = {
+#     'hourly-category-sync': {
+#         'task': 'api_integration.tasks.hourly_fixed_category_sync',
+#         'schedule': crontab(minute=0, hour='*/24'), 
+#     },
+# }
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
