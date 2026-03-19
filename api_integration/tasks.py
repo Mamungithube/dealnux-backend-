@@ -1,6 +1,11 @@
+"""
+tasks.py  —  Celery async tasks
+Circular import fix: save_generic_product_to_db এখন db_helpers থেকে আসে।
+Clickbank ও Shopify সরানো হয়েছে।
+"""
+
 from celery import shared_task, group
 from .services.ebay_service import EbayRapidService
-from .services.clickbank_service import ClickBankService
 from .services.amazon_service import AmazonService
 from .services.walmart_service import WalmartService
 from .services.sephora_service import SephoraService
@@ -13,6 +18,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+# ── shared save helper — circular import নেই ─────────────────────────────────
+def _get_save_fn():
+    from .db_helpers import save_generic_product_to_db
+    return save_generic_product_to_db
+
+
 @shared_task
 def sync_ebay_task(query, limit=10):
     try:
@@ -23,15 +35,20 @@ def sync_ebay_task(query, limit=10):
         if not platform.api_enabled:
             return {'platform': 'ebay', 'skipped': 'disabled'}
 
-        service = EbayRapidService()
-        items   = service.search_products(query, limit=limit)
+        service  = EbayRapidService()
+        items    = service.search_products(query, limit=limit)
+        save_fn  = _get_save_fn()
+        synced   = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                # Non-USD skip
+                if product_data.get('_is_non_usd'):
+                    logger.info(f"eBay non-USD listing skipped: {product_data.get('title','')[:40]}")
+                    continue
+                result = save_fn(product_data, platform, query=query)
+                if result[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"eBay item sync failed: {e}")
@@ -54,13 +71,13 @@ def sync_amazon_task(query, limit=10):
 
         service = AmazonService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"Amazon item sync failed: {e}")
@@ -83,13 +100,13 @@ def sync_walmart_task(query, limit=10):
 
         service = WalmartService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"Walmart item sync failed: {e}")
@@ -112,13 +129,13 @@ def sync_sephora_task(query, limit=10):
 
         service = SephoraService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"Sephora item sync failed: {e}")
@@ -127,7 +144,6 @@ def sync_sephora_task(query, limit=10):
     except Exception as e:
         logger.error(f"Sephora sync task failed: {e}")
         return {'platform': 'sephora', 'error': str(e)}
-
 
 
 @shared_task
@@ -142,13 +158,13 @@ def sync_target_task(query, limit=10):
 
         service = TargetService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"Target item sync failed: {e}")
@@ -157,6 +173,7 @@ def sync_target_task(query, limit=10):
     except Exception as e:
         logger.error(f"Target sync task failed: {e}")
         return {'platform': 'target', 'error': str(e)}
+
 
 @shared_task
 def sync_wayfair_task(query, limit=10):
@@ -170,13 +187,13 @@ def sync_wayfair_task(query, limit=10):
 
         service = WayfairService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"Wayfair item sync failed: {e}")
@@ -184,7 +201,8 @@ def sync_wayfair_task(query, limit=10):
         return {'platform': 'wayfair', 'synced': synced}
     except Exception as e:
         logger.error(f"Wayfair sync task failed: {e}")
-        return {'platform': 'wayfair', 'error': str(e)} 
+        return {'platform': 'wayfair', 'error': str(e)}
+
 
 @shared_task
 def sync_aliexpress_task(query, limit=10):
@@ -198,13 +216,13 @@ def sync_aliexpress_task(query, limit=10):
 
         service = AliExpressService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"AliExpress item sync failed: {e}")
@@ -213,6 +231,7 @@ def sync_aliexpress_task(query, limit=10):
     except Exception as e:
         logger.error(f"AliExpress sync task failed: {e}")
         return {'platform': 'aliexpress', 'error': str(e)}
+
 
 @shared_task
 def sync_bestbuy_task(query, limit=10):
@@ -226,13 +245,13 @@ def sync_bestbuy_task(query, limit=10):
 
         service = BestBuyService()
         items   = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced  = 0
 
-        synced = 0
-        from .views import save_generic_product_to_db
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                if save_generic_product_to_db(product_data, platform, query=query)[0]:
+                if save_fn(product_data, platform, query=query)[0]:
                     synced += 1
             except Exception as e:
                 logger.error(f"BestBuy item sync failed: {e}")
@@ -240,7 +259,10 @@ def sync_bestbuy_task(query, limit=10):
         return {'platform': 'bestbuy', 'synced': synced}
     except Exception as e:
         logger.error(f"BestBuy sync task failed: {e}")
-        return {'platform': 'bestbuy', 'error': str(e)}  
+        return {'platform': 'bestbuy', 'error': str(e)}
+
+
+# ── Category routing ──────────────────────────────────────────────────────────
 
 SEPHORA_CATEGORIES = {
     "Beauty & Makeup", "Skincare", "Hair Care", "Fragrances & Perfumes",
@@ -252,9 +274,10 @@ WAYFAIR_CATEGORIES = {
     "Garden & Outdoor", "Lighting & Ceiling Fans", "Smart Home Devices",
 }
 
+
 @shared_task
 def sync_all_platforms_task(query, limit=30):
-    """Syncs across all platforms in parallel."""
+    """সব active platform এ parallel sync।"""
     tasks = [
         sync_amazon_task.s(query, limit),
         sync_walmart_task.s(query, limit),
@@ -267,15 +290,15 @@ def sync_all_platforms_task(query, limit=30):
         tasks.append(sync_sephora_task.s(query, limit))
     if query in WAYFAIR_CATEGORIES:
         tasks.append(sync_wayfair_task.s(query, limit))
-    job = group(*tasks)
+
+    job    = group(*tasks)
     result = job.apply_async()
     return result.id
 
 
 @shared_task
 def hourly_fixed_category_sync():
-    """Syncs all e-commerce categories every hour."""
-
+    """প্রতি ঘন্টায় fixed category sync।"""
     FIXED_CATEGORIES = [
         "Smartphones", "Laptops", "Tablets", "Audio & Headphones",
         "Smartwatches", "TV & Home Theater", "Video Games & Consoles",

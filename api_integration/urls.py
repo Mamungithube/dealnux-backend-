@@ -16,7 +16,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('search-and-sync/', views.search_and_sync, name='search_and_sync'),
     path('bulk-sync/', views.bulk_sync_products, name='bulk_sync'),
-    path('sync-from-search/', views.sync_from_search_results, name='sync_from_search'),
+    # path('sync-from-search/', views.sync_from_search_results, name='sync_from_search'),
     path('get-external-ids/', views.get_external_ids, name='get_external_ids'),
     path('smart-search/', views.smart_search, name='smart_search'),
     path('task-status/<str:task_id>/', views.task_status, name='task_status'),
