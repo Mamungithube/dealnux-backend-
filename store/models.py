@@ -95,7 +95,6 @@ class SellerProfile(models.Model):
     # Payment   
     bank_name      = models.CharField(max_length=200, blank=True)
     bank_account_number = models.CharField(max_length=100, blank=True)
-    bkash_number   = models.CharField(max_length=20, blank=True)
 
     # Stats
     total_products = models.PositiveIntegerField(default=0)

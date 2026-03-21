@@ -69,7 +69,7 @@ class SellerProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user_email', 'user_name',
             'shop_name', 'shop_description', 'shop_logo', 'phone_number',
-            'bank_name', 'bank_account_number', 'bkash_number',
+            'bank_name', 'bank_account_number',
             'total_products', 'total_orders', 'total_earnings',
             'is_active', 'created_at',
         ]

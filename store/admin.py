@@ -193,7 +193,7 @@ class SellerProfileAdmin(ModelAdmin):
             'fields': ('user', 'shop_name', 'shop_description', 'shop_logo', 'phone_number'),
         }),
         (_('💳 Payment Info'), {
-            'fields': ('bank_name', 'bank_account_number', 'bkash_number'),
+            'fields': ('bank_name', 'bank_account_number'),
             'classes': ('collapse',),
         }),
         (_('📊 Statistics (read-only)'), {
