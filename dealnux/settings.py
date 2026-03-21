@@ -441,7 +441,7 @@ CHANNEL_LAYERS = {
 CELERY_BEAT_SCHEDULE = {
     'hourly-category-sync': {
         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-        'schedule': crontab(minute=0, hour='*/1'), 
+        'schedule': crontab(minute=0, hour='*/24'), 
     },
 }
 
