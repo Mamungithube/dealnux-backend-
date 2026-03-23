@@ -174,7 +174,6 @@ def sync_target_task(query, limit=10):
         logger.error(f"Target sync task failed: {e}")
         return {'platform': 'target', 'error': str(e)}
 
-
 @shared_task
 def sync_wayfair_task(query, limit=10):
     try:
@@ -298,27 +297,19 @@ def sync_all_platforms_task(query, limit=30):
 
 @shared_task
 def hourly_fixed_category_sync():
-    """প্রতি ঘন্টায় fixed category sync।"""
-    FIXED_CATEGORIES = [
-        "Smartphones", "Laptops", "Tablets", "Audio & Headphones",
-        "Smartwatches", "TV & Home Theater", "Video Games & Consoles",
-        "Men's Clothing", "Men's Shoes", "Women's Clothing", "Women's Shoes",
-        "Handbags & Wallets", "Fine Jewelry", "Men's Grooming",
-        "Beauty & Makeup", "Skincare", "Hair Care", "Fragrances & Perfumes",
-        "Personal Care & Hygiene",
-        "Furniture", "Home Decor", "Kitchen & Dining", "Bedding & Bath",
-        "Garden & Outdoor", "Smart Home Devices",
-        "Exercise & Fitness Equipment", "Camping & Hiking", "Team Sports",
-        "Baby Products & Accessories", "Toys & Games",
-        "Car Electronics & GPS", "Pet Supplies", "Household Cleaning Supplies",
-    ]
-
-    for index, category_name in enumerate(FIXED_CATEGORIES):
-        delay_seconds = index * 30
+    from api_integration.models import Category
+    
+    # DB থেকে সব child categories নাও
+    categories = list(
+        Category.objects.filter(parent__isnull=False)
+        .values_list('name', flat=True)
+    )
+    
+    for index, category_name in enumerate(categories):
         sync_all_platforms_task.apply_async(
             args=[category_name, 10],
-            countdown=delay_seconds
+            countdown=index * 30  # প্রতিটা ৩০ সেকেন্ড পর পর
         )
-
-    logger.info(f"Scheduled sync for {len(FIXED_CATEGORIES)} categories.")
-    return f"Scheduled {len(FIXED_CATEGORIES)} categories."
+    
+    logger.info(f"Scheduled sync for {len(categories)} categories.")
+    return f"Scheduled {len(categories)} categories."
