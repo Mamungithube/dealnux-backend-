@@ -123,3 +123,4 @@ logs/
 .git/celerybeat-schedule
 cloudflared-linux-amd64.deb
 "celerybeat-schedule" 
+celerybeat-schedule
