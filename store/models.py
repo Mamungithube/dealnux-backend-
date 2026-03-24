@@ -172,7 +172,7 @@ class SellerProduct(models.Model):
                                                 blank=True,related_name='reviewed_seller_products')
     reviewed_at    = models.DateTimeField(null=True, blank=True)
 
-    # Link to global Product & Listing (approve হলে তৈরি হবে)
+    # Link to global Product & Listing (set after approval)
     linked_product = models.ForeignKey(Product, on_delete=models.SET_NULL,null=True, 
                                                 blank=True,related_name='seller_products')
     linked_listing = models.ForeignKey(ProductListing, on_delete=models.SET_NULL,null=True, 
@@ -208,16 +208,16 @@ class SellerProduct(models.Model):
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
 
-        # 'local' platform get_or_create — প্রতিটা seller এর জন্য আলাদা platform entry
-        # যাতে price comparison এ shop name দেখায়
+        # 'local' platform get_or_create — separate platform entry for each seller
+        # so that the shop name is shown in price comparison
         local_platform, _ = Platform.objects.get_or_create(
             code=f"local-seller-{self.seller.id}",
             defaults={
-                'name': self.seller.shop_name,   # e.g. "Rahman Store"
+                'name': self.seller.shop_name,  
                 'api_enabled': False,
             }
         )
-        # Shop name বদলালে platform name ও update করো
+        # If you change the shop name, update the platform name as well.
         if local_platform.name != self.seller.shop_name:
             local_platform.name = self.seller.shop_name
             local_platform.save(update_fields=['name'])
@@ -234,7 +234,7 @@ class SellerProduct(models.Model):
             }
         )
 
-        # ProductListing তৈরি
+        # ProductListing
         listing, _  = ProductListing.objects.update_or_create(
             product =product,
             platform=local_platform,
@@ -296,7 +296,7 @@ class SellerProductImage(models.Model):
 
 
 # ============================================================================
-# Order — Seller product থেকে purchase
+# Order — Purchase from Seller product
 # ============================================================================
 
 class Order(models.Model):

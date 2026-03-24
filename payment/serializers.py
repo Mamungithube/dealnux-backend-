@@ -90,7 +90,7 @@ class PaymentDetailSerializer(PaymentSerializer):
 # ============================================================================
 
 class SellerPayoutSerializer(serializers.ModelSerializer):
-    """Seller এর payout history"""
+    """Seller's payout history"""
     shop_name       = serializers.CharField(source='seller.shop_name', read_only=True)
     order_id        = serializers.IntegerField(source='order.id', read_only=True, allow_null=True)
     status_display  = serializers.CharField(source='get_status_display', read_only=True)

@@ -228,8 +228,8 @@ MAX_REASONABLE_PRICE = 5000.0   # এর বেশি হলে anomaly হি�
 
 def is_valid_usd_price(price_raw_str, price_float):
     """
-    True হলে price valid USD।
-    False হলে skip করো — non-USD currency অথবা anomaly।
+    If True, price valid USD.
+    If False, skip — non-USD currency or anomaly.
     """
     raw = str(price_raw_str or '').upper()
     for code in _NON_USD_INDICATORS:
@@ -247,14 +247,23 @@ def is_valid_usd_price(price_raw_str, price_float):
 
 def save_generic_product_to_db(product_data, platform, query=None, category_slug=None, all_categories=None):
     """
-    সব platform এর জন্য universal save helper।
-    Circular import নেই — views.py ও tasks.py উভয়ই এটা use করতে পারে।
+    Universal save helper for all platforms.
+    No circular import — both views.py and tasks.py can use it. 
     """
     from .models import (
         Product, ProductListing, Category,
         PriceHistory, ProductImage, ProductSpecification,
     )
+    raw_currency = product_data.get('currency')
+    if not raw_currency and product_data.get('_price_raw'):
+        import re
+        # স্ট্রিং থেকে ৩ অক্ষরের কারেন্সি কোড খোঁজা (যেমন: EUR, HUF, GBP)
+        match = re.search(r'[A-Z]{3}', product_data['_price_raw'].upper())
+        if match:
+            raw_currency = match.group()
+    product_data['currency'] = raw_currency if raw_currency else 'USD'
 
+    
     external_id = product_data.get('external_id')
     if not external_id:
         return None, None, False

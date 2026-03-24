@@ -29,22 +29,33 @@ class EbayRapidService:
         }
 
     def search_products(self, query, limit=10, tld='com'):
-        url    = f"https://{self.host}/search_more"
-        params = {'query': query, 'tld': tld}
-
+        url = f"https://{self.host}/search_get.php"
+        
+        # eBay search URL তৈরি করে querystring হিসেবে পাঠাও
+        ebay_url = f"https://www.ebay.com/sch/i.html?_nkw={query.replace(' ', '+')}"
+        
+        params = {
+            'url': ebay_url  # ← এটাই key parameter
+        }
+    
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(
+                url, 
+                headers=self.headers, 
+                params=params, 
+                timeout=20
+            )
             logger.debug(f"eBay search '{query}': {response.status_code}")
-
+    
             if response.status_code == 200:
                 data     = response.json()
                 products = data.get('body', {}).get('products', [])
                 logger.info(f"eBay search '{query}': {len(products)} results")
                 return products[:limit]
-
+    
             logger.error(f"eBay search error {response.status_code}: {response.text[:300]}")
             return []
-
+    
         except Exception as e:
             logger.error(f"eBay search exception: {e}")
             return []
@@ -189,7 +200,7 @@ class EbayRapidService:
             'price':               price,
             'currency':            api_currency,       # DB always stores USD
             '_price_raw':          raw_from,    # db_helpers currency check এর জন্য
-            '_is_non_usd':         api_currency != 'USD',  # quick flag
+            'currency': api_currency, # quick flag
             'original_price':      original_price,
             'discount_percentage': discount_percentage,
 
