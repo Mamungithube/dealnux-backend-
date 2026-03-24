@@ -643,8 +643,24 @@ def task_status(request, task_id):
     response_data = {'task_id': task_id, 'status': result.status}
 
     if result.status == 'SUCCESS':
-        response_data['result'] = result.result
-        response_data['message'] = 'Sync completed! Now fetch results.'
+        task_result = result.result or {}
+        platform    = task_result.get('platform', '')
+        products    = task_result.get('products', [])
+        synced      = task_result.get('synced', 0)
+        updated     = task_result.get('updated', 0)
+        failed      = task_result.get('failed', 0)
+
+        response_data.update({
+            'query':    request.GET.get('q', ''),
+            'platform': platform,
+            'limit':    len(products),
+            'synced':   synced,
+            'updated':  updated,
+            'failed':   failed,
+            'products': products,
+            'message':  'Sync completed! Now fetch results.',
+        })
+
     elif result.status == 'FAILURE':
         response_data['error'] = str(result.result)
 

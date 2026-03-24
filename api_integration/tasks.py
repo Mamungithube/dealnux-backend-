@@ -33,21 +33,55 @@ def sync_ebay_task(query, limit=10):
         items    = service.search_products(query, limit=limit)
         save_fn  = _get_save_fn()
         synced   = 0
+        updated  = 0
+        failed   = 0
+        products = []
 
         for item in items:
             try:
                 product_data = service.extract_product_data(item)
-                # Non-USD skip
+
                 if product_data.get('_is_non_usd'):
                     logger.info(f"eBay non-USD listing skipped: {product_data.get('title','')[:40]}")
                     continue
+
                 result = save_fn(product_data, platform, query=query)
-                if result[0]:
-                    synced += 1
+                product_obj, listing_obj, created = result
+
+                if product_obj:
+                    if created:
+                        synced += 1
+                        status = 'synced'
+                    else:
+                        updated += 1
+                        status = 'updated'
+
+                    products.append({
+                        'product_id':   product_obj.id,
+                        'title':        product_obj.title,
+                        'brand':        product_obj.brand,
+                        'main_image':   product_obj.main_image,
+                        'external_url': listing_obj.external_url if listing_obj else '',
+                        'price':        float(listing_obj.price) if listing_obj else 0,
+                        'currency':     listing_obj.currency if listing_obj else 'USD',
+                        'slug':         product_obj.slug,
+                        'status':       status,
+                    })
+                else:
+                    failed += 1
+
             except Exception as e:
                 logger.error(f"eBay item sync failed: {e}")
+                failed += 1
 
-        return {'platform': 'ebay', 'synced': synced}
+        return {
+            'platform': 'ebay',
+            'synced':   synced,
+            'updated':  updated,
+            'failed':   failed,
+            'products': products,
+        }
+
     except Exception as e:
         logger.error(f"eBay sync task failed: {e}")
         return {'platform': 'ebay', 'error': str(e)}
