@@ -1,5 +1,5 @@
-import requests
 import re
+import requests
 from django.conf import settings
 import logging
 
@@ -9,17 +9,17 @@ logger = logging.getLogger(__name__)
 class TargetService:
     """
     Target.com Shopping API via RapidAPI
-    Host: target-com-shopping-api.p.rapidapi.com
-    Response: data['data']['search']['products'] — list of product dicts
+    Host: target-com-shopping.p.rapidapi.com
+    Endpoint: /search
+    Response: data['data'] — list of product dicts
     """
 
     def __init__(self):
         self.api_key  = settings.RAPIDAPI_KEY
-        self.host     = 'target-com-shopping-api.p.rapidapi.com'
+        self.host     = 'target-com-shopping.p.rapidapi.com'
         self.headers  = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
-            'Content-Type':    'application/json',
         }
         self.store_id = '1122'  # Default Target store ID
 
@@ -30,14 +30,14 @@ class TargetService:
     def search_products(self, query, limit=10, offset=0):
         """
         keyword দিয়ে Target products search করো।
-        Response: data['data']['search']['products']
+        Response: data['data'] — flat list of product dicts
         """
-        url    = f"https://{self.host}/product_search"
+        url    = f"https://{self.host}/search"
         params = {
-            'store_id': self.store_id,
-            'keyword':  query,
-            'count':    str(min(limit, 24)),
-            'offset':   str(offset),
+            'keyword': query,
+            'count':   str(min(limit, 24)),
+            'storeId': self.store_id,
+            'offset':  str(offset),
         }
 
         try:
@@ -47,16 +47,25 @@ class TargetService:
             logger.debug(f"Target search '{query}': {response.status_code}")
 
             if response.status_code == 200:
-                data     = response.json()
-                products = (
-                    data.get('data', {})
-                        .get('search', {})
-                        .get('products', [])
-                )
+                data = response.json()
+
+                # নতুন API: {"status": "success", "data": [...]}
+                if data.get('status') == 'success':
+                    products = data.get('data', []) or []
+                else:
+                    # fallback — পুরনো nested structure
+                    products = (
+                        data.get('data', {})
+                            .get('search', {})
+                            .get('products', [])
+                    )
+
                 logger.info(f"Target search '{query}': {len(products)} results")
                 return products[:limit]
 
-            logger.error(f"Target search error {response.status_code}: {response.text[:300]}")
+            logger.error(
+                f"Target search error {response.status_code}: {response.text[:300]}"
+            )
             return []
 
         except Exception as e:
@@ -64,149 +73,138 @@ class TargetService:
             return []
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Product Details
+    # Product Details  (optional — এই API তে আলাদা details endpoint নেই)
     # ─────────────────────────────────────────────────────────────────────────
 
     def get_product_details(self, tcin):
         """
-        tcin দিয়ে Target product details আনো।
+        tcin দিয়ে search করে প্রথম result return করে।
+        নতুন API তে dedicated details endpoint নেই।
         """
-        url    = f"https://{self.host}/product_details"
-        params = {
-            'tcin':     tcin,
-            'store_id': self.store_id,
-        }
-
-        try:
-            response = requests.get(
-                url, headers=self.headers, params=params, timeout=20
-            )
-            if response.status_code == 200:
-                data = response.json()
-                return data.get('data', {}) or None
-            logger.error(f"Target details error {response.status_code}: {tcin}")
-            return None
-
-        except Exception as e:
-            logger.error(f"Target details exception ({tcin}): {e}")
-            return None
+        items = self.search_products(tcin, limit=1)
+        if items:
+            return items[0]
+        return None
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Data Extraction
+    # Data Extraction  —  নতুন flat response structure
     # ─────────────────────────────────────────────────────────────────────────
 
     def extract_product_data(self, item):
         """
-        Target API response কে standard DB format এ convert করে।
+        নতুন Target API response কে standard DB format এ convert করে।
 
-        Response structure:
-        - item.tcin: product ID
-        - item.parent.item.product_description.title: title
-        - item.parent.item.primary_brand.name: brand
-        - item.parent.item.enrichment.images.primary_image_url: image
-        - item.parent.item.enrichment.buy_url: product URL
-        - item.price.current_retail: price
-        - item.price.reg_retail: original price
-        - item.parent.ratings_and_reviews: reviews
+        New response structure:
+        - item['title']           : product title
+        - item['brand']           : brand name
+        - item['product_url']     : full Target URL
+        - item['primary_image']   : main image URL
+        - item['all_images']      : list of image URLs
+        - item['price']['current']: current price (string, e.g. "$999.99" or "Price Varies")
+        - item['price']['original']: original price or null
+        - item['bullet_descriptions']: list of HTML bullet strings
+        - item['soft_bullets']    : list of feature strings
+        - item['rating']          : float or null
+        - item['reviews_count']   : int or null
+        - item['tcin']            : product ID
         """
 
-        parent       = item.get('parent', {}) or {}
-        parent_item  = parent.get('item', {}) or {}
-        enrichment   = parent_item.get('enrichment', {}) or {}
-        desc         = parent_item.get('product_description', {}) or {}
-        brand_info   = parent_item.get('primary_brand', {}) or {}
-        images_info  = enrichment.get('images', {}) or {}
-        rar          = parent.get('ratings_and_reviews', {}) or {}
-
         # ── ID ───────────────────────────────────────────────────────────────
-        external_id = str(item.get('tcin') or parent.get('tcin') or '')
+        external_id = str(item.get('tcin') or '')
+
+        # product_url থেকে TCIN extract করা fallback
+        if not external_id:
+            url_str = item.get('product_url', '')
+            match   = re.search(r'/A-(\d+)', url_str)
+            if match:
+                external_id = match.group(1)
 
         # ── Title ────────────────────────────────────────────────────────────
-        title = (
-            desc.get('title')
-            or item.get('item', {}).get('product_description', {}).get('title')
-            or 'Target Product'
-        )
+        title = item.get('title') or 'Target Product'
+
+        # ── Brand ────────────────────────────────────────────────────────────
+        brand = item.get('brand') or ''
 
         # ── Price ────────────────────────────────────────────────────────────
-        price_info = item.get('price', {}) or {}
-        price_raw  = (
-            price_info.get('current_retail')
-            or price_info.get('reg_retail')
-            or 0
-        )
-        try:
-            price = float(price_raw)
-        except (ValueError, TypeError):
-            price = 0.0
+        price_info  = item.get('price', {}) or {}
+        price_raw   = price_info.get('current') or ''
+        price       = self._parse_price(price_raw)
+        orig_raw    = self._parse_price(price_info.get('original'))
 
-        # ── Original Price ───────────────────────────────────────────────────
-        original_price = None
-        reg_retail     = price_info.get('reg_retail')
-        if reg_retail:
-            try:
-                reg = float(reg_retail)
-                if reg > price:
-                    original_price = reg
-            except (ValueError, TypeError):
-                pass
+        # "Price Varies" — carrier/contract phone, price অজানা
+        is_price_varies = isinstance(price_raw, str) and 'varies' in price_raw.lower()
 
-        # ── Discount ─────────────────────────────────────────────────────────
+        original_price      = None
         discount_percentage = None
-        if original_price and price and original_price > price:
+
+        if orig_raw and price and orig_raw > price:
+            original_price      = orig_raw
             discount_percentage = round(
                 ((original_price - price) / original_price) * 100, 2
             )
 
-        # ── Brand ────────────────────────────────────────────────────────────
-        brand = brand_info.get('name', '')
-
         # ── Images ───────────────────────────────────────────────────────────
-        main_image = images_info.get('primary_image_url', '')
-        alt_images = images_info.get('alternate_image_urls', []) or []
+        main_image = item.get('primary_image') or ''
+        alt_images = item.get('all_images') or []
+        # primary_image কে alt_images থেকে বাদ দাও (duplicate এড়াতে)
+        alt_images = [img for img in alt_images if img != main_image]
 
         # ── URL ──────────────────────────────────────────────────────────────
-        buy_url      = enrichment.get('buy_url', '')
-        external_url = (
-            f"https://www.target.com{buy_url}"
-            if buy_url and not buy_url.startswith('http')
-            else buy_url
-        )
+        external_url = item.get('product_url') or ''
         if not external_url and external_id:
             external_url = f"https://www.target.com/p/-/A-{external_id}"
 
         # ── Rating & Reviews ─────────────────────────────────────────────────
-        rating_stats  = rar.get('statistics', {}) or {}
-        rating_val    = rating_stats.get('rating', {}).get('primary', 0) or 0
-        review_count  = rating_stats.get('review_count', 0) or 0
+        # rating field টি dict হতে পারে: {'average': 4.35, 'count': 2389}
+        rating_raw   = item.get('rating')
+        review_count = item.get('reviews_count') or 0
+
+        if isinstance(rating_raw, dict):
+            rating_val   = rating_raw.get('average') or rating_raw.get('rating') or 0
+            review_count = rating_raw.get('count') or review_count
+        else:
+            rating_val = rating_raw or 0
+
         try:
-            seller_rating = float(rating_val) * 20  # 5-star → 0-100
+            seller_rating = float(rating_val) * 20 if rating_val else None  # 5-star → 0-100
         except (ValueError, TypeError):
             seller_rating = None
+
         try:
             review_count = int(review_count)
         except (ValueError, TypeError):
             review_count = 0
 
-        # ── Category ─────────────────────────────────────────────────────────
-        category_info = item.get('category', {}) or {}
-        category_id   = category_info.get('category_id', '')
-        merch_class   = parent_item.get('merchandise_classification', {}) or {}
-        category_path = merch_class.get('class_description', '') or 'General Merchandise'
-
-        # ── Description ──────────────────────────────────────────────────────
-        bullets     = desc.get('bullet_descriptions', []) or []
+        # ── Description — bullet_descriptions থেকে ───────────────────────────
+        bullets     = item.get('bullet_descriptions') or []
         description = ' '.join(
             re.sub(r'<[^>]+>', '', b) for b in bullets[:5]
         ) if bullets else ''
 
-        # ── Promotions ───────────────────────────────────────────────────────
-        promotions    = item.get('promotions', []) or []
-        promo_text    = promotions[0].get('promotion_message', '') if promotions else ''
+        # যদি bullet না থাকে soft_bullets try করো
+        if not description:
+            soft = item.get('soft_bullets') or []
+            description = ' '.join(soft[:3])
 
-        # ── Fulfillment ──────────────────────────────────────────────────────
-        fulfillment   = item.get('fulfillment', {}) or {}
-        is_available  = True  # Target products are generally available
+        # ── Category path ────────────────────────────────────────────────────
+        category_path = item.get('category', '') or 'General Merchandise'
+
+        # ── Specifications — bullet_descriptions থেকে key-value parse ────────
+        specs = {'Store': 'Target', 'Brand': brand or 'N/A'}
+        if external_id:
+            specs['TCIN'] = external_id
+        if rating_val:
+            try:
+                specs['Rating'] = str(round(float(rating_val), 2))
+            except (ValueError, TypeError):
+                pass
+        specs['Reviews'] = str(review_count)
+
+        for bullet in bullets[:10]:
+            clean = re.sub(r'<[^>]+>', '', bullet)
+            if ':' in clean:
+                k, _, v = clean.partition(':')
+                specs[k.strip()] = v.strip()
 
         return {
             'external_id':    external_id,
@@ -230,7 +228,7 @@ class TargetService:
             'gtin': None,
             'asin': None,
 
-            'is_available': is_available,
+            'is_available': not is_price_varies,  # Price Varies = contract phone, skip
 
             'seller_username':       'Target',
             'seller_rating':         seller_rating,
@@ -240,22 +238,35 @@ class TargetService:
             'ships_from_country': 'US',
 
             'returns_accepted':   True,
-            'return_period_days': 90,  # Target এর 90-day return policy
+            'return_period_days': 90,  # Target 90-day return policy
 
             'shipping_info': {
                 'cost':           0,
                 'currency':       'USD',
-                'free_shipping':  price >= 35,  # Target free shipping on $35+
+                'free_shipping':  (price >= 35) if (price and not is_price_varies) else False,
                 'estimated_days': 5,
             },
 
-            'specifications': {
-                'Store':       'Target',
-                'TCIN':        external_id,
-                'Brand':       brand or 'N/A',
-                'Rating':      str(rating_val) if rating_val else 'N/A',
-                'Reviews':     str(review_count),
-                'Category ID': category_id,
-                'Promotion':   promo_text or 'N/A',
-            },
+            'specifications': specs,
         }
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_price(raw) -> float:
+        """
+        "$999.99", "999.99", "Price Varies", None — যেকোনো input থেকে float বের করো।
+        Parse করা না গেলে 0.0 return করো।
+        """
+        if raw is None:
+            return 0.0
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        # string থেকে numbers + dot রাখো
+        cleaned = re.sub(r'[^\d.]', '', str(raw))
+        try:
+            return float(cleaned) if cleaned else 0.0
+        except ValueError:
+            return 0.0
