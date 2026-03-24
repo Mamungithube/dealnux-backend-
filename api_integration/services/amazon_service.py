@@ -36,6 +36,7 @@ class AmazonService:
         }
         try:
             response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            print(f"API Response: {response.json()}")
             logger.debug(f"Amazon search status: {response.status_code}")
             if response.status_code == 200:
                 data = response.json().get('data', {})

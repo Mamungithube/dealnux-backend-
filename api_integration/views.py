@@ -85,7 +85,7 @@ def _build_result_template(query, platform_code, limit):
 
 
 def _generic_sync_loop(items, platform, external_id_key, save_callable, query=None):
-    result    = _build_result_template('', platform.code, 0)
+    result = _build_result_template('', platform.code, 0)
     cat_cache = list(Category.objects.all())
 
     for item in items:
@@ -132,14 +132,14 @@ def _normalize_and_sync_generic(service, platform, query, limit, success_msg, no
     if not items:
         return error_response(not_found_msg, code=404)
 
-    normalized  = []
+    normalized = []
     query_words = set(query.lower().split())
 
     for item in items:
         try:
             product_data = service.extract_product_data(item)
-            title_lower  = (product_data.get('title') or '').lower()
-            brand_lower  = (product_data.get('brand') or '').lower()
+            title_lower = (product_data.get('title') or '').lower()
+            brand_lower = (product_data.get('brand') or '').lower()
 
             is_relevant = any(
                 word in title_lower or word in brand_lower
@@ -179,7 +179,7 @@ def sync_ebay_products(platform, query, limit):
 
 def sync_amazon_products(platform, query, limit):
     service = AmazonService()
-    items   = service.search_products(query, limit=limit)
+    items = service.search_products(query, limit=limit)
 
     if items is None:
         return error_response("Amazon search failed", code=500)
@@ -207,7 +207,7 @@ def sync_amazon_products(platform, query, limit):
 
 def sync_walmart_products(platform, query, limit):
     service = WalmartService()
-    items   = service.search_products(query, limit=limit)
+    items = service.search_products(query, limit=limit)
 
     if not items:
         return error_response("No Walmart products found", code=404)
@@ -268,6 +268,7 @@ def sync_bestbuy_products(platform, query, limit):
         not_found_msg="No BestBuy products found",
     )
 
+
 PLATFORM_SYNC_CONFIG = {
     'ebay':       {'sync_func': sync_ebay_products,       'name': 'eBay'},
     'amazon':     {'sync_func': sync_amazon_products,     'name': 'Amazon'},
@@ -292,19 +293,21 @@ def sync_all_platforms(query, limit):
     }
 
     for platform in enabled_platforms:
-        sync_func = PLATFORM_SYNC_CONFIG.get(platform.code, {}).get('sync_func')
+        sync_func = PLATFORM_SYNC_CONFIG.get(
+            platform.code, {}).get('sync_func')
         if not sync_func:
             continue
         try:
-            result      = sync_func(platform, query, limit)
+            result = sync_func(platform, query, limit)
             result_data = result.data.get('data', {})
             all_results['platforms'].append(platform.code)
-            all_results['total_synced']  += result_data.get('synced', 0)
+            all_results['total_synced'] += result_data.get('synced', 0)
             all_results['total_updated'] += result_data.get('updated', 0)
-            all_results['total_failed']  += result_data.get('failed', 0)
+            all_results['total_failed'] += result_data.get('failed', 0)
             all_results['results_by_platform'][platform.code] = result_data
         except Exception as e:
-            logger.error(f"Failed to sync platform {platform.code}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to sync platform {platform.code}: {e}", exc_info=True)
 
     return success_response(all_results, message="All platforms synced")
 
@@ -314,9 +317,9 @@ def sync_all_platforms(query, limit):
 # ============================================================================
 
 class StandardResultsSetPagination(PageNumberPagination):
-    page_size              = 20
-    page_size_query_param  = 'page_size'
-    max_page_size          = 100
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 # ============================================================================
@@ -327,9 +330,9 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True).prefetch_related(
         'listings', 'images', 'specifications', 'category'  # category prefetch → N+1 fix
     )
-    serializer_class  = ProductSerializer
-    pagination_class  = StandardResultsSetPagination
-    lookup_field      = 'slug'
+    serializer_class = ProductSerializer
+    pagination_class = StandardResultsSetPagination
+    lookup_field = 'slug'
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -360,13 +363,16 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         sort = self.request.query_params.get('sort', '-created_at')
         if sort == 'price_low':
-            queryset = queryset.annotate(sort_price=Min('listings__price')).order_by('sort_price')
+            queryset = queryset.annotate(sort_price=Min(
+                'listings__price')).order_by('sort_price')
         elif sort == 'price_high':
-            queryset = queryset.annotate(sort_price=Min('listings__price')).order_by('-sort_price')
+            queryset = queryset.annotate(sort_price=Min(
+                'listings__price')).order_by('-sort_price')
         elif sort == 'newest':
             queryset = queryset.order_by('-created_at')
         elif sort == 'popular':
-            queryset = queryset.annotate(listing_count=Count('listings')).order_by('-listing_count')
+            queryset = queryset.annotate(listing_count=Count(
+                'listings')).order_by('-listing_count')
         else:
             queryset = queryset.order_by(sort)
 
@@ -374,8 +380,9 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def compare_prices(self, request, slug=None):
-        product  = self.get_object()
-        listings = product.listings.filter(is_available=True).select_related('platform')
+        product = self.get_object()
+        listings = product.listings.filter(
+            is_available=True).select_related('platform')
 
         comparison_data = {
             'product': {
@@ -404,7 +411,8 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'last_updated':  listing.last_checked,
             })
 
-        comparison_data['price_comparison'].sort(key=lambda x: x['total_price'])
+        comparison_data['price_comparison'].sort(
+            key=lambda x: x['total_price'])
         comparison_data['best_deal'] = (
             comparison_data['price_comparison'][0]
             if comparison_data['price_comparison'] else None
@@ -414,13 +422,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset         = ProductListing.objects.filter(is_available=True).select_related('product', 'platform')
+    queryset = ProductListing.objects.filter(
+        is_available=True).select_related('product', 'platform')
     serializer_class = ProductListingSerializer
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        queryset  = super().get_queryset()
-        platform  = self.request.query_params.get('platform')
+        queryset = super().get_queryset()
+        platform = self.request.query_params.get('platform')
         condition = self.request.query_params.get('condition')
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
@@ -439,7 +448,7 @@ class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
 
 class PlatformViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PlatformSerializer
-    lookup_field     = 'code'
+    lookup_field = 'code'
 
     def get_queryset(self):
         return Platform.objects.filter(api_enabled=True) | Platform.objects.filter(
@@ -448,9 +457,9 @@ class PlatformViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset         = Category.objects.all()
+    queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    lookup_field     = 'slug'
+    lookup_field = 'slug'
 
 
 # ============================================================================
@@ -459,8 +468,8 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['GET'])
 def search_and_sync(request):
-    query         = request.GET.get('q', '')
-    limit         = min(int(request.GET.get('limit', 10)), 50)
+    query = request.GET.get('q', '')
+    limit = min(int(request.GET.get('limit', 10)), 50)
     platform_code = request.GET.get('platform', 'amazon')
 
     if not query:
@@ -498,7 +507,7 @@ def smart_search(request):
         return error_response('q is required', code=400)
 
     cache_key = f'smart_search_v4_{query}_{limit}'
-    cached    = cache.get(cache_key)
+    cached = cache.get(cache_key)
     if cached:
         return success_response({
             'source':  'cache',
@@ -535,14 +544,15 @@ def smart_search(request):
                 continue
 
             listings = product.listings.filter(
-                is_available=True
+                is_available=True,
+                price__gt=0
             ).select_related('platform').order_by('price')
 
             if not listings.exists():
                 continue
 
             # ── Price comparison ──────────────────────────────────────────
-            seen_urls        = set()
+            seen_urls = set()
             price_comparison = []
 
             for listing in listings:
@@ -550,7 +560,7 @@ def smart_search(request):
                     continue
                 seen_urls.add(listing.external_url)
 
-                base_price  = float(listing.price) if listing.price else 0
+                base_price = float(listing.price) if listing.price else 0
                 total_price = float(listing.get_total_price())
 
                 price_comparison.append({
@@ -578,7 +588,8 @@ def smart_search(request):
 
             # ── Sort by total_price (comparison), pick best by base price ─
             valid_prices.sort(key=lambda x: x['total_price'])
-            best_deal = min(valid_prices, key=lambda x: x['price'])  # base price সবচেয়ে কম
+            # base price সবচেয়ে কম
+            best_deal = min(valid_prices, key=lambda x: x['price'])
             platforms = list({p['platform_code'] for p in valid_prices})
 
             results.append({
@@ -590,7 +601,8 @@ def smart_search(request):
                 'category_name':   product.category.name if product.category else '',
                 'platforms_count': len(platforms),
                 'available_on':    platforms,
-                'lowest_price':    best_deal['price'],          # base price only
+                # base price only
+                'lowest_price':    best_deal['price'],
                 'best_deal': {
                     'platform':      best_deal['platform'],
                     'platform_code': best_deal['platform_code'],
@@ -627,11 +639,11 @@ def smart_search(request):
 @api_view(['GET'])
 def task_status(request, task_id):
     from celery.result import AsyncResult
-    result        = AsyncResult(task_id)
+    result = AsyncResult(task_id)
     response_data = {'task_id': task_id, 'status': result.status}
 
     if result.status == 'SUCCESS':
-        response_data['result']  = result.result
+        response_data['result'] = result.result
         response_data['message'] = 'Sync completed! Now fetch results.'
     elif result.status == 'FAILURE':
         response_data['error'] = str(result.result)
@@ -646,7 +658,7 @@ def product_price_history(request, slug):
     except Product.DoesNotExist:
         return error_response('Product not found', code=404)
 
-    listings     = product.listings.all()
+    listings = product.listings.all()
     history_data = []
 
     for listing in listings:
@@ -672,7 +684,8 @@ def product_price_history(request, slug):
 @api_view(['POST'])
 def bulk_sync_products(request):
     platform_code = request.data.get('platform')
-    product_ids   = request.data.get('product_ids') or request.data.get('external_ids', [])
+    product_ids = request.data.get(
+        'product_ids') or request.data.get('external_ids', [])
 
     if not platform_code or not product_ids:
         return error_response('Both "platform" and "product_ids" are required', code=400)
@@ -694,7 +707,7 @@ def bulk_sync_products(request):
         return error_response(f'Platform "{platform_code}" not supported for bulk sync', code=400)
 
     service = service_class()
-    result  = {
+    result = {
         'platform': platform_code,
         'total':    len(product_ids),
         'synced':   0,
@@ -739,15 +752,16 @@ def bulk_sync_products(request):
 
         except Exception as e:
             result['failed'] += 1
-            logger.error(f"Bulk sync failed for {external_id}: {e}", exc_info=True)
+            logger.error(
+                f"Bulk sync failed for {external_id}: {e}", exc_info=True)
 
     return success_response(result, message="Bulk sync completed")
 
 
 @api_view(['GET'])
 def get_external_ids(request):
-    query         = request.GET.get('q', '')
-    limit         = min(int(request.GET.get('limit', 10)), 50)
+    query = request.GET.get('q', '')
+    limit = min(int(request.GET.get('limit', 10)), 50)
     platform_code = request.GET.get('platform', 'ebay')
 
     if not query:
@@ -764,10 +778,11 @@ def get_external_ids(request):
         all_items = {}
         for code, (ServiceClass, id_key) in platform_config.items():
             try:
-                svc   = ServiceClass()
+                svc = ServiceClass()
                 items = svc.search_products(query, limit=limit) or []
                 for item in items:
-                    d = svc.extract_product_data(item) if hasattr(svc, 'extract_product_data') else item
+                    d = svc.extract_product_data(item) if hasattr(
+                        svc, 'extract_product_data') else item
                     all_items.setdefault(code, []).append({
                         'external_id': d.get('external_id') or d.get(id_key, ''),
                         'title':       d.get('title') or d.get('name'),
@@ -787,12 +802,13 @@ def get_external_ids(request):
         return error_response(f'Platform "{platform_code}" not supported', code=400)
 
     ServiceClass, id_key = platform_config[platform_code]
-    service              = ServiceClass()
-    raw_items            = service.search_products(query, limit=limit) or []
+    service = ServiceClass()
+    raw_items = service.search_products(query, limit=limit) or []
 
     items_detail = []
     for item in raw_items:
-        d = service.extract_product_data(item) if hasattr(service, 'extract_product_data') else item
+        d = service.extract_product_data(item) if hasattr(
+            service, 'extract_product_data') else item
         items_detail.append({
             'external_id': d.get('external_id') or d.get(id_key, ''),
             'title':       d.get('title') or d.get('name'),
@@ -814,7 +830,7 @@ def get_external_ids(request):
 # ============================================================================
 
 class CartViewSet(viewsets.ModelViewSet):
-    serializer_class  = CartItemSerializer
+    serializer_class = CartItemSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -839,19 +855,20 @@ class CartViewSet(viewsets.ModelViewSet):
         return self._success(serializer.data, message="Item added to cart", code=201)
 
     def retrieve(self, request, *args, **kwargs):
-        instance   = self.get_object()
+        instance = self.get_object()
         serializer = self.get_serializer(instance)
         return self._success(serializer.data, message="Cart item fetched")
 
     def list(self, request, *args, **kwargs):
-        queryset   = self.get_queryset()
+        queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return self._success(serializer.data, message="Cart items fetched")
 
     def update(self, request, *args, **kwargs):
-        partial    = kwargs.pop('partial', False)
-        instance   = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return self._success(serializer.data, message="Cart item updated")
@@ -867,16 +884,16 @@ class CartViewSet(viewsets.ModelViewSet):
         if not cart_items.exists():
             raise ValidationError({"cart": "Your cart is empty."})
 
-        original_total     = 0
-        optimized_total    = 0
+        original_total = 0
+        optimized_total = 0
         single_store_total = 0
-        optimized_split    = {}
+        optimized_split = {}
         single_store_items = []
 
         for item in cart_items:
-            product        = item.product
-            qty            = item.quantity
-            current_price  = item.selected_listing.price * qty
+            product = item.product
+            qty = item.quantity
+            current_price = item.selected_listing.price * qty
             original_total += current_price
 
             cheapest = ProductListing.objects.filter(
@@ -884,10 +901,11 @@ class CartViewSet(viewsets.ModelViewSet):
             ).order_by('price').first()
 
             if cheapest:
-                opt_price     = cheapest.price * qty
+                opt_price = cheapest.price * qty
                 optimized_total += opt_price
                 platform_name = cheapest.platform.name
-                optimized_split.setdefault(platform_name, {'total': 0, 'items': []})
+                optimized_split.setdefault(
+                    platform_name, {'total': 0, 'items': []})
                 optimized_split[platform_name]['total'] += float(opt_price)
                 optimized_split[platform_name]['items'].append({
                     'product':     product.title,
@@ -943,12 +961,12 @@ class CartViewSet(viewsets.ModelViewSet):
         if not cart_items.exists():
             raise ValidationError({"cart": "Your cart is empty."})
 
-        original_total       = 0
-        optimized_total      = 0
+        original_total = 0
+        optimized_total = 0
         activities_to_create = []
 
         for item in cart_items:
-            qty           = item.quantity
+            qty = item.quantity
             current_price = item.selected_listing.price * qty
             original_total += current_price
 
@@ -957,9 +975,9 @@ class CartViewSet(viewsets.ModelViewSet):
             ).order_by('price').first()
 
             if cheapest:
-                opt_price   = cheapest.price * qty
+                opt_price = cheapest.price * qty
                 optimized_total += opt_price
-                item_saved  = float(current_price - opt_price)
+                item_saved = float(current_price - opt_price)
                 if item_saved > 0:
                     activities_to_create.append(SavingsActivity(
                         user=request.user,
@@ -975,19 +993,22 @@ class CartViewSet(viewsets.ModelViewSet):
             user = request.user
             if total_saved > 0:
                 current_savings = getattr(user, 'total_lifetime_savings', 0)
-                user.total_lifetime_savings = float(current_savings) + total_saved
+                user.total_lifetime_savings = float(
+                    current_savings) + total_saved
                 user.save()
                 if activities_to_create:
                     SavingsActivity.objects.bulk_create(activities_to_create)
             cart_items.delete()
 
-        recent = SavingsActivity.objects.filter(user=request.user).order_by('-created_at')[:5]
-        data   = {
+        recent = SavingsActivity.objects.filter(
+            user=request.user).order_by('-created_at')[:5]
+        data = {
             "total_paid":               float(optimized_total),
             "total_saved_this_order":   total_saved,
             "lifetime_savings_now":     float(getattr(user, 'total_lifetime_savings', 0)),
             "recent_activity": [
-                {"title": a.title, "saved_amount": float(a.saved_amount), "date": a.time_ago}
+                {"title": a.title, "saved_amount": float(
+                    a.saved_amount), "date": a.time_ago}
                 for a in recent
             ],
         }
@@ -995,12 +1016,14 @@ class CartViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
-        user   = request.user
-        recent = SavingsActivity.objects.filter(user=user).order_by('-created_at')[:5]
-        data   = {
+        user = request.user
+        recent = SavingsActivity.objects.filter(
+            user=user).order_by('-created_at')[:5]
+        data = {
             "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
             "recent_activity": [
-                {"title": a.title, "saved_amount": float(a.saved_amount), "date": a.time_ago}
+                {"title": a.title, "saved_amount": float(
+                    a.saved_amount), "date": a.time_ago}
                 for a in recent
             ],
         }
@@ -1011,12 +1034,14 @@ class DashboardSavingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user   = request.user
-        recent = SavingsActivity.objects.filter(user=user).order_by('-created_at')[:5]
-        data   = {
+        user = request.user
+        recent = SavingsActivity.objects.filter(
+            user=user).order_by('-created_at')[:5]
+        data = {
             "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
             "recent_activity": [
-                {"title": a.title, "saved_amount": float(a.saved_amount), "date": a.time_ago}
+                {"title": a.title, "saved_amount": float(
+                    a.saved_amount), "date": a.time_ago}
                 for a in recent
             ],
         }
@@ -1031,44 +1056,50 @@ def category_compare_prices(request, slug):
         return error_response(f'Category "{slug}" not found', code=404)
 
     category_slugs = [category.slug]
-    children       = category.children.all()
+    children = category.children.all()
     if children.exists():
         category_slugs += list(children.values_list('slug', flat=True))
 
-    sort            = request.GET.get('sort', 'price_low')
+    sort = request.GET.get('sort', 'price_low')
     platform_filter = request.GET.get('platform')
 
     products = Product.objects.filter(
         category__slug__in=category_slugs,
         is_active=True,
         listings__is_available=True,
+        listings__price__gt=0
     ).prefetch_related('listings__platform').distinct()
 
     if sort == 'price_low':
-        products = products.annotate(min_price=Min('listings__price')).order_by('min_price')
+        products = products.annotate(min_price=Min(
+            'listings__price')).order_by('min_price')
     elif sort == 'price_high':
-        products = products.annotate(min_price=Min('listings__price')).order_by('-min_price')
+        products = products.annotate(min_price=Min(
+            'listings__price')).order_by('-min_price')
     elif sort == 'newest':
         products = products.order_by('-created_at')
     elif sort == 'popular':
-        products = products.annotate(listing_count=Count('listings')).order_by('-listing_count')
+        products = products.annotate(listing_count=Count(
+            'listings')).order_by('-listing_count')
     else:
-        products = products.annotate(min_price=Min('listings__price')).order_by('min_price')
+        products = products.annotate(min_price=Min(
+            'listings__price')).order_by('min_price')
 
     try:
-        page      = max(1, int(request.GET.get('page', 1)))
+        page = max(1, int(request.GET.get('page', 1)))
         page_size = min(100, max(1, int(request.GET.get('page_size', 20))))
     except (ValueError, TypeError):
         page, page_size = 1, 20
 
     total_count = products.count()
     total_pages = (total_count + page_size - 1) // page_size
-    offset      = (page - 1) * page_size
+    offset = (page - 1) * page_size
     products_page = products[offset: offset + page_size]
 
     results = []
     for product in products_page:
-        listings = product.listings.filter(is_available=True).select_related('platform')
+        listings = product.listings.filter(
+            is_available=True).select_related('platform')
         if platform_filter:
             listings = listings.filter(platform__code=platform_filter)
         if not listings.exists():
@@ -1106,7 +1137,8 @@ def category_compare_prices(request, slug):
             'price_comparison': price_comparison,
         })
 
-    valid_results    = [r for r in results if r['lowest_price'] and r['lowest_price'] > 0]
+    valid_results = [r for r in results if r['lowest_price']
+                     and r['lowest_price'] > 0]
     best_overall_deal = None
     if valid_results:
         best = min(valid_results, key=lambda x: x['lowest_price'])
@@ -1150,9 +1182,9 @@ def category_compare_prices(request, slug):
 # ============================================================================
 
 class FavoriteViewSet(viewsets.ModelViewSet):
-    serializer_class   = FavoriteSerializer
+    serializer_class = FavoriteSerializer
     permission_classes = [IsAuthenticated]
-    http_method_names  = ['get', 'post', 'delete']
+    http_method_names = ['get', 'post', 'delete']
 
     def get_queryset(self):
         return Favorite.objects.filter(user=self.request.user).select_related('product')
@@ -1166,7 +1198,8 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         except Product.DoesNotExist:
             return error_response("Product not found", code=404)
 
-        favorite, created = Favorite.objects.get_or_create(user=request.user, product=product)
+        favorite, created = Favorite.objects.get_or_create(
+            user=request.user, product=product)
         if not created:
             return error_response("Product already in favorites", code=400)
 
@@ -1189,7 +1222,7 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         }, status=200)
 
     def list(self, request, *args, **kwargs):
-        queryset   = self.get_queryset()
+        queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             "success": True, "code": 200,
@@ -1200,7 +1233,8 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='check/(?P<product_id>[^/.]+)')
     def check(self, request, product_id=None):
-        is_favorite = Favorite.objects.filter(user=request.user, product_id=product_id).exists()
+        is_favorite = Favorite.objects.filter(
+            user=request.user, product_id=product_id).exists()
         return Response({
             "success": True, "code": 200, "message": "Checked",
             "timestamp": int(time.time()),
@@ -1217,7 +1251,8 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         except Product.DoesNotExist:
             return error_response("Product not found", code=404)
 
-        favorite = Favorite.objects.filter(user=request.user, product=product).first()
+        favorite = Favorite.objects.filter(
+            user=request.user, product=product).first()
         if favorite:
             favorite.delete()
             return Response({

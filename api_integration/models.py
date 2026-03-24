@@ -106,7 +106,7 @@ class Product(models.Model):
     
     def get_lowest_price(self):
         """Get lowest price across all platforms"""
-        listings = self.listings.filter(is_available=True)
+        listings = self.listings.filter(is_available=True, price__gt=0)
         if listings.exists():
             return listings.order_by('price').first().price
         return None
