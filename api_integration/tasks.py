@@ -1,9 +1,3 @@
-"""
-tasks.py  —  Celery async tasks
-Circular import fix: save_generic_product_to_db এখন db_helpers থেকে আসে।
-Clickbank ও Shopify সরানো হয়েছে।
-"""
-
 from celery import shared_task, group
 from .services.ebay_service import EbayRapidService
 from .services.amazon_service import AmazonService

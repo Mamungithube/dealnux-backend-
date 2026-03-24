@@ -1,15 +1,3 @@
-"""
-views.py  —  Fixed version
-Changes:
-  1. Circular import ভাঙা — save_generic_product_to_db এখন db_helpers থেকে
-  2. Clickbank ও Shopify সরানো
-  3. smart_search — best_deal base price only, total_price আলাদা
-  4. smart_search — DB results এও relevance filter যোগ
-  5. sync_walmart_products — all_categories সঠিকভাবে pass
-  6. sync_from_search_results — keyword argument fix
-  7. prefetch_related — category যোগ (N+1 fix)
-"""
-
 import time
 import logging
 from rest_framework import viewsets, status
@@ -279,9 +267,6 @@ def sync_bestbuy_products(platform, query, limit):
         success_msg="BestBuy sync completed",
         not_found_msg="No BestBuy products found",
     )
-
-
-# ── Platform registry — Clickbank ও Shopify বাদ ──────────────────────────────
 
 PLATFORM_SYNC_CONFIG = {
     'ebay':       {'sync_func': sync_ebay_products,       'name': 'eBay'},

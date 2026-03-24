@@ -21,6 +21,20 @@ class Platform(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if not self.code:
+            if not self.api_enabled:  # local seller = api disabled
+                count = Platform.objects.filter(
+                    code__startswith='local-seller-'
+                ).count()
+                self.code = f'local-seller-{count + 1}'
+            else:
+                self.code = slugify(self.name).replace('-', '')[:20]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
 
 class Category(models.Model):
     """ Product categories - hierarchical with parent-child relationships """
