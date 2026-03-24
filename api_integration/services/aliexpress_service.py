@@ -87,6 +87,7 @@ class AliExpressService:
                     return data[0]
                 if isinstance(data, dict):
                     return data
+                    
             logger.error(f"AliExpress details error {response.status_code}: {product_id}")
             return None
 

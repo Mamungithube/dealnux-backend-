@@ -520,10 +520,6 @@ STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
 #     EBAY_BASE_URL = 'https://api.ebay.com'
 
 
-# ClickBank API Configuration
-# CLICKBANK_API_KEY = config('CLICKBANK_API_KEY', default='')
-# CLICKBANK_DEV_KEY = config('CLICKBANK_DEV_KEY', default='DEV-123456789012345678901234567890123456')
-
 # RapidAPI and Walmart API Configuration (future)
 # WALMART_CLIENT_ID = os.getenv('WALMART_CLIENT_ID')
 # WALMART_CLIENT_SECRET = os.getenv('WALMART_CLIENT_SECRET')

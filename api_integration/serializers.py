@@ -137,7 +137,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return float(price) if price else None
 
     def get_price_range(self, obj):
-        listings = obj.listings.filter(is_available=True)
+        listings = obj.listings.filter(is_available=True, price__gt=0)
         if listings.exists():
             prices = [float(l.price) for l in listings]
             return {

@@ -103,7 +103,7 @@ class UserSubscription(models.Model):
     plan             = models.ForeignKey(SubscriptionPlan, on_delete=models.SET_NULL, null=True)
     status           = models.CharField(max_length=20, choices=STATUS_CHOICES, default='TRIAL')
     trial_started_at = models.DateTimeField(auto_now_add=True)
-    trial_ends_at    = models.DateTimeField()  # plan.free_trial_days দিয়ে calculate
+    trial_ends_at    = models.DateTimeField()
     started_at       = models.DateTimeField(null=True, blank=True)
     expires_at       = models.DateTimeField(null=True, blank=True)
 

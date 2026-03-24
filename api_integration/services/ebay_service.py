@@ -130,7 +130,7 @@ class EbayRapidService:
 
         # Non-USD flag — db_helpers.py এ is_valid_usd_price() এটা check করে
         is_non_usd = currency in _NON_USD_CURRENCY_CODES
-
+        api_currency = current.get('currency', currency) 
         # ── Original Price ────────────────────────────────────────────────
         original_price = None
         prev_price_raw = price_info.get('previousPrice') or price_info.get('trendingPrice')
@@ -178,10 +178,7 @@ class EbayRapidService:
         bids_count   = int(item.get('bidsCount', 0) or 0)
 
         # ── Title clean ───────────────────────────────────────────────────
-        title = item.get('title', 'eBay Product')
-        title = re.sub(r'Új ablakban.*', '', title).strip()
-        title = re.sub(r'Opens in a new.*', '', title, flags=re.IGNORECASE).strip()
-        title = re.sub(r'新しいウィンドウ.*', '', title).strip()
+        title = item.get('title', 'eBay Product').strip()
 
         return {
             'external_id':    external_id,
@@ -190,9 +187,9 @@ class EbayRapidService:
             'external_url':   item_url,
 
             'price':               price,
-            'currency':            'USD',       # DB always stores USD
+            'currency':            api_currency,       # DB always stores USD
             '_price_raw':          raw_from,    # db_helpers currency check এর জন্য
-            '_is_non_usd':         is_non_usd,  # quick flag
+            '_is_non_usd':         api_currency != 'USD',  # quick flag
             'original_price':      original_price,
             'discount_percentage': discount_percentage,
 
