@@ -8,7 +8,7 @@ from api_integration.models import Category
 from django.utils.text import slugify
 
 # ============================================================
-# আগের সব category মুছে নতুন করে শুরু
+# Delete all previous categories and start over.
 # ============================================================
 deleted, _ = Category.objects.all().delete()
 print(f"🗑  Deleted {deleted} old categories\n")
@@ -335,7 +335,7 @@ CATEGORY_TREE = [
 ]
 
 # ============================================================
-# Seeder — parent তারপর children
+# Seeder — parent then children
 # ============================================================
 created = 0
 skipped = 0
