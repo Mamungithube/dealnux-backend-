@@ -1,6 +1,8 @@
 from django.shortcuts import render
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
+
+from store.models import SellerRequest
 from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer,
                          ChangePasswordSerializer, ResetPasswordSerializer,
                          LoginSerializer, ProfileSerializer, ProfileUpdateSerializer,
@@ -747,6 +749,20 @@ class ProfileDetailsView(generics.RetrieveAPIView):
         except AdvertiserRequest.DoesNotExist:
             return {"status": "not_applied"}
 
+    def get_seller_status(self, user):
+        try:
+            req = SellerRequest.objects.get(user=user)
+            data = {
+                "status": req.status.lower(),
+                "applied_at": req.created_at,
+                "shop_name": req.shop_name,
+            }
+            if req.status == 'REJECTED':
+                data["admin_note"] = req.admin_note
+            return data
+        except SellerRequest.DoesNotExist:
+            return {"status": "not_applied"}
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
@@ -759,12 +775,12 @@ class ProfileDetailsView(generics.RetrieveAPIView):
                 "timestamp": int(time.time()),
                 "data": {
                     **serializer.data,
-                    "advertiser_status": self.get_advertiser_status(request.user)
+                    "advertiser_status": self.get_advertiser_status(request.user),
+                    "seller_status": self.get_seller_status(request.user),
                 }
             },
             status=status.HTTP_200_OK
         )
-
 """ ------------------------Profile UpdateView view--------------------------- """
 
 
