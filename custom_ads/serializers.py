@@ -120,6 +120,7 @@ class AdPublicSerializer(serializers.ModelSerializer):
         # From Ad's start_date to today
         start = obj.start_date.date()
         today = timezone.now().date()
+        end = min(obj.end_date.date(), today)
 
         daily_data = AdDailyPerformance.objects.filter(
             ad=obj,
@@ -132,7 +133,7 @@ class AdPublicSerializer(serializers.ModelSerializer):
         result = []
 
         current = start
-        while current <= today:
+        while current <= end:
             if current in data_map:
                 result.append({
                     'date': current.strftime('%Y-%m-%d'),

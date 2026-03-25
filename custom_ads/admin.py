@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin
 from unfold.decorators import display, action
 from unfold.enums import ActionVariant
 from .models import CustomAd, AdvertiserRequest, AdReview, AdSetting
-
+from django.utils import timezone
 
 
 def pending_advertiser_requests_count(request):
@@ -146,6 +146,15 @@ class AdSettingAdmin(ModelAdmin):
 
 @admin.register(CustomAd)
 class CustomAdAdmin(ModelAdmin):
+    def get_queryset(self, request):
+            qs = super().get_queryset(request)
+            # Admin page load হলে expired ads automatically update হবে
+            qs.filter(
+                status='active',
+                end_date__lt=timezone.now()
+            ).update(status='expired')
+            return qs
+
     list_display = (
          'title','id', 'target_section', 'advertiser_email', 'display_status',
         'is_approved', 'total_budget', 'spent_amount', 'clicks', 'impressions',

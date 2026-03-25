@@ -69,12 +69,13 @@ class CustomAd(models.Model):
     @property
     def budget_remaining(self):
         return float(self.total_budget - self.spent_amount)
-    
-    def check_and_expire(self):
+
+    def save(self, *args, **kwargs):
+    # Save হওয়ার আগে check করো
         if self.status == 'active':
-            if self.budget_remaining <= 0 or self.end_date <= timezone.now():
+            if self.end_date <= timezone.now() or self.spent_amount >= self.total_budget:
                 self.status = 'expired'
-                self.save(update_fields=['status'])
+        super().save(*args, **kwargs)
 
 
 class AdSetting(models.Model):

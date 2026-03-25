@@ -11,23 +11,26 @@ def get_weighted_ads(count=3):
     - Automatically updates impressions.
     """
     cache_key = 'active_ads_pool'
-    
-    # 1. Fetching active ad pools from cache
-    active_ads = cache.get(cache_key)
-    
-    if active_ads is None:
+    active_ad_ids = cache.get(cache_key)
+
+    if active_ad_ids is None:
         now = timezone.now()
-        # Filter only valid ads
-        active_ads = list(CustomAd.objects.filter(
+        active_ad_ids = list(CustomAd.objects.filter(
             Q(is_approved=True) &
             Q(status='active') &
             Q(start_date__lte=now) &
             Q(end_date__gte=now) &
             Q(total_budget__gt=F('spent_amount'))
-        ).select_related('advertiser'))
-        
-        # Cached for 60 seconds
-        cache.set(cache_key, active_ads, 60)
+        ).values_list('id', flat=True))
+        cache.set(cache_key, active_ad_ids, 60)
+
+    # Cache এর পরে fresh query
+    active_ads = list(CustomAd.objects.filter(
+        id__in=active_ad_ids,
+        status='active',
+        end_date__gte=timezone.now(),
+        total_budget__gt=F('spent_amount')
+    ).select_related('advertiser'))
 
     if not active_ads:
         return[]
@@ -51,7 +54,6 @@ def get_weighted_ads(count=3):
         from .models import AdDailyPerformance # import here to avoid circular dependency
         
         for ad in selected_ads:
-            ad.impressions += 1 # Update Python object for the current request
             daily_stat, _ = AdDailyPerformance.objects.get_or_create(ad=ad, date=today)
             daily_stat.impressions = F('impressions') + 1
             daily_stat.save()

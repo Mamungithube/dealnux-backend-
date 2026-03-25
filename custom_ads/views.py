@@ -18,6 +18,7 @@ from .permissions import IsAdminUser
 import time
 from django.http import Http404
 from django.utils import timezone
+from django.core.cache import cache 
 
 # ১. Advertiser Request Apply
 class ApplyForAdvertiserView(generics.CreateAPIView):
@@ -200,8 +201,16 @@ class AdListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
+        expired_count = CustomAd.objects.filter(
+            status='active',
+            end_date__lt=timezone.now()
+        ).update(status='expired')
+        
+        if expired_count > 0:
+            cache.delete('active_ads_pool')  # ✅ এই লাইনটা যোগ করো
+        
         count = int(self.request.query_params.get('count', 3))
-        count = min(count, 10)  # Max 10 ads
+        count = min(count, 10)
         return get_weighted_ads(count=count)
 
     def list(self, request, *args, **kwargs):
