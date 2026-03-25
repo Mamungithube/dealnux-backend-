@@ -136,7 +136,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=10),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=365 * 100),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
@@ -313,6 +313,7 @@ UNFOLD = {
                         "title": "Advertiser Requests",
                         "icon": "request_page",
                         "link": "/admin/custom_ads/advertiserrequest/",
+                        "badge": "custom_ads.admin.pending_advertiser_requests_count",
                     },
                     {
                         "title": "Ad Reviews",

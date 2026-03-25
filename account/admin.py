@@ -26,7 +26,7 @@ class UserAdmin(ModelAdmin):
         'date_joined', 'referral_code', 'balance',
         'has_claimed_referral', 'referred_by'
     )
-    # list_editable = ('ads_provided',)
+    list_editable = ('ads_provided',)
     search_fields = ('email', 'name', 'referral_code')
     list_filter = ('has_claimed_referral', 'is_active', 'ads_provided')
     ordering = ('email',)

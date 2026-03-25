@@ -72,7 +72,7 @@ class SellerRequestAdmin(ModelAdmin):
     )
 
     actions_row  = ['action_approve_row', 'action_reject_row']
-    actions_list = ['action_approve_all_pending']
+    actions_list = []
 
     def save_model(self, request, obj, form, change):
         if change and 'status' in form.changed_data:
@@ -148,19 +148,19 @@ class SellerRequestAdmin(ModelAdmin):
             self.message_user(request, f'✗ {obj.user.email} request rejected.')
         return HttpResponseRedirect('../..')
 
-    @action(
-        description=_('Approve all PENDING'),
-        icon='done_all',
-        variant=ActionVariant.PRIMARY,
-    )
-    def action_approve_all_pending(self, request):
-        from django.http import HttpResponseRedirect
-        pending = SellerRequest.objects.filter(status='PENDING')
-        count   = pending.count()
-        for sr in pending:
-            sr.approve(admin_user=request.user)
-        self.message_user(request, f'✓ {count} request(s) approved.')
-        return HttpResponseRedirect('../..')
+    # @action(
+    #     description=_('Approve all PENDING'),
+    #     icon='done_all',
+    #     variant=ActionVariant.PRIMARY,
+    # )
+    # def action_approve_all_pending(self, request):
+    #     from django.http import HttpResponseRedirect
+    #     pending = SellerRequest.objects.filter(status='PENDING')
+    #     count   = pending.count()
+    #     for sr in pending:
+    #         sr.approve(admin_user=request.user)
+    #     self.message_user(request, f'✓ {count} request(s) approved.')
+    #     return HttpResponseRedirect('../..')
 
 
 # ============================================================================
@@ -294,7 +294,7 @@ class SellerProductAdmin(ModelAdmin):
     )
 
     actions_row  = ['action_approve_product', 'action_reject_product']
-    actions_list = ['action_approve_all_pending_products']
+    actions_list = []
 
     @display(description=_('Product'), ordering='title')
     def display_product(self, obj):
@@ -385,19 +385,19 @@ class SellerProductAdmin(ModelAdmin):
             self.message_user(request, f'✗ "{obj.title[:40]}" rejected.')
         return HttpResponseRedirect('../..')
 
-    @action(
-        description=_('Approve all PENDING products'),
-        icon='done_all',
-        variant=ActionVariant.PRIMARY,
-    )
-    def action_approve_all_pending_products(self, request):
-        from django.http import HttpResponseRedirect
-        pending = SellerProduct.objects.filter(status='PENDING')
-        count   = pending.count()
-        for p in pending:
-            p.approve(admin_user=request.user)
-        self.message_user(request, f'✓ {count} product(s) approved and listed.')
-        return HttpResponseRedirect('../..')
+    # @action(
+    #     description=_('Approve all PENDING products'),
+    #     icon='done_all',
+    #     variant=ActionVariant.PRIMARY,
+    # )
+    # def action_approve_all_pending_products(self, request):
+    #     from django.http import HttpResponseRedirect
+    #     pending = SellerProduct.objects.filter(status='PENDING')
+    #     count   = pending.count()
+    #     for p in pending:
+    #         p.approve(admin_user=request.user)
+    #     self.message_user(request, f'✓ {count} product(s) approved and listed.')
+    #     return HttpResponseRedirect('../..')
 
 
 # ============================================================================
