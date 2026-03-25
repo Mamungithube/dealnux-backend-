@@ -242,6 +242,7 @@ class OrderSerializer(serializers.ModelSerializer):
     buyer_email  = serializers.CharField(source='buyer.email',  read_only=True)
     seller_shop  = serializers.CharField(source='seller.shop_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    seller_product = SellerProductPublicSerializer(read_only=True)
 
     class Meta:
         model = Order
