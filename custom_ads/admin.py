@@ -4,54 +4,114 @@ from unfold.admin import ModelAdmin
 from unfold.decorators import display, action
 from unfold.enums import ActionVariant
 from .models import CustomAd, AdvertiserRequest, AdReview, AdSetting
-from decimal import Decimal
 
+
+
+def pending_advertiser_requests_count(request):
+    count = AdvertiserRequest.objects.filter(is_reviewed=False).count()
+    return str(count) if count > 0 else "0"
 
 @admin.register(AdvertiserRequest)
 class AdvertiserRequestAdmin(ModelAdmin):
+    # ===============================
+    # ⚙️ Admin Config
+    # ===============================
     list_display = (
-        'business_name', 'id','user_email', 'website',
-        'is_reviewed', 'applied_at', 'action_buttons'
+        'display_business',
+        'id',
+        'user_email',
+        'website',
+        'display_status',
+        'applied_at',
+        'is_reviewed',
     )
+
     list_filter = ('is_reviewed', 'applied_at')
     search_fields = ('user__email', 'business_name', 'user__name')
-    readonly_fields = ('applied_at', 'reviewed_at')
-    actions = ['approve_requests', 'reject_requests']
 
+    readonly_fields = ('applied_at', 'reviewed_at')
+    list_editable = ('is_reviewed',)
     list_filter_submit = True
     list_fullwidth = True
     compressed_fields = True
     warn_unsaved_form = True
 
-    @display(description='User Email')
-    def user_email(self, obj):
-        return obj.user.email
+    ordering = ('-applied_at',)
 
-    @display(description='Status')
-    def action_buttons(self, obj):
-        if not obj.is_reviewed:
-            return format_html(
-                '<span style="background:#fef3c7;color:#92400e;padding:4px 12px;'
-                'border-radius:6px;font-size:12px;font-weight:500;">⏳ Pending Review</span>'
-            )
+    # ✅ Row ভিত্তিক Action Button
+    actions_row = ['action_approve_row', 'action_reject_row']
+
+    # ===============================
+    # 🎨 Display সুন্দর করা
+    # ===============================
+    @display(description='Business')
+    def display_business(self, obj):
         return format_html(
-            '<span style="background:#d1fae5;color:#065f46;padding:4px 12px;'
-            'border-radius:6px;font-size:12px;font-weight:500;">✓ Reviewed</span>'
+            '<div>'
+            '<strong>{}</strong><br>'
+            '<small style="color:#6b7280">ID: {}</small>'
+            '</div>',
+            obj.business_name,
+            obj.id
         )
 
-    @action(description="✅ Approve selected requests", variant=ActionVariant.SUCCESS)
-    def approve_requests(self, request, queryset):
-        count = 0
-        for req in queryset.filter(is_reviewed=False):
-            req.approve()
-            count += 1
-        self.message_user(request, f"{count} advertisers approved successfully.")
+    @display(description='User')
+    def user_email(self, obj):
+        return format_html(
+            '<span style="color:#2563eb;font-weight:500">{}</span>',
+            obj.user.email
+        )
 
-    @action(description="❌ Reject selected requests", variant=ActionVariant.DANGER)
-    def reject_requests(self, request, queryset):
-        count = queryset.update(is_reviewed=True)
-        self.message_user(request, f"{count} requests rejected.")
+    @display(
+        description='Status',
+        label={
+            'Pending': 'warning',
+            'Approved': 'success',
+            'Rejected': 'danger'
+        }
+    )
+    def display_status(self, obj):
+        if not obj.is_reviewed:
+            return "Pending"
+        elif obj.user.ads_provided:
+            return "Approved"
+        return "Rejected"
 
+    # ===============================
+    # 🚀 Row Actions
+    # ===============================
+    @action(
+        description='Approve',
+        url_path='approve-advertiser',
+        icon='check_circle',
+        variant=ActionVariant.SUCCESS,
+    )
+    def action_approve_row(self, request, object_id):
+        from django.http import HttpResponseRedirect
+        obj = AdvertiserRequest.objects.get(pk=object_id)
+        if obj.is_reviewed:
+            self.message_user(request, "Already reviewed.", level='warning')
+            return HttpResponseRedirect('../..')
+        obj.approve()
+        self.message_user(request, f'✓ {obj.user.email} approved as advertiser.')
+        return HttpResponseRedirect('../..')
+
+    @action(
+        description='Reject',
+        url_path='reject-advertiser',
+        icon='cancel',
+        variant=ActionVariant.DANGER,
+    )
+    def action_reject_row(self, request, object_id):
+        from django.http import HttpResponseRedirect
+        obj = AdvertiserRequest.objects.get(pk=object_id)
+        if obj.is_reviewed:
+            self.message_user(request, "Already reviewed.", level='warning')
+            return HttpResponseRedirect('../..')
+        obj.reject(reason="Rejected by admin")
+        self.message_user(request, f'✗ {obj.user.email} request rejected.')
+        return HttpResponseRedirect('../..')
+    
 
 @admin.register(AdSetting)
 class AdSettingAdmin(ModelAdmin):
