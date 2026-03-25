@@ -210,7 +210,7 @@ class SellerProduct(models.Model):
 
         # 'local' platform get_or_create — separate platform entry for each seller
         # so that the shop name is shown in price comparison
-        local_platform, _ = Platform.objects.get_or_create(
+        local_platform, _ = Platform.objects.update_or_create(
             code=f"local-seller-{self.seller.id}",
             defaults={
                 'name': self.seller.shop_name,  
