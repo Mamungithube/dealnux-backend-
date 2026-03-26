@@ -59,32 +59,26 @@ class ProductSpecificationSerializer(serializers.ModelSerializer):
 
 
 class ProductListingSerializer(serializers.ModelSerializer):
-    platform_name = serializers.CharField(
-        source='platform.name', read_only=True)
-    platform_code = serializers.CharField(
-        source='platform.code', read_only=True)
-    product_title = serializers.CharField(
-        source='product.title', read_only=True)
-    product_slug = serializers.CharField(source='product.slug', read_only=True)
-    total_price = serializers.SerializerMethodField()
+    platform_name = serializers.CharField(source='platform.name', read_only=True)
+    platform_code = serializers.CharField(source='platform.code', read_only=True)
+    total_price   = serializers.SerializerMethodField()
 
     class Meta:
-        model = ProductListing
+        model  = ProductListing
         fields = [
-            'id', 'product', 'product_title', 'product_slug',
-            'platform', 'platform_name', 'platform_code',
-            'external_id', 'external_url',
-            'price', 'currency', 'original_price', 'discount_percentage',
-            'condition', 'quantity',
-            'seller_username', 'seller_rating',
-            'item_location',
-            'shipping_cost', 'free_shipping',
-            'estimated_delivery_days',
-            'returns_accepted',
-            'is_available', 'last_checked',
-            'total_price', 'created_at',
-            #  'ships_from_country', 'shipping_currency', 
-            #         'seller_feedback_count', 'return_period_days'
+            'id',
+            'platform_name',
+            'platform_code',
+            'price',
+            'currency',
+            'original_price',
+            'discount_percentage',
+            'condition',
+            'free_shipping',
+            'shipping_cost',
+            'total_price',
+            'external_url',
+            'is_available',
         ]
 
     def get_total_price(self, obj):
@@ -123,41 +117,39 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(
-        source='category.name', read_only=True, allow_null=True)
-    images = ProductImageSerializer(many=True, read_only=True)
-    specifications = ProductSpecificationSerializer(many=True, read_only=True)
-    listings = ProductListingSerializer(many=True, read_only=True)
-    lowest_price = serializers.SerializerMethodField()
-    price_range = serializers.SerializerMethodField()
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    images        = ProductImageSerializer(many=True, read_only=True)
+    listings      = serializers.SerializerMethodField()
+    lowest_price  = serializers.SerializerMethodField()
 
     class Meta:
-        model = Product
+        model  = Product
         fields = [
             'id', 'title', 'slug', 'description',
             'category', 'category_name',
-            'brand',
-            'main_image', 'images',
-            'specifications', 'listings',
-            'lowest_price', 'price_range',
+            'brand', 'main_image', 'images',
+            'lowest_price', 'listings',
             'is_active', 'created_at',
-            #  'model_number', 'updated_at', 'last_synced'
         ]
 
     def get_lowest_price(self, obj):
         price = obj.get_lowest_price()
         return float(price) if price else None
 
-    def get_price_range(self, obj):
-        listings = obj.listings.filter(is_available=True, price__gt=0)
-        if listings.exists():
-            prices = [float(l.price) for l in listings]
-            return {
-                'min': min(prices),
-                'max': max(prices),
-                'avg': sum(prices) / len(prices)
-            }
-        return None
+    def get_listings(self, obj):
+        # প্রতিটা platform থেকে শুধু সবচেয়ে সস্তা ১টা listing
+        listings = obj.listings.filter(
+            is_available=True
+        ).select_related('platform').order_by('platform', 'price')
+
+        seen_platforms = set()
+        unique_listings = []
+        for listing in listings:
+            if listing.platform_id not in seen_platforms:
+                seen_platforms.add(listing.platform_id)
+                unique_listings.append(listing)
+
+        return ProductListingSerializer(unique_listings, many=True).data
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):

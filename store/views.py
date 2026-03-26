@@ -281,6 +281,8 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             return error_response("Permission denied.", code=403)
         instance.delete()
         return success_response({}, message="Product deleted.")
+    
+    
 
     # ── Seller: their own products ─────────────────────────────────────────
 

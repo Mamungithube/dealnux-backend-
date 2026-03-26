@@ -44,7 +44,31 @@ from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def product_detail(request, pk):
+    product = None
+
+    # ১. SellerProduct id দিয়ে খোঁজা (local seller)
+    try:
+        from store.models import SellerProduct
+        seller_product = SellerProduct.objects.get(id=pk, status='APPROVED')
+        product = seller_product.linked_product
+    except SellerProduct.DoesNotExist:
+        pass
+
+    # ২. সরাসরি Product id দিয়ে খোঁজা (3rd party)
+    if not product:
+        product = Product.objects.filter(id=pk, is_active=True).first()
+
+    if not product:
+        return error_response("Product not found", code=404)
+
+    serializer = ProductDetailSerializer(product)
+    return success_response(serializer.data, message="Product fetched")
 # ============================================================================
 # Response Helpers
 # ============================================================================
