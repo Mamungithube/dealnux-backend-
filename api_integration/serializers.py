@@ -33,7 +33,19 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_products_count(self, obj):
         return obj.products.filter(is_active=True).count()
 
+class CategoryChildSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug']
 
+class CategoryTreeSerializer(serializers.ModelSerializer):
+    children = CategoryChildSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug', 'children']
+
+        
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage

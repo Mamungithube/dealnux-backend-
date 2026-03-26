@@ -1,5 +1,6 @@
 import time
 import logging
+from unicodedata import category
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
@@ -8,9 +9,10 @@ from django.db.models import Q, Min, Count, Avg
 from django.db import transaction
 from django.core.cache import cache
 
+from rest_framework import permissions as drf_permissions
+
 from .services.walmart_service import WalmartService
 from .services.amazon_service import AmazonService
-from .services.homedepot_service import HomeDepotService
 from .services.sephora_service import SephoraService
 from .services.ebay_service import EbayRapidService
 from .services.target_service import TargetService
@@ -32,7 +34,7 @@ from .serializers import (
     ProductSerializer, ProductDetailSerializer,
     ProductListingSerializer, PlatformSerializer,
     CategorySerializer, PriceHistorySerializer,
-    CartItemSerializer, FavoriteSerializer,
+    CartItemSerializer, FavoriteSerializer,CategoryTreeSerializer,CategoryChildSerializer
 )
 
 from rest_framework.exceptions import ValidationError
@@ -327,6 +329,7 @@ class StandardResultsSetPagination(PageNumberPagination):
 # ============================================================================
 
 class ProductViewSet(viewsets.ModelViewSet):
+    
     queryset = Product.objects.filter(is_active=True).prefetch_related(
         'listings', 'images', 'specifications', 'category'  # category prefetch → N+1 fix
     )
@@ -461,7 +464,68 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
     lookup_field = 'slug'
 
+    @action(detail=False, methods=['get'], url_path='tree')
+    def tree(self, request):
+        # শুধু parent categories (parent=None)
+        parents = Category.objects.filter(parent=None).prefetch_related('children')
+        serializer = CategoryTreeSerializer(parents, many=True)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Category tree retrieved successfully.",
+            "data": serializer.data
+        })
 
+class CategoryTreeView(APIView):
+    permission_classes = [drf_permissions.AllowAny]  # ✅
+
+    def get(self, request):
+        parents = Category.objects.filter(parent=None).prefetch_related('children')
+        serializer = CategoryTreeSerializer(parents, many=True)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Category tree retrieved successfully.",
+            "data": serializer.data
+        })
+    
+
+class CategoryParentListView(APIView):
+    """শুধু parent categories"""
+    def get(self, request):
+        parents = Category.objects.filter(parent=None).only('id', 'name', 'slug')
+        serializer = CategoryChildSerializer(parents, many=True)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Parent categories retrieved.",
+            "data": serializer.data
+        })
+
+class CategoryChildrenView(APIView):
+    """একটা parent এর children"""
+    def get(self, request, slug):
+        try:
+            parent = Category.objects.get(slug=slug, parent=None)
+        except Category.DoesNotExist:
+            return Response({
+                "success": False,
+                "code": 404,
+                "message": "Category not found.",
+                "data": {}
+            }, status=404)
+        
+        children = parent.children.all().only('id', 'name', 'slug')
+        serializer = CategoryChildSerializer(children, many=True)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": f"Children of '{parent.name}' retrieved.",
+            "data": {
+                "parent": {"id": parent.id, "name": parent.name, "slug": parent.slug},
+                "children": serializer.data
+            }
+        })
 # ============================================================================
 # Custom API Endpoints
 # ============================================================================

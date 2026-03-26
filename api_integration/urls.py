@@ -13,6 +13,9 @@ router.register(r'favorites', views.FavoriteViewSet, basename='favorite')
 app_name = 'api_integration'
 
 urlpatterns = [
+    path('categories/tree/', views.CategoryTreeView.as_view(), name='category-tree'),
+    path('categories/parents/', views.CategoryParentListView.as_view(), name='category-parents'),
+    path('categories/<slug:slug>/children/', views.CategoryChildrenView.as_view(), name='category-children'),
     path('', include(router.urls)),
     path('search-and-sync/', views.search_and_sync, name='search_and_sync'),
     path('bulk-sync/', views.bulk_sync_products, name='bulk_sync'),
