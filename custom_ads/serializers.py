@@ -107,12 +107,15 @@ class AdSerializer(serializers.ModelSerializer):
 
 class AdPublicSerializer(serializers.ModelSerializer):
     """Public facing serializer with performance chart data"""
-    performance = serializers.SerializerMethodField()
-    reviews = AdReviewSerializer(many=True, read_only=True)
+    # performance = serializers.SerializerMethodField()
+    # reviews = AdReviewSerializer(many=True, read_only=True)
 
     class Meta:
         model = CustomAd
-        fields = "__all__"
+        fields = [
+            'id', 'title', 'description', 'image', 'target_url',
+            'target_section',
+        ]
 
     def get_performance(self, obj):
         from datetime import timedelta
