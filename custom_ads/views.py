@@ -240,8 +240,8 @@ class AdListView(generics.ListAPIView):
                 "code":      status.HTTP_200_OK,
                 "message":   "Ads retrieved successfully.",
                 "timestamp": int(time.time()),
-                "data": results,          # সরাসরি ads array
-                "pagination": {           # data এর বাইরে
+                "data": results,    
+                "pagination": {       
                     "total_count":  total_count,
                     "total_pages":  total_pages,
                     "current_page": page,

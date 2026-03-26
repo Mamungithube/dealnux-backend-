@@ -173,33 +173,19 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    listing_details = ProductListingSerializer(
-        source='selected_listing', read_only=True)
-    product_title = serializers.CharField(
-        source='product.title', read_only=True)
+    product_title = serializers.CharField(source='product.title', read_only=True)
 
     class Meta:
-        model = CartItem
-        fields = ['id', 'product', 'product_title',
-                  'selected_listing', 'quantity', 'listing_details']
-        # , 'listing_details'
+        model  = CartItem
+        fields = ['id', 'product', 'product_title', 'quantity']
 
     def validate(self, attrs):
         request = self.context.get('request')
-        user = request.user if request else None
+        user    = request.user if request else None
         product = attrs.get('product')
-        selected_listing = attrs.get('selected_listing')
 
-        if selected_listing and product:
-            if selected_listing.product != product:
-                raise serializers.ValidationError({
-                    "selected_listing": ["This listing does not belong to the selected product."]
-                })
-
-        # ✅ Already in cart check
         if user and product:
             qs = CartItem.objects.filter(user=user, product=product)
-            # PUT/PATCH
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():

@@ -970,6 +970,7 @@ class CartViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    # ── এই দুটো method যোগ করুন ──
     def _success(self, data, message="Success", code=200):
         return Response({
             "success":   True,
@@ -979,10 +980,52 @@ class CartViewSet(viewsets.ModelViewSet):
             "data":      data,
         }, status=code)
 
+    def _error(self, message="Error", code=400):
+        return Response({
+            "success":   False,
+            "code":      code,
+            "message":   message,
+            "timestamp": int(time.time()),
+            "data":      {},
+        }, status=code)
+
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        product_id = request.data.get('product_id')
+        quantity   = request.data.get('quantity', 1)
+
+        if not product_id:
+            return self._error("product_id is required", code=400)
+
+        product = None
+
+        # ১. SellerProduct id দিয়ে linked_product খোঁজা
+        try:
+            from store.models import SellerProduct  # আপনার app name অনুযায়ী বদলান
+            seller_product = SellerProduct.objects.get(id=product_id, status='APPROVED')
+            product = seller_product.linked_product
+        except SellerProduct.DoesNotExist:
+            pass
+
+        # ২. সরাসরি Product id দিয়েও খোঁজা (fallback)
+        if not product:
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                pass
+
+        if not product:
+            return self._error(f"Product not found with id '{product_id}'", code=404)
+
+        if CartItem.objects.filter(user=request.user, product=product).exists():
+            return self._error("This product is already in your cart", code=400)
+
+        cart_item = CartItem.objects.create(
+            user     = request.user,
+            product  = product,
+            quantity = quantity,
+        )
+
+        serializer = self.get_serializer(cart_item)
         return self._success(serializer.data, message="Item added to cart", code=201)
 
     def retrieve(self, request, *args, **kwargs):
@@ -1015,42 +1058,45 @@ class CartViewSet(viewsets.ModelViewSet):
         if not cart_items.exists():
             raise ValidationError({"cart": "Your cart is empty."})
 
-        original_total = 0
-        optimized_total = 0
+        original_total     = 0
+        optimized_total    = 0
         single_store_total = 0
-        optimized_split = {}
+        optimized_split    = {}
         single_store_items = []
 
         for item in cart_items:
             product = item.product
-            qty = item.quantity
-            current_price = item.selected_listing.price * qty
-            original_total += current_price
+            qty     = item.quantity
 
-            cheapest = ProductListing.objects.filter(
+            # selected_listing এর বদলে সবচেয়ে সস্তা listing কে current price ধরছি
+            cheapest_current = ProductListing.objects.filter(
                 product=product, is_available=True
             ).order_by('price').first()
 
-            if cheapest:
-                opt_price = cheapest.price * qty
-                optimized_total += opt_price
-                platform_name = cheapest.platform.name
-                optimized_split.setdefault(
-                    platform_name, {'total': 0, 'items': []})
-                optimized_split[platform_name]['total'] += float(opt_price)
-                optimized_split[platform_name]['items'].append({
-                    'product':     product.title,
-                    'unit_price':  float(cheapest.price),
-                    'quantity':    qty,
-                    'total_price': float(opt_price),
-                    'url':         cheapest.external_url,
-                })
+            if not cheapest_current:
+                continue
+
+            current_price   = cheapest_current.price * qty
+            original_total += current_price
+
+            opt_price        = cheapest_current.price * qty
+            optimized_total += opt_price
+            platform_name    = cheapest_current.platform.name
+            optimized_split.setdefault(platform_name, {'total': 0, 'items': []})
+            optimized_split[platform_name]['total'] += float(opt_price)
+            optimized_split[platform_name]['items'].append({
+                'product':     product.title,
+                'unit_price':  float(cheapest_current.price),
+                'quantity':    qty,
+                'total_price': float(opt_price),
+                'url':         cheapest_current.external_url,
+            })
 
             ebay_listing = ProductListing.objects.filter(
                 product=product, platform__code='ebay', is_available=True
             ).first()
             if ebay_listing:
-                single_price = ebay_listing.price * qty
+                single_price        = ebay_listing.price * qty
                 single_store_total += single_price
                 single_store_items.append({
                     'product':     product.title,
@@ -1079,12 +1125,13 @@ class CartViewSet(viewsets.ModelViewSet):
                 },
             },
             "savings_summary": {
-                "original_total":       float(original_total),
-                "price_match_savings":  float(original_total - optimized_total) if original_total > optimized_total else 0,
-                "final_price":          float(optimized_total),
+                "original_total":      float(original_total),
+                "price_match_savings": float(original_total - optimized_total) if original_total > optimized_total else 0,
+                "final_price":         float(optimized_total),
             },
         }
         return self._success(data, message="Checkout options generated")
+
 
     @action(detail=False, methods=['post'])
     def complete_checkout(self, request):
@@ -1092,31 +1139,33 @@ class CartViewSet(viewsets.ModelViewSet):
         if not cart_items.exists():
             raise ValidationError({"cart": "Your cart is empty."})
 
-        original_total = 0
-        optimized_total = 0
+        original_total       = 0
+        optimized_total      = 0
         activities_to_create = []
 
         for item in cart_items:
-            qty = item.quantity
-            current_price = item.selected_listing.price * qty
-            original_total += current_price
+            qty     = item.quantity
+            product = item.product
 
             cheapest = ProductListing.objects.filter(
-                product=item.product, is_available=True
+                product=product, is_available=True
             ).order_by('price').first()
 
-            if cheapest:
-                opt_price = cheapest.price * qty
-                optimized_total += opt_price
-                item_saved = float(current_price - opt_price)
-                if item_saved > 0:
-                    activities_to_create.append(SavingsActivity(
-                        user=request.user,
-                        title=item.product.title,
-                        saved_amount=item_saved,
-                    ))
-            else:
-                optimized_total += current_price
+            if not cheapest:
+                continue
+
+            current_price   = cheapest.price * qty
+            original_total += current_price
+            opt_price        = cheapest.price * qty
+            optimized_total += opt_price
+
+            item_saved = float(current_price - opt_price)
+            if item_saved > 0:
+                activities_to_create.append(SavingsActivity(
+                    user=request.user,
+                    title=product.title,
+                    saved_amount=item_saved,
+                ))
 
         total_saved = float(original_total - optimized_total)
 
@@ -1124,8 +1173,7 @@ class CartViewSet(viewsets.ModelViewSet):
             user = request.user
             if total_saved > 0:
                 current_savings = getattr(user, 'total_lifetime_savings', 0)
-                user.total_lifetime_savings = float(
-                    current_savings) + total_saved
+                user.total_lifetime_savings = float(current_savings) + total_saved
                 user.save()
                 if activities_to_create:
                     SavingsActivity.objects.bulk_create(activities_to_create)
@@ -1134,12 +1182,11 @@ class CartViewSet(viewsets.ModelViewSet):
         recent = SavingsActivity.objects.filter(
             user=request.user).order_by('-created_at')[:5]
         data = {
-            "total_paid":               float(optimized_total),
-            "total_saved_this_order":   total_saved,
-            "lifetime_savings_now":     float(getattr(user, 'total_lifetime_savings', 0)),
+            "total_paid":             float(optimized_total),
+            "total_saved_this_order": total_saved,
+            "lifetime_savings_now":   float(getattr(user, 'total_lifetime_savings', 0)),
             "recent_activity": [
-                {"title": a.title, "saved_amount": float(
-                    a.saved_amount), "date": a.time_ago}
+                {"title": a.title, "saved_amount": float(a.saved_amount), "date": a.time_ago}
                 for a in recent
             ],
         }
@@ -1313,34 +1360,65 @@ def category_compare_prices(request, slug):
 # ============================================================================
 
 class FavoriteViewSet(viewsets.ModelViewSet):
-    serializer_class = FavoriteSerializer
+    serializer_class   = FavoriteSerializer
     permission_classes = [IsAuthenticated]
-    http_method_names = ['get', 'post', 'delete']
+    http_method_names  = ['get', 'post', 'delete']
 
     def get_queryset(self):
-        return Favorite.objects.filter(user=self.request.user).select_related('product')
+        return Favorite.objects.filter(
+            user=self.request.user
+        ).select_related('product')
+
+    # ── এই দুটো method যোগ করুন ──
+    def _success(self, data, message="Success", code=200):
+        return Response({
+            "success":   True,
+            "code":      code,
+            "message":   message,
+            "timestamp": int(time.time()),
+            "data":      data,
+        }, status=code)
+
+    def _error(self, message="Error", code=400):
+        return Response({
+            "success":   False,
+            "code":      code,
+            "message":   message,
+            "timestamp": int(time.time()),
+            "data":      {},
+        }, status=code)
 
     def create(self, request, *args, **kwargs):
         product_id = request.data.get('product_id')
+
         if not product_id:
-            return error_response("product_id is required", code=400)
+            return self._error("product_id is required", code=400)
+
+        product = None
+
+        # ১. SellerProduct id দিয়ে খোঁজা
         try:
-            product = Product.objects.get(id=product_id)
-        except Product.DoesNotExist:
-            return error_response("Product not found", code=404)
+            from store.models import SellerProduct
+            seller_product = SellerProduct.objects.get(id=product_id, status='APPROVED')
+            product = seller_product.linked_product
+        except SellerProduct.DoesNotExist:
+            pass
+
+        # ২. সরাসরি Product id দিয়ে খোঁজা (fallback)
+        if not product:
+            product = Product.objects.filter(id=product_id).first()
+
+        if not product:
+            return self._error("Product not found", code=404)
 
         favorite, created = Favorite.objects.get_or_create(
-            user=request.user, product=product)
+            user=request.user, product=product
+        )
         if not created:
-            return error_response("Product already in favorites", code=400)
+            return self._error("Product already in favorites", code=400)
 
         serializer = self.get_serializer(favorite)
-        return Response({
-            "success": True, "code": 201,
-            "message": "Added to favorites",
-            "timestamp": int(time.time()),
-            "data": serializer.data,
-        }, status=201)
+        return self._success(serializer.data, message="Added to favorites", code=201)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1375,28 +1453,38 @@ class FavoriteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='toggle')
     def toggle(self, request):
         product_id = request.data.get('product_id')
-        if not product_id:
-            return error_response("product_id is required", code=400)
-        try:
-            product = Product.objects.get(id=product_id)
-        except Product.DoesNotExist:
-            return error_response("Product not found", code=404)
 
-        favorite = Favorite.objects.filter(
-            user=request.user, product=product).first()
+        if not product_id:
+            return self._error("product_id is required", code=400)
+
+        product = None
+
+        # ১. SellerProduct id দিয়ে খোঁজা
+        try:
+            from store.models import SellerProduct
+            seller_product = SellerProduct.objects.get(id=product_id, status='APPROVED')
+            product = seller_product.linked_product
+        except SellerProduct.DoesNotExist:
+            pass
+
+        # ২. সরাসরি Product id দিয়ে খোঁজা (fallback)
+        if not product:
+            product = Product.objects.filter(id=product_id).first()
+
+        if not product:
+            return self._error("Product not found", code=404)
+
+        favorite = Favorite.objects.filter(user=request.user, product=product).first()
         if favorite:
             favorite.delete()
-            return Response({
-                "success": True, "code": 200,
-                "message": "Removed from favorites",
-                "timestamp": int(time.time()),
-                "data": {"is_favorite": False, "product_id": product_id},
-            })
-        else:
-            Favorite.objects.create(user=request.user, product=product)
-            return Response({
-                "success": True, "code": 201,
-                "message": "Added to favorites",
-                "timestamp": int(time.time()),
-                "data": {"is_favorite": True, "product_id": product_id},
-            }, status=201)
+            return self._success(
+                {"is_favorite": False, "product_id": product_id},
+                message="Removed from favorites",
+            )
+
+        Favorite.objects.create(user=request.user, product=product)
+        return self._success(
+            {"is_favorite": True, "product_id": product_id},
+            message="Added to favorites",
+            code=201,
+        )

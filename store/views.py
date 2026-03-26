@@ -41,6 +41,17 @@ def success_response(data=None, message="Success", code=200):
     return Response(response, status=code)
 
 
+def error_response(message="Error", code=400, data=None):
+    response = {
+        "success": False,
+        "code": code,
+        "message": message,
+        "timestamp": int(time.time()),
+        "data": data or {},
+    }
+    return Response(response, status=code)
+
+
 class StandardPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
