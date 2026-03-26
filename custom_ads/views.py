@@ -19,7 +19,8 @@ from .permissions import IsAdminUser
 import time
 from django.http import Http404
 from django.utils import timezone
-from django.core.cache import cache 
+from django.core.cache import cache
+
 
 # ১. Advertiser Request Apply
 class ApplyForAdvertiserView(generics.CreateAPIView):
@@ -206,10 +207,10 @@ class AdListView(generics.ListAPIView):
             status='active',
             end_date__lt=timezone.now()
         ).update(status='expired')
-        
+
         if expired_count > 0:
             cache.delete('active_ads_pool')  # ✅ এই লাইনটা যোগ করো
-        
+
         count = int(self.request.query_params.get('count', 3))
         count = min(count, 10)
         return get_weighted_ads(count=count)
@@ -219,18 +220,19 @@ class AdListView(generics.ListAPIView):
             queryset = self.get_queryset()
 
             try:
-                page      = max(1, int(request.query_params.get('page', 1)))
-                page_size = min(max(1, int(request.query_params.get('page_size', 10))), 50)
+                page = max(1, int(request.query_params.get('page', 1)))
+                page_size = min(
+                    max(1, int(request.query_params.get('page_size', 10))), 50)
             except (ValueError, TypeError):
                 page, page_size = 1, 10
 
-            serializer  = self.get_serializer(queryset, many=True)
+            serializer = self.get_serializer(queryset, many=True)
             all_results = serializer.data
             total_count = len(all_results)
             total_pages = math.ceil(total_count / page_size)
 
-            start   = (page - 1) * page_size
-            end     = start + page_size
+            start = (page - 1) * page_size
+            end = start + page_size
             results = all_results[start:end]
 
             return Response({
@@ -238,19 +240,16 @@ class AdListView(generics.ListAPIView):
                 "code":      status.HTTP_200_OK,
                 "message":   "Ads retrieved successfully.",
                 "timestamp": int(time.time()),
-                "data": {
-                    "ads":   results,
-                    "count": total_count,
-                    "pagination": {
-                        "total_count":  total_count,
-                        "total_pages":  total_pages,
-                        "current_page": page,
-                        "page_size":    page_size,
-                        "has_next":     page < total_pages,
-                        "has_previous": page > 1,
-                        "next_page":    page + 1 if page < total_pages else None,
-                        "prev_page":    page - 1 if page > 1 else None,
-                    },
+                "data": results,          # সরাসরি ads array
+                "pagination": {           # data এর বাইরে
+                    "total_count":  total_count,
+                    "total_pages":  total_pages,
+                    "current_page": page,
+                    "page_size":    page_size,
+                    "has_next":     page < total_pages,
+                    "has_previous": page > 1,
+                    "next_page":    page + 1 if page < total_pages else None,
+                    "prev_page":    page - 1 if page > 1 else None,
                 },
             }, status=status.HTTP_200_OK)
 
@@ -609,7 +608,8 @@ class CheckAdvertiserStatusView(APIView):
                 )
 
             try:
-                req = AdvertiserRequest.objects.filter(user=user).latest('applied_at')
+                req = AdvertiserRequest.objects.filter(
+                    user=user).latest('applied_at')
                 return Response(
                     {
                         "success": True,
@@ -724,9 +724,11 @@ class AdminAdvertiserRequestListView(generics.ListAPIView):
         if status_filter == 'pending':
             queryset = queryset.filter(is_reviewed=False)
         elif status_filter == 'approved':
-            queryset = queryset.filter(is_reviewed=True, user__ads_provided=True)
+            queryset = queryset.filter(
+                is_reviewed=True, user__ads_provided=True)
         elif status_filter == 'rejected':
-            queryset = queryset.filter(is_reviewed=True, user__ads_provided=False)
+            queryset = queryset.filter(
+                is_reviewed=True, user__ads_provided=False)
 
         return queryset
 
@@ -924,11 +926,13 @@ class AdminAdListView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
 
     def get_queryset(self):
-        queryset = CustomAd.objects.all().select_related('advertiser').order_by('-created_at')
+        queryset = CustomAd.objects.all().select_related(
+            'advertiser').order_by('-created_at')
         status_filter = self.request.query_params.get('status')
 
         if status_filter == 'pending':
-            queryset = queryset.filter(is_approved=False, status='pending')  # ✅ ঠিক করা
+            queryset = queryset.filter(
+                is_approved=False, status='pending')  # ✅ ঠিক করা
         elif status_filter == 'approved':
             queryset = queryset.filter(is_approved=True, status='active')
         elif status_filter == 'rejected':
@@ -1247,7 +1251,8 @@ class AdminDashboardStatsView(APIView):
     def get(self, request):
         try:
             total_advertisers = User.objects.filter(ads_provided=True).count()
-            pending_requests = AdvertiserRequest.objects.filter(is_reviewed=False).count()
+            pending_requests = AdvertiserRequest.objects.filter(
+                is_reviewed=False).count()
 
             total_ads = CustomAd.objects.count()
             pending_ads = CustomAd.objects.filter(
@@ -1348,7 +1353,8 @@ class AdminBulkApproveAdsView(APIView):
                 )
 
             # ✅ Save with list() first.
-            ads = list(CustomAd.objects.filter(id__in=ad_ids, is_approved=False))
+            ads = list(CustomAd.objects.filter(
+                id__in=ad_ids, is_approved=False))
 
             if not ads:
                 return Response(

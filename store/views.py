@@ -28,25 +28,17 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Helpers
 # ============================================================================
-
 def success_response(data=None, message="Success", code=200):
-    return Response({
+    response = {
         "success": True,
         "code": code,
         "message": message,
         "timestamp": int(time.time()),
         "data": data or {},
-    }, status=code)
-
-
-def error_response(message="Error", data=None, code=400):
-    return Response({
-        "success": False,
-        "code": code,
-        "message": message,
-        "timestamp": int(time.time()),
-        "data": data or {},
-    }, status=code)
+    }
+    if isinstance(data, dict) and 'pagination' in data:
+        response['pagination'] = data.pop('pagination')
+    return Response(response, status=code)
 
 
 class StandardPagination(PageNumberPagination):
