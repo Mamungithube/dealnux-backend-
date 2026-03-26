@@ -8,7 +8,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Min, Count, Avg
 from django.db import transaction
 from django.core.cache import cache
-
+import math
 from rest_framework import permissions as drf_permissions
 
 from .services.walmart_service import WalmartService
@@ -553,19 +553,12 @@ def search_and_sync(request):
 
     return sync_func(platform, query, limit)
 
-
 @api_view(['GET'])
 def smart_search(request):
-    """
-    Fixed:
-    - best_deal.price = base price (shipping বাদে) — user requested
-    - lowest_price    = base price
-    - total_price     = base + shipping (comparison এর জন্য আলাদা রাখা)
-    - DB results এও relevance filter
-    - prefetch_related category → N+1 fix
-    """
     query = request.GET.get('q', '')
     limit = min(int(request.GET.get('limit', 10)), 50)
+    page = int(request.GET.get('page', 1))
+    page_size = min(int(request.GET.get('page_size', 10)), 50)
 
     if not query:
         return error_response('q is required', code=400)
@@ -577,20 +570,19 @@ def smart_search(request):
             'source':  'cache',
             'query':   query,
             'count':   len(cached),
-            'results': cached,
+            'results': paginate_results(cached, page, page_size),
+            'pagination': get_pagination_meta(cached, page, page_size),
         }, message="Results from cache")
 
-    # ── Query words — relevance filter এর জন্য ───────────────────────────
     query_words = set(query.lower().split())
 
-    # ── DB check ──────────────────────────────────────────────────────────
     existing_products = Product.objects.filter(
         Q(title__icontains=query) | Q(description__icontains=query),
         is_active=True,
         listings__is_available=True,
     ).prefetch_related(
         'listings__platform',
-        'category',          # N+1 fix
+        'category',
     ).select_related('category').distinct()
 
     if existing_products.exists():
@@ -598,7 +590,6 @@ def smart_search(request):
 
         results = []
         for product in existing_products[:limit]:
-            # ── Relevance filter (DB results) ─────────────────────────────
             title_lower = product.title.lower()
             is_relevant = any(
                 word in title_lower
@@ -615,7 +606,6 @@ def smart_search(request):
             if not listings.exists():
                 continue
 
-            # ── Price comparison ──────────────────────────────────────────
             seen_urls = set()
             price_comparison = []
 
@@ -630,13 +620,13 @@ def smart_search(request):
                 price_comparison.append({
                     'platform':            listing.platform.name,
                     'platform_code':       listing.platform.code,
-                    'price':               base_price,        # base price
+                    'price':               base_price,
                     'currency':            listing.currency,
                     'original_price':      float(listing.original_price) if listing.original_price else None,
                     'discount_percentage': float(listing.discount_percentage) if listing.discount_percentage else None,
                     'free_shipping':       listing.free_shipping,
                     'shipping_cost':       float(listing.shipping_cost),
-                    'total_price':         total_price,       # base + shipping
+                    'total_price':         total_price,
                     'url':                 listing.external_url,
                     'condition':           listing.condition,
                     'seller':              listing.seller_username,
@@ -650,9 +640,7 @@ def smart_search(request):
             if not valid_prices:
                 continue
 
-            # ── Sort by total_price (comparison), pick best by base price ─
             valid_prices.sort(key=lambda x: x['total_price'])
-            # base price সবচেয়ে কম
             best_deal = min(valid_prices, key=lambda x: x['price'])
             platforms = list({p['platform_code'] for p in valid_prices})
 
@@ -665,12 +653,11 @@ def smart_search(request):
                 'category_name':   product.category.name if product.category else '',
                 'platforms_count': len(platforms),
                 'available_on':    platforms,
-                # base price only
                 'lowest_price':    best_deal['price'],
                 'best_deal': {
                     'platform':      best_deal['platform'],
                     'platform_code': best_deal['platform_code'],
-                    'price':         best_deal['price'],         # base price
+                    'price':         best_deal['price'],
                     'url':           best_deal['url'],
                     'free_shipping': best_deal['free_shipping'],
                 },
@@ -681,14 +668,14 @@ def smart_search(request):
         cache.set(cache_key, results, 300)
 
         return success_response({
-            'source':  'database',
-            'query':   query,
-            'count':   len(results),
-            'note':    'Background sync started for fresh data',
-            'results': results,
+            'source':     'database',
+            'query':      query,
+            'count':      len(results),
+            'note':       'Background sync started for fresh data',
+            'results':    paginate_results(results, page, page_size),
+            'pagination': get_pagination_meta(results, page, page_size),
         }, message="Results from database")
 
-    # ── DB-তে নেই — sync শুরু করো ─────────────────────────────────────────
     task = sync_all_platforms_task.delay(query, limit)
     return success_response({
         'source':        'syncing',
@@ -698,6 +685,34 @@ def smart_search(request):
         'check_status':  f'/api/v1/fetch-products/task-status/{task.id}/',
         'fetch_results': f'/api/v1/fetch-products/smart-search/?q={query}&limit={limit}',
     }, message="Sync started", code=202)
+
+
+# ── Pagination Helper Functions ───────────────────────────────────────────────
+
+def paginate_results(results: list, page: int, page_size: int) -> list:
+    """Result list থেকে নির্দিষ্ট page এর items return করে।"""
+    page = max(1, page)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return results[start:end]
+
+
+def get_pagination_meta(results: list, page: int, page_size: int) -> dict:
+    """Pagination metadata তৈরি করে।"""
+    total_count = len(results)
+    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 1
+    page = max(1, page)
+
+    return {
+        'total_count':  total_count,
+        'total_pages':  total_pages,
+        'current_page': page,
+        'page_size':    page_size,
+        'has_next':     page < total_pages,
+        'has_previous': page > 1,
+        'next_page':    page + 1 if page < total_pages else None,
+        'prev_page':    page - 1 if page > 1 else None,
+    }
 
 
 @api_view(['GET'])
