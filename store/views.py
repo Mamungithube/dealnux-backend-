@@ -1,3 +1,4 @@
+import math
 import time
 import logging
 from rest_framework import viewsets, status
@@ -203,20 +204,20 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-
-        # Admin - can see all
+    
+        # Admin
         if user.is_authenticated and user.is_staff:
             qs = SellerProduct.objects.select_related('seller', 'category').all()
             status_filter = self.request.query_params.get('status')
             if status_filter:
                 qs = qs.filter(status=status_filter.upper())
             return qs
-
-        # Authenticated seller - their own products
+    
+        # Seller নিজের products (সব status)
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
                 return SellerProduct.objects.filter(seller=user.seller_profile)
-
+    
         # Public - only APPROVED
         qs = SellerProduct.objects.filter(status='APPROVED').select_related('seller', 'category')
         search = self.request.query_params.get('search')
@@ -284,9 +285,36 @@ class SellerProductViewSet(viewsets.ModelViewSet):
     def my_products(self, request):
         if not is_approved_seller(request.user):
             return error_response("You are not an approved seller.", code=403)
-        qs = SellerProduct.objects.filter(seller=request.user.seller_profile)
-        serializer = SellerProductSerializer(qs, many=True)
-        return success_response(serializer.data, message="Your products fetched")
+    
+        try:
+            page      = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(max(1, int(request.query_params.get('page_size', 10))), 50)
+        except (ValueError, TypeError):
+            page, page_size = 1, 10
+    
+        qs          = SellerProduct.objects.filter(seller=request.user.seller_profile)
+        total_count = qs.count()
+        total_pages = math.ceil(total_count / page_size)
+    
+        start   = (page - 1) * page_size
+        end     = start + page_size
+        results = qs[start:end]
+    
+        serializer = SellerProductSerializer(results, many=True)
+    
+        return success_response({
+            'products': serializer.data,
+            'pagination': {
+                'total_count':  total_count,
+                'total_pages':  total_pages,
+                'current_page': page,
+                'page_size':    page_size,
+                'has_next':     page < total_pages,
+                'has_previous': page > 1,
+                'next_page':    page + 1 if page < total_pages else None,
+                'prev_page':    page - 1 if page > 1 else None,
+            },
+        }, message="Your products fetched")
 
     # ── Admin: approve / reject ──────────────────────────────────────────
 

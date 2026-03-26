@@ -43,7 +43,6 @@ urlpatterns = [
     path('detail/<int:pk>/', AdDetailView.as_view(), name='ad-detail'),
     path('click/<int:ad_id>/', AdClickTrackerView.as_view(), name='track-click'),
 
-
     path('admin/stats/', AdminDashboardStatsView.as_view(), name='admin-stats'),
     
     # Advertiser Request Management

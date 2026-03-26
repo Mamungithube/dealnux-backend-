@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 from decouple import config
 from celery.schedules import crontab
 
+import api_integration
+
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -127,7 +129,7 @@ REST_FRAMEWORK = {
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
+    'PAGE_SIZE': None,
     "DATETIME_FORMAT": "%Y-%m-%d %H:%M:%S",
 }
 

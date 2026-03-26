@@ -10,6 +10,7 @@ from .serializers import (
     AdSerializer,
     AdPublicSerializer
 )
+import math
 from .utils import get_weighted_ads
 from account.models import User
 from django.db.models import Sum
@@ -216,31 +217,51 @@ class AdListView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         try:
             queryset = self.get_queryset()
-            serializer = self.get_serializer(queryset, many=True)
-            return Response(
-                {
-                    "success": True,
-                    "code": status.HTTP_200_OK,
-                    "message": "Ads retrieved successfully.",
-                    "timestamp": int(time.time()),
-                    "data": {
-                        "ads": serializer.data,
-                        "count": len(serializer.data)
-                    }
+
+            try:
+                page      = max(1, int(request.query_params.get('page', 1)))
+                page_size = min(max(1, int(request.query_params.get('page_size', 10))), 50)
+            except (ValueError, TypeError):
+                page, page_size = 1, 10
+
+            serializer  = self.get_serializer(queryset, many=True)
+            all_results = serializer.data
+            total_count = len(all_results)
+            total_pages = math.ceil(total_count / page_size)
+
+            start   = (page - 1) * page_size
+            end     = start + page_size
+            results = all_results[start:end]
+
+            return Response({
+                "success":   True,
+                "code":      status.HTTP_200_OK,
+                "message":   "Ads retrieved successfully.",
+                "timestamp": int(time.time()),
+                "data": {
+                    "ads":   results,
+                    "count": total_count,
+                    "pagination": {
+                        "total_count":  total_count,
+                        "total_pages":  total_pages,
+                        "current_page": page,
+                        "page_size":    page_size,
+                        "has_next":     page < total_pages,
+                        "has_previous": page > 1,
+                        "next_page":    page + 1 if page < total_pages else None,
+                        "prev_page":    page - 1 if page > 1 else None,
+                    },
                 },
-                status=status.HTTP_200_OK
-            )
+            }, status=status.HTTP_200_OK)
+
         except Exception as e:
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "message": "Failed to retrieve ads.",
-                    "timestamp": int(time.time()),
-                    "data": {"detail": [str(e)]}
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({
+                "success":   False,
+                "code":      status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message":   "Failed to retrieve ads.",
+                "timestamp": int(time.time()),
+                "data":      {"detail": [str(e)]},
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 """--------------------Ad Click Tracker-----------------------"""

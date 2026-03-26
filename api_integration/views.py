@@ -327,11 +327,10 @@ class StandardResultsSetPagination(PageNumberPagination):
 # ============================================================================
 # REST ViewSets
 # ============================================================================
-
 class ProductViewSet(viewsets.ModelViewSet):
     
     queryset = Product.objects.filter(is_active=True).prefetch_related(
-        'listings', 'images', 'specifications', 'category'  # category prefetch → N+1 fix
+        'listings', 'images', 'specifications', 'category'
     )
     serializer_class = ProductSerializer
     pagination_class = StandardResultsSetPagination
@@ -345,18 +344,23 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        category = self.request.query_params.get('category')
+        try:
+            category  = self.request.query_params.get('category', '').strip()
+            search    = self.request.query_params.get('search', '').strip()
+            sort      = self.request.query_params.get('sort', '-created_at').strip()
+            min_price = self.request.query_params.get('min_price')
+            max_price = self.request.query_params.get('max_price')
+            min_price = max(0, float(min_price)) if min_price else None
+            max_price = max(0, float(max_price)) if max_price else None
+        except (ValueError, TypeError):
+            return queryset.none()
+
         if category:
             queryset = queryset.filter(category__slug=category)
-
-        min_price = self.request.query_params.get('min_price')
-        max_price = self.request.query_params.get('max_price')
-        if min_price:
+        if min_price is not None:
             queryset = queryset.filter(listings__price__gte=min_price)
-        if max_price:
+        if max_price is not None:
             queryset = queryset.filter(listings__price__lte=max_price)
-
-        search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) |
@@ -364,28 +368,58 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(brand__icontains=search)
             )
 
-        sort = self.request.query_params.get('sort', '-created_at')
+        VALID_SORTS = {'price_low', 'price_high', 'newest', 'popular', '-created_at', 'created_at'}
+        if sort not in VALID_SORTS:
+            sort = '-created_at'
+
         if sort == 'price_low':
-            queryset = queryset.annotate(sort_price=Min(
-                'listings__price')).order_by('sort_price')
+            queryset = queryset.annotate(sort_price=Min('listings__price')).order_by('sort_price')
         elif sort == 'price_high':
-            queryset = queryset.annotate(sort_price=Min(
-                'listings__price')).order_by('-sort_price')
+            queryset = queryset.annotate(sort_price=Min('listings__price')).order_by('-sort_price')
         elif sort == 'newest':
             queryset = queryset.order_by('-created_at')
         elif sort == 'popular':
-            queryset = queryset.annotate(listing_count=Count(
-                'listings')).order_by('-listing_count')
+            queryset = queryset.annotate(listing_count=Count('listings')).order_by('-listing_count')
         else:
             queryset = queryset.order_by(sort)
 
         return queryset.distinct()
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page     = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated  = self.get_paginated_response(serializer.data)
+
+            total_count  = paginated.data['count']
+            page_size    = self.paginator.get_page_size(request)
+            current_page = self.paginator.page.number
+            total_pages  = math.ceil(total_count / page_size)
+
+            return success_response({
+                'count':   total_count,
+                'pagination': {
+                    'total_count':  total_count,
+                    'total_pages':  total_pages,
+                    'current_page': current_page,
+                    'page_size':    page_size,
+                    'has_next':     self.paginator.page.has_next(),
+                    'has_previous': self.paginator.page.has_previous(),
+                    'next_page':    current_page + 1 if self.paginator.page.has_next() else None,
+                    'prev_page':    current_page - 1 if self.paginator.page.has_previous() else None,
+                },
+                'results': serializer.data,
+            })
+
+        serializer = self.get_serializer(queryset, many=True)
+        return success_response({'results': serializer.data})
+
     @action(detail=True, methods=['get'])
     def compare_prices(self, request, slug=None):
-        product = self.get_object()
-        listings = product.listings.filter(
-            is_available=True).select_related('platform')
+        product  = self.get_object()
+        listings = product.listings.filter(is_available=True).select_related('platform')
 
         comparison_data = {
             'product': {
@@ -414,8 +448,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'last_updated':  listing.last_checked,
             })
 
-        comparison_data['price_comparison'].sort(
-            key=lambda x: x['total_price'])
+        comparison_data['price_comparison'].sort(key=lambda x: x['total_price'])
         comparison_data['best_deal'] = (
             comparison_data['price_comparison'][0]
             if comparison_data['price_comparison'] else None
