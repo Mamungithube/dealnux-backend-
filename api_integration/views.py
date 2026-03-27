@@ -1,16 +1,14 @@
 import time
 import logging
-from unicodedata import category
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Q, Min, Count, Avg
+from django.db.models import Q, Min, Count
 from django.db import transaction
 from django.core.cache import cache
 import math
 from rest_framework import permissions as drf_permissions
-
 from .services.walmart_service import WalmartService
 from .services.amazon_service import AmazonService
 from .services.sephora_service import SephoraService
@@ -19,15 +17,11 @@ from .services.target_service import TargetService
 from .services.wayfair_service import WayfairService
 from .services.aliexpress_service import AliExpressService
 from .services.bestbuy_service import BestBuyService
-
 from .tasks import sync_all_platforms_task, sync_ebay_task
-
-# ── Circular import fix — db_helpers থেকে import ─────────────────────────────
-from .db_helpers import save_generic_product_to_db, _get_category_cache
+from .db_helpers import save_generic_product_to_db
 
 from .models import (
     Product, ProductListing, Platform, Category,
-    PriceHistory, ProductImage, ProductSpecification,
     CartItem, SavingsActivity, Favorite
 )
 from .serializers import (
@@ -36,16 +30,13 @@ from .serializers import (
     CategorySerializer, PriceHistorySerializer,
     CartItemSerializer, FavoriteSerializer,CategoryTreeSerializer,CategoryChildSerializer
 )
-
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from django.utils.text import slugify
-
-logger = logging.getLogger(__name__)
-
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+
+logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -195,14 +186,14 @@ def _normalize_and_sync_generic(service, platform, query, limit, success_msg, no
 # ── Platform-specific sync functions ─────────────────────────────────────────
 
 def sync_ebay_products(platform, query, limit):
-    """eBay timeout বেশি তাই background task।"""
+    """eBay timeout is high so it is a background task."""
     task = sync_ebay_task.delay(query, limit)
     return success_response({
         'query':        query,
         'platform':     'ebay',
         'task_id':      task.id,
         'message':      'eBay sync started in background (~60s)',
-        'check_status': f'/api/v1/fetch-products/task-status/{task.id}/',
+        'check_status': f'fetch-products/task-status/{task.id}/',
     }, message="eBay sync started")
 
 
@@ -241,7 +232,6 @@ def sync_walmart_products(platform, query, limit):
     if not items:
         return error_response("No Walmart products found", code=404)
 
-    # Fix: all_categories এখন _generic_sync_loop এর ভেতর handle হয়
     normalized = []
     for item in items:
         try:
@@ -537,7 +527,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         })
 
 class CategoryTreeView(APIView):
-    permission_classes = [drf_permissions.AllowAny]  # ✅
+    permission_classes = [drf_permissions.AllowAny]
 
     def get(self, request):
         parents = Category.objects.filter(parent=None).prefetch_related('children')
@@ -549,9 +539,8 @@ class CategoryTreeView(APIView):
             "data": serializer.data
         })
     
-
 class CategoryParentListView(APIView):
-    """শুধু parent categories"""
+    """Only parent categories"""
     def get(self, request):
         parents = Category.objects.filter(parent=None).only('id', 'name', 'slug')
         serializer = CategoryChildSerializer(parents, many=True)
@@ -563,7 +552,7 @@ class CategoryParentListView(APIView):
         })
 
 class CategoryChildrenView(APIView):
-    """একটা parent এর children"""
+    """Children of a parent"""
     def get(self, request, slug):
         try:
             parent = Category.objects.get(slug=slug, parent=None)
