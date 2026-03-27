@@ -38,113 +38,402 @@ def _get_category_cache():
 
 # ── Keyword → Category slug map ──────────────────────────────────────────────
 _KEYWORD_CATEGORY_MAP = [
-    # ── Shoes / Footwear (generic — must come before gender-specific) ─────────
-    (['shoe', 'shoes', 'sneaker', 'sneakers', 'boot', 'boots',
-      'loafer', 'loafers', 'heel', 'heels', 'sandal', 'sandals',
-      'slipper', 'slippers', 'footwear', 'trainer', 'trainers',
-      'wedge shoe', 'platform shoe', 'clog', 'clogs',
-      'golf shoe', 'running shoe', 'walking shoe'], 'footwear'),
 
-    # Electronics
-    (['smartphone', 'iphone', 'android phone', 'mobile phone'], 'smartphones'),
-    (['laptop', 'notebook', 'macbook', 'chromebook'], 'laptops'),
-    (['desktop', 'pc tower', 'all-in-one computer'], 'desktop-computers'),
-    (['tablet', 'ipad', 'kindle fire'], 'tablets'),
-    (['headphone', 'headset', 'earphone', 'earbud', 'airpod', 'earbuds', 'in-ear'], 'audio-headphones'),
-    (['camera', 'dslr', 'mirrorless', 'webcam', 'camcorder'], 'cameras-photo'),
-    (['smartwatch', 'fitness tracker', 'apple watch', 'galaxy watch'], 'smartwatches'),
-    (['tv ', 'television', '4k tv', 'oled', 'qled', 'monitor', 'projector'], 'tv-home-theater'),
-    (['video game', 'gaming console', 'playstation', 'xbox', 'nintendo', 'ps5', 'ps4'], 'video-games-consoles'),
-    (['keyboard', 'mouse', 'usb hub', 'hard drive', 'ssd', 'ram', 'computer accessory'], 'computer-accessories'),
-    (['printer', 'ink cartridge', 'toner', 'scanner'], 'printers-ink'),
-    (['drone', 'quadcopter', 'rc car', 'remote control'], 'drones-rc'),
-    (['smart home', 'alexa', 'google home', 'smart plug', 'smart bulb', 'ring doorbell'], 'smart-home-devices'),
+    # ── ELECTRONICS ───────────────────────────────────────────────────────
+    (['smartphone', 'iphone', 'android phone', 'mobile phone', 'cell phone'],
+     'smartphones-cell-phones'),
+    (['laptop', 'notebook', 'macbook', 'chromebook'],
+     'laptops'),
+    (['desktop', 'pc tower', 'all-in-one computer'],
+     'desktop-computers'),
+    (['tablet', 'ipad', 'kindle fire', 'e-reader'],
+     'tablets-e-readers'),
+    (['monitor', 'display screen', 'lcd screen', 'led monitor'],
+     'monitors-displays'),
+    (['cpu', 'motherboard', 'graphics card', 'gpu', 'computer component'],
+     'computer-components-parts'),
+    (['keyboard', 'computer mouse', 'usb hub', 'computer accessory'],
+     'computer-accessories'),
+    (['printer', 'ink cartridge', 'toner cartridge', 'scanner'],
+     'printers-scanners-ink'),
+    (['router', 'wifi extender', 'network switch', 'modem', 'networking'],
+     'networking-wi-fi'),
+    (['hard drive', 'ssd', 'flash drive', 'memory card', 'storage device'],
+     'storage-devices'),
+    (['headphone', 'headset', 'earphone', 'earbud', 'airpod', 'speaker', 'earbuds'],
+     'audio-headphones'),
+    (['dslr', 'mirrorless camera', 'digital camera', 'camera lens', 'tripod'],
+     'cameras-photography'),
+    (['action camera', 'camcorder', 'gopro', 'video camera'],
+     'camcorders-action-cameras'),
+    (['smartwatch', 'fitness tracker', 'apple watch', 'galaxy watch', 'fitness band'],
+     'smartwatches-fitness-bands'),
+    (['vr headset', 'virtual reality', 'ar glasses', 'oculus', 'meta quest', 'vr glasses'],
+     'virtual-reality-vr-ar'),
+    (['television', '4k tv', 'oled tv', 'qled tv', 'smart tv', 'tv stand'],
+     'tv-home-theater'),
+    (['projector', 'projection screen'],
+     'projectors-screens'),
+    (['smart plug', 'smart bulb', 'smart lock', 'smart home', 'alexa', 'google home'],
+     'smart-home-devices'),
+    (['security camera', 'doorbell camera', 'cctv', 'home security', 'surveillance'],
+     'home-security-surveillance'),
+    (['playstation', 'xbox', 'nintendo switch', 'ps5', 'ps4', 'gaming console', 'video game console'],
+     'video-games-consoles'),
+    (['gaming mouse', 'gaming keyboard', 'gaming headset', 'gaming chair', 'gaming accessory'],
+     'gaming-accessories'),
+    (['drone', 'quadcopter', 'rc car', 'remote control car', 'rc plane'],
+     'drones-rc-vehicles'),
+    (['battery pack', 'power bank', 'usb charger', 'wireless charger', 'solar charger'],
+     'batteries-chargers'),
+    (['usb cable', 'hdmi cable', 'charging cable', 'adapter', 'converter cable'],
+     'cables-adapters'),
 
-    # Fashion — Men
-    (['men\'s shirt', 'men\'s jacket', 'men\'s pants', 'men\'s suit', 'men\'s clothing'], 'mens-clothing'),
-    (['men\'s shoe', 'men\'s sneaker', 'men\'s boot'], 'mens-shoes'),
-    (['men\'s watch'], 'mens-watches'),
-    (['men\'s belt', 'men\'s wallet', 'men\'s tie'], 'mens-accessories-belts'),
+    # ── MEN'S FASHION ─────────────────────────────────────────────────────
+    (['men\'s shirt', 'men\'s jacket', 'men\'s pants', 'men\'s suit',
+      'men\'s clothing', 'mens clothing', 'men clothing', 'for men',
+      'man shirt', 'man pants', 'men\'s hoodie', 'men\'s coat'],
+     'mens-clothing'),
+    (['men\'s shoe', 'men\'s shoes', 'men\'s sneaker', 'men\'s boot',
+      'men\'s loafer', 'men\'s sandal'],
+     'mens-shoes-footwear'),
+    (['men\'s watch', 'mens watch'],
+     'mens-watches'),
+    (['men\'s belt', 'men\'s wallet', 'men\'s tie', 'men\'s accessory'],
+     'mens-accessories-belts'),
+    (['men\'s sunglass', 'mens sunglasses'],
+     'mens-sunglasses'),
+    (['men\'s grooming', 'men\'s shaving', 'shaving kit', 'beard trimmer'],
+     'mens-grooming-shaving'),
+    (['men\'s underwear', 'men\'s boxer', 'men\'s brief', 'men\'s socks'],
+     'mens-underwear-socks'),
+    (['men\'s sportswear', 'men\'s activewear', 'men\'s gym wear', 'men\'s athletic'],
+     'mens-sportswear-activewear'),
+    (['men\'s suit', 'men\'s tuxedo', 'men\'s formal', 'men\'s blazer'],
+     'mens-formal-wear'),
+    (['men\'s backpack', 'men\'s bag', 'men\'s briefcase'],
+     'mens-bags-backpacks'),
 
-    # Fashion — Women
-    (['women\'s dress', 'women\'s blouse', 'women\'s skirt', 'women\'s clothing'], 'womens-clothing'),
-    (['women\'s shoe', 'women\'s heel', 'women\'s boot', 'women\'s sneaker'], 'womens-shoes'),
-    (['handbag', 'purse', 'tote bag', 'clutch bag', 'women\'s wallet'], 'handbags-wallets'),
-    (['necklace', 'ring', 'bracelet', 'earring', 'fine jewelry', 'diamond'], 'fine-jewelry'),
-    (['makeup', 'lipstick', 'foundation', 'mascara', 'eyeshadow', 'blush', 'concealer'], 'beauty-makeup'),
+    # ── WOMEN'S FASHION ───────────────────────────────────────────────────
+    (['women\'s dress', 'women\'s blouse', 'women\'s skirt', 'women\'s top',
+      'women\'s pants', 'women\'s legging', 'women\'s hoodie', 'women\'s jacket',
+      'women\'s clothing', 'womens clothing', 'women clothing',
+      'ladies dress', 'ladies top', 'ladies clothing',
+      'female clothing', 'for women', 'woman dress', 'woman top',
+      'women\'s coat', 'women\'s cardigan'],
+     'womens-clothing'),
+    (['women\'s shoe', 'women\'s shoes', 'women\'s heel', 'women\'s heels',
+      'women\'s boot', 'women\'s boots', 'women\'s sneaker', 'women\'s flat',
+      'women\'s pump', 'ladies shoe', 'female shoe'],
+     'womens-shoes-footwear'),
+    (['handbag', 'purse', 'tote bag', 'clutch bag', 'women\'s wallet', 'shoulder bag'],
+     'handbags-purses-wallets'),
+    (['women\'s watch', 'ladies watch'],
+     'womens-watches'),
+    (['necklace', 'diamond ring', 'gold bracelet', 'fine jewelry', 'gold jewelry',
+      'silver jewelry', 'gemstone', 'engagement ring'],
+     'fine-jewelry'),
+    (['fashion jewelry', 'costume jewelry', 'hair clip', 'hair band', 'scrunchie',
+      'fashion accessory', 'women\'s accessory'],
+     'fashion-jewelry-accessories'),
+    (['lingerie', 'bra', 'underwear', 'pajama', 'sleepwear', 'nightgown'],
+     'lingerie-sleepwear'),
+    (['makeup', 'lipstick', 'foundation', 'mascara', 'eyeshadow', 'blush',
+      'concealer', 'lip gloss', 'eyeliner', 'contour'],
+     'beauty-makeup'),
+    (['women\'s sportswear', 'women\'s activewear', 'women\'s yoga', 'women\'s athletic',
+      'sports bra', 'leggings', 'yoga pants'],
+     'womens-sportswear-activewear'),
+    (['women\'s sunglass', 'ladies sunglasses'],
+     'womens-sunglasses'),
+    (['hair clip', 'headband', 'hair pin', 'hair tie', 'hair accessory'],
+     'hair-accessories'),
+    (['maternity', 'pregnancy clothing', 'nursing'],
+     'maternity-clothing'),
+    (['swimwear', 'bikini', 'swimsuit', 'cover-up', 'beach wear'],
+     'swimwear-cover-ups'),
+    (['plus size', 'plus size dress', 'plus size clothing'],
+     'plus-size-fashion'),
 
-    # Home
-    (['sofa', 'chair', 'table', 'desk', 'bed frame', 'bookshelf', 'furniture'], 'furniture'),
-    (['home decor', 'wall art', 'picture frame', 'candle', 'vase', 'rug', 'curtain'], 'home-decor'),
-    (['cookware', 'kitchen', 'blender', 'air fryer', 'instant pot', 'knife set', 'dining'], 'kitchen-dining'),
-    (['bedding', 'pillow', 'mattress', 'comforter', 'sheet set', 'towel', 'bath'], 'bedding-bath'),
-    (['garden', 'outdoor', 'patio', 'lawn mower', 'plant pot', 'hose'], 'garden-outdoor'),
-    (['tool', 'drill', 'saw', 'wrench', 'screwdriver', 'home improvement', 'power tool'], 'tools-home-improvement'),
-    (['ceiling fan', 'light fixture', 'lamp', 'led bulb', 'chandelier'], 'lighting-ceiling-fans'),
-    (['pet food', 'dog', 'cat', 'pet toy', 'pet bed', 'aquarium', 'bird cage'], 'pet-supplies'),
+    # ── HOME & KITCHEN ────────────────────────────────────────────────────
+    (['sofa', 'armchair', 'dining table', 'office desk', 'bed frame',
+      'bookshelf', 'wardrobe', 'cabinet', 'dresser'],
+     'furniture'),
+    (['wall art', 'picture frame', 'scented candle', 'decorative vase',
+      'throw pillow', 'wall clock', 'home decor'],
+     'home-decor-accents'),
+    (['dinnerware', 'cutlery set', 'serving bowl', 'kitchen utensil', 'kitchen dining'],
+     'kitchen-dining'),
+    (['cookware set', 'frying pan', 'cooking pot', 'bakeware', 'baking pan', 'casserole'],
+     'cookware-bakeware'),
+    (['coffee maker', 'air fryer', 'instant pot', 'blender', 'toaster', 'microwave',
+      'kitchen appliance'],
+     'kitchen-appliances'),
+    (['bed sheet', 'pillow case', 'duvet cover', 'comforter', 'bed pillow', 'bedding'],
+     'bedding-pillows'),
+    (['bath towel', 'hand towel', 'shower curtain', 'bath mat', 'bath accessory'],
+     'bath-towels-accessories'),
+    (['storage box', 'shelf organizer', 'closet organizer', 'storage basket'],
+     'storage-organization'),
+    (['cleaning spray', 'mop', 'broom', 'cleaning cloth', 'cleaning supplies'],
+     'cleaning-supplies-tools'),
+    (['laundry detergent', 'fabric softener', 'dryer sheet', 'laundry bag'],
+     'laundry-fabric-care'),
+    (['ceiling fan', 'floor lamp', 'table lamp', 'led bulb', 'chandelier', 'light fixture'],
+     'lighting-ceiling-fans'),
+    (['air conditioner', 'space heater', 'air purifier', 'humidifier', 'dehumidifier'],
+     'heating-cooling-air-quality'),
+    (['vacuum cleaner', 'robot vacuum', 'steam mop', 'floor cleaner'],
+     'vacuums-floor-care'),
+    (['refrigerator', 'washing machine', 'dishwasher', 'dryer', 'large appliance'],
+     'large-appliances'),
+    (['garden hose', 'lawn mower', 'plant pot', 'garden tool', 'garden fertilizer'],
+     'patio-lawn-garden'),
+    (['patio furniture', 'outdoor chair', 'garden bench', 'outdoor table', 'outdoor decor'],
+     'outdoor-furniture-decor'),
+    (['bbq grill', 'charcoal grill', 'gas grill', 'outdoor cooking', 'smoker'],
+     'grills-outdoor-cooking'),
+    (['power drill', 'circular saw', 'wrench set', 'screwdriver set', 'home improvement tool'],
+     'tools-home-improvement'),
+    (['pipe fitting', 'faucet', 'plumbing', 'hardware'],
+     'plumbing-hardware'),
+    (['area rug', 'carpet', 'floor mat', 'hardwood flooring'],
+     'flooring-area-rugs'),
+    (['curtain', 'window blind', 'window shade', 'window treatment'],
+     'window-treatments'),
+    (['dog food', 'cat food', 'pet toy', 'pet bed', 'aquarium', 'bird cage', 'pet leash'],
+     'pet-supplies'),
 
-    # Health & Beauty
-    (['moisturizer', 'serum', 'sunscreen', 'face wash', 'skincare', 'toner', 'retinol'], 'skincare'),
-    (['shampoo', 'conditioner', 'hair dryer', 'hair straightener', 'hair care'], 'hair-care'),
-    (['perfume', 'cologne', 'fragrance', 'eau de toilette'], 'fragrances-perfumes'),
-    (['vitamin', 'supplement', 'protein powder', 'fish oil', 'probiotic', 'omega'], 'vitamins-dietary-supplements'),
-    (['toothbrush', 'toothpaste', 'mouthwash', 'dental floss', 'oral care'], 'oral-care'),
-    (['blood pressure', 'thermometer', 'glucose monitor', 'medical', 'first aid'], 'medical-supplies-equipment'),
-    (['razor', 'deodorant', 'body wash', 'hand sanitizer', 'personal care'], 'personal-care-hygiene'),
+    # ── HEALTH & BEAUTY ───────────────────────────────────────────────────
+    (['moisturizer', 'face serum', 'sunscreen', 'face wash', 'face cream',
+      'skincare', 'retinol', 'toner', 'face mask'],
+     'skincare'),
+    (['shampoo', 'conditioner', 'hair dryer', 'hair straightener',
+      'hair growth', 'hair oil', 'hair care'],
+     'hair-care'),
+    (['perfume', 'cologne', 'fragrance', 'eau de toilette', 'body spray'],
+     'fragrances-perfumes'),
+    (['vitamin', 'multivitamin', 'fish oil', 'probiotic', 'omega', 'dietary supplement'],
+     'vitamins-dietary-supplements'),
+    (['protein powder', 'creatine', 'pre workout', 'bcaa', 'sports nutrition'],
+     'sports-nutrition'),
+    (['razor', 'deodorant', 'body wash', 'hand sanitizer', 'personal care'],
+     'personal-care-hygiene'),
+    (['toothbrush', 'toothpaste', 'mouthwash', 'dental floss', 'teeth whitening'],
+     'oral-care'),
+    (['blood pressure monitor', 'thermometer', 'glucose monitor', 'pulse oximeter',
+      'medical supply', 'first aid kit'],
+     'medical-supplies-equipment'),
+    (['weight loss', 'diet pill', 'fat burner', 'appetite suppressant', 'slimming'],
+     'weight-loss-slimming'),
 
-    # Sports
-    (['treadmill', 'dumbbell', 'barbell', 'yoga mat', 'resistance band', 'gym', 'fitness'], 'exercise-fitness-equipment'),
-    (['bicycle', 'cycling', 'bike helmet'], 'cycling-bicycles'),
-    (['tent', 'sleeping bag', 'backpack', 'hiking', 'camping'], 'camping-hiking'),
-    (['fishing rod', 'fishing reel', 'fishing lure', 'tackle box'], 'fishing-equipment'),
-    (['football', 'basketball', 'soccer', 'baseball', 'volleyball', 'team sport'], 'team-sports'),
+    # ── SPORTS & OUTDOORS ─────────────────────────────────────────────────
+    (['treadmill', 'dumbbell', 'barbell', 'yoga mat', 'resistance band',
+      'pull up bar', 'gym equipment', 'exercise bike', 'rowing machine'],
+     'exercise-fitness-equipment'),
+    (['bicycle', 'bike helmet', 'cycling glove', 'bike lock', 'cycling'],
+     'cycling-bicycles'),
+    (['camping tent', 'sleeping bag', 'hiking backpack', 'hiking boot',
+      'trekking pole', 'camping gear'],
+     'camping-hiking-backpacking'),
+    (['fishing rod', 'fishing reel', 'fishing lure', 'tackle box', 'fishing line'],
+     'fishing-equipment'),
+    (['swimming goggle', 'swim cap', 'surfboard', 'kayak', 'water sport'],
+     'water-sports-swimming'),
+    (['football', 'basketball', 'soccer ball', 'baseball glove', 'volleyball', 'team sport'],
+     'team-sports'),
+    (['golf club', 'golf ball', 'golf bag', 'golf glove'],
+     'golf-equipment'),
+    (['skateboard', 'kick scooter', 'longboard', 'roller skate'],
+     'skateboarding-scooters'),
 
-    # Kids & Baby
-    (['baby', 'infant', 'newborn', 'diaper', 'baby monitor', 'baby food'], 'baby-products-accessories'),
-    (['toy', 'lego', 'barbie', 'action figure', 'stuffed animal', 'nerf'], 'toys-games'),
+    # ── BABY & KIDS ───────────────────────────────────────────────────────
+    (['baby monitor', 'baby carrier', 'baby swing', 'baby bouncer'],
+     'baby-products-accessories'),
+    (['stroller', 'baby stroller', 'pram', 'car seat', 'baby gear'],
+     'baby-gear-strollers'),
+    (['baby shoe', 'baby shoes', 'baby clothing', 'baby outfit', 'infant clothing',
+      'toddler clothing', 'kids clothing'],
+     'baby-clothing-shoes'),
+    (['baby food', 'infant formula', 'baby cereal', 'baby snack'],
+     'baby-food-formula'),
+    (['diaper', 'baby wipe', 'diaper bag', 'potty trainer'],
+     'diapering-potty-training'),
+    (['crib', 'baby crib', 'nursery furniture', 'baby monitor', 'baby mobile'],
+     'nursery-furniture-decor'),
+    (['lego', 'building toy', 'lego set', 'lego block'],
+     'building-toys-lego'),
+    (['barbie', 'doll', 'dollhouse', 'baby doll'],
+     'dolls-dollhouses'),
+    (['puzzle', 'board game', 'card game', 'chess', 'jigsaw puzzle'],
+     'puzzles-board-games'),
+    (['action figure', 'superhero toy', 'collectible figure'],
+     'action-figures-collectibles'),
+    (['nerf gun', 'toy gun', 'stuffed animal', 'plush toy', 'toy'],
+     'toys-games'),
+    (['art kit for kids', 'craft kit', 'kids craft', 'kids art supply'],
+     'arts-crafts-for-kids'),
+    (['kids book', 'children book', 'educational toy', 'learning toy'],
+     'kids-books-educational'),
+    (['kids tablet', 'kids laptop', 'kids smartwatch', 'kids gadget'],
+     'kids-electronics-gadgets'),
+    (['backpack for kids', 'school bag', 'pencil case', 'school supply'],
+     'school-supplies'),
 
-    # Automotive
-    (['car charger', 'dash cam', 'car stereo', 'gps navigation', 'car electronics'], 'car-electronics-gps'),
+    # ── AUTOMOTIVE ────────────────────────────────────────────────────────
+    (['car charger', 'dash cam', 'car stereo', 'gps navigation', 'car speaker',
+      'car electronics'],
+     'car-electronics-gps'),
+    (['car seat cover', 'steering wheel cover', 'car floor mat', 'car organizer'],
+     'car-interior-accessories'),
+    (['car wax', 'car wash', 'car polish', 'car detailing'],
+     'car-care-detailing'),
+    (['motor oil', 'engine oil', 'car fluid', 'coolant'],
+     'motor-oil-fluids'),
+    (['tire', 'car wheel', 'rim', 'alloy wheel'],
+     'tires-wheels'),
+    (['motorcycle helmet', 'motorcycle glove', 'motorcycle jacket', 'motorcycle part'],
+     'motorcycle-parts-accessories'),
 
-    # Food & Household
-    (['snack', 'chips', 'candy', 'cookie', 'popcorn', 'nuts', 'jerky'], 'snack-foods'),
-    (['coffee', 'tea', 'energy drink', 'protein shake', 'beverage'], 'beverages-coffee'),
-    (['cleaning', 'detergent', 'dish soap', 'paper towel', 'trash bag', 'household'], 'household-cleaning-supplies'),
+    # ── ARTS, CRAFTS & COLLECTIBLES ───────────────────────────────────────
+    (['paint brush', 'acrylic paint', 'oil paint', 'watercolor', 'canvas',
+      'art supply', 'art supplies', 'painting supply', 'sketching', 'drawing pencil'],
+     'art-supplies-painting'),
+    (['sewing machine', 'knitting needle', 'crochet hook', 'yarn', 'fabric'],
+     'sewing-knitting-crochet'),
+    (['scrapbook', 'paper craft', 'sticker', 'washi tape', 'craft paper'],
+     'scrapbooking-paper-crafts'),
+    (['diy craft kit', 'craft kit', 'diy kit'],
+     'diy-craft-kits'),
+    (['coin collection', 'commemorative coin', 'gold coin', 'silver coin'],
+     'coins-currency'),
+    (['pokemon card', 'magic the gathering', 'trading card', 'yugioh'],
+     'trading-cards-pokemon-mtg'),
+    (['antique', 'vintage item', 'collectible', 'rare item'],
+     'antiques-vintage-items'),
+    (['sports card', 'baseball card', 'basketball card', 'sports memorabilia'],
+     'sports-cards-memorabilia'),
+    (['autograph', 'signed jersey', 'signed photo', 'celebrity autograph'],
+     'autographs-signed-items'),
+    (['handmade', 'custom made', 'personalized item', 'handcrafted'],
+     'handmade-custom-items'),
+    (['pottery', 'ceramic', 'clay', 'porcelain'],
+     'pottery-ceramics'),
+
+    # ── BOOKS & ENTERTAINMENT ─────────────────────────────────────────────
+    (['novel', 'fiction book', 'mystery book', 'thriller book', 'romance novel'],
+     'fiction-books'),
+    (['biography', 'history book', 'science book', 'non-fiction', 'self help book'],
+     'non-fiction-educational-books'),
+    (['children book', 'picture book', 'kids story book'],
+     'childrens-books'),
+    (['textbook', 'academic book', 'college textbook', 'study guide'],
+     'textbooks-academic'),
+    (['comic book', 'graphic novel', 'manga book'],
+     'comics-graphic-novels'),
+    (['movie dvd', 'blu ray', 'tv series dvd', 'film collection'],
+     'movies-tv-shows'),
+    (['vinyl record', 'cd album', 'music cd'],
+     'music-vinyl-records'),
+    (['guitar', 'piano', 'keyboard instrument', 'drum', 'violin', 'ukulele',
+      'musical instrument'],
+     'musical-instruments'),
+
+    # ── FOOD & GROCERY ────────────────────────────────────────────────────
+    (['chips', 'popcorn', 'beef jerky', 'granola bar', 'snack food', 'trail mix'],
+     'snack-foods'),
+    (['coffee bean', 'ground coffee', 'green tea', 'energy drink', 'juice', 'beverage'],
+     'beverages-coffee'),
+    (['pasta', 'rice', 'flour', 'canned food', 'pantry staple'],
+     'pantry-staples-dry-goods'),
+    (['organic food', 'natural food', 'gluten free', 'vegan food'],
+     'organic-natural-foods'),
+    (['chocolate', 'candy', 'gummy', 'lollipop', 'sweet'],
+     'candy-chocolate'),
+
+    # ── OFFICE & BUSINESS ─────────────────────────────────────────────────
+    (['office chair', 'office desk', 'filing cabinet', 'office furniture'],
+     'office-furniture'),
+    (['pen', 'notebook', 'stapler', 'sticky note', 'office supply', 'stationery'],
+     'office-supplies-stationery'),
+    (['printer paper', 'printer cartridge', 'ink refill', 'toner'],
+     'printer-cartridges-paper'),
+    (['whiteboard', 'presentation board', 'flip chart', 'projector screen'],
+     'presentation-whiteboards'),
+
+    # ── TRAVEL & EXPERIENCES ─────────────────────────────────────────────
+    (['suitcase', 'luggage', 'travel bag', 'carry on bag', 'rolling bag'],
+     'luggage-travel-bags'),
+    (['travel pillow', 'neck pillow', 'eye mask', 'travel blanket', 'travel comfort'],
+     'travel-pillows-comfort'),
+    (['travel adapter', 'travel bottle', 'packing cube', 'travel accessory'],
+     'travel-accessories'),
+
+    # ── WEDDING & EVENTS ──────────────────────────────────────────────────
+    (['wedding dress', 'bridal gown', 'wedding veil', 'bridesmaid dress'],
+     'wedding-dresses-accessories'),
+    (['wedding decoration', 'wedding centerpiece', 'wedding flower'],
+     'wedding-decorations'),
+    (['party supply', 'birthday decoration', 'balloon', 'party banner'],
+     'party-supplies-decorations'),
+    (['christmas decoration', 'holiday ornament', 'halloween decoration',
+      'festive decor'],
+     'holiday-decorations'),
+    (['gift wrap', 'gift box', 'ribbon', 'tissue paper', 'gift bag'],
+     'gift-wrapping-packaging'),
+    (['personalized gift', 'custom gift', 'engraved gift', 'monogram gift'],
+     'personalized-custom-gifts'),
+    (['flower bouquet', 'artificial flower', 'indoor plant', 'succulent'],
+     'flowers-plants'),
 ]
 
 
 def _resolve_category(category_path, title, cache):
     title_lower = (title or '').lower()
-    print(f"DEBUG: 3rd Party Category Path: {category_path}") # এটি আপনার কনসোলে দেখাবে
-    print(f"DEBUG: Product Title: {title}")
 
+    # ── Step 1: category_path থেকে exact/partial match ───────────────────
     if category_path:
-        clean_name = category_path.split('>')[0].strip()
-        slug_key   = slugify(clean_name)
-        lower_key  = clean_name.lower()
+        parts = [p.strip() for p in category_path.split('>')]
+        for part in parts:
+            slug_key  = slugify(part)
+            lower_key = part.lower()
+            if slug_key in cache['by_slug']:
+                return cache['by_slug'][slug_key]
+            if lower_key in cache['by_name_lower']:
+                return cache['by_name_lower'][lower_key]
+        # partial match
+        for part in parts:
+            for cat_name_lower, cat_obj in cache['by_name_lower'].items():
+                if len(cat_name_lower) >= 6 and (
+                    cat_name_lower in part.lower()
+                    or part.lower() in cat_name_lower
+                ):
+                    return cat_obj
 
-        if slug_key in cache['by_slug']:
-            return cache['by_slug'][slug_key]
-        if lower_key in cache['by_name_lower']:
-            return cache['by_name_lower'][lower_key]
-        for cat_name_lower, cat_obj in cache['by_name_lower'].items():
-            if cat_name_lower in lower_key or lower_key in cat_name_lower:
-                return cat_obj
-
+    # ── Step 2: keyword match — padded for whole-word ────────────────────
     if title_lower:
+        padded = f' {title_lower} '
         for keywords, target_slug in _KEYWORD_CATEGORY_MAP:
             for kw in keywords:
-                if kw in title_lower:
+                if f' {kw} ' in padded or padded.startswith(f'{kw} ') or padded.endswith(f' {kw}'):
                     cat = cache['by_slug'].get(target_slug)
                     if cat:
                         return cat
+                    readable = target_slug.replace('-', ' ')
                     for cat_name_lower, cat_obj in cache['by_name_lower'].items():
-                        if target_slug.replace('-', ' ') in cat_name_lower:
+                        if readable in cat_name_lower or cat_name_lower in readable:
                             return cat_obj
 
+    # ── Step 3: conservative fallback ────────────────────────────────────
+    SKIP_WORDS = {'ring', 'fine', 'art', 'top', 'bag', 'set', 'kit',
+                  'toy', 'cat', 'dog', 'pen', 'ram', 'ssd', 'tv'}
     if title_lower:
         for cat_name_lower, cat_obj in cache['by_name_lower'].items():
-            if len(cat_name_lower) >= 5 and cat_name_lower in title_lower:
+            name_words = set(cat_name_lower.split())
+            if (len(cat_name_lower) >= 10
+                    and len(name_words) >= 2
+                    and not name_words & SKIP_WORDS
+                    and cat_name_lower in title_lower):
                 return cat_obj
 
     return None

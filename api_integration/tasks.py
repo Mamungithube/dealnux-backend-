@@ -29,12 +29,12 @@ def sync_ebay_task(query, limit=10):
         if not platform.api_enabled:
             return {'platform': 'ebay', 'skipped': 'disabled'}
 
-        service  = EbayRapidService()
-        items    = service.search_products(query, limit=limit)
-        save_fn  = _get_save_fn()
-        synced   = 0
-        updated  = 0
-        failed   = 0
+        service = EbayRapidService()
+        items = service.search_products(query, limit=limit)
+        save_fn = _get_save_fn()
+        synced = 0
+        updated = 0
+        failed = 0
         products = []
 
         for item in items:
@@ -42,7 +42,8 @@ def sync_ebay_task(query, limit=10):
                 product_data = service.extract_product_data(item)
 
                 if product_data.get('_is_non_usd'):
-                    logger.info(f"eBay non-USD listing skipped: {product_data.get('title','')[:40]}")
+                    logger.info(
+                        f"eBay non-USD listing skipped: {product_data.get('title', '')[:40]}")
                     continue
 
                 result = save_fn(product_data, platform, query=query)
@@ -98,9 +99,9 @@ def sync_amazon_task(query, limit=10):
             return {'platform': 'amazon', 'skipped': 'disabled'}
 
         service = AmazonService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -127,9 +128,9 @@ def sync_walmart_task(query, limit=10):
             return {'platform': 'walmart', 'skipped': 'disabled'}
 
         service = WalmartService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -156,9 +157,9 @@ def sync_sephora_task(query, limit=10):
             return {'platform': 'sephora', 'skipped': 'disabled'}
 
         service = SephoraService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -185,9 +186,9 @@ def sync_target_task(query, limit=10):
             return {'platform': 'target', 'skipped': 'disabled'}
 
         service = TargetService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -202,6 +203,7 @@ def sync_target_task(query, limit=10):
         logger.error(f"Target sync task failed: {e}")
         return {'platform': 'target', 'error': str(e)}
 
+
 @shared_task
 def sync_wayfair_task(query, limit=10):
     try:
@@ -213,9 +215,9 @@ def sync_wayfair_task(query, limit=10):
             return {'platform': 'wayfair', 'skipped': 'disabled'}
 
         service = WayfairService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -242,9 +244,9 @@ def sync_aliexpress_task(query, limit=10):
             return {'platform': 'aliexpress', 'skipped': 'disabled'}
 
         service = AliExpressService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -271,9 +273,9 @@ def sync_bestbuy_task(query, limit=10):
             return {'platform': 'bestbuy', 'skipped': 'disabled'}
 
         service = BestBuyService()
-        items   = service.search_products(query, limit=limit)
+        items = service.search_products(query, limit=limit)
         save_fn = _get_save_fn()
-        synced  = 0
+        synced = 0
 
         for item in items:
             try:
@@ -318,7 +320,7 @@ def sync_all_platforms_task(query, limit=30):
     if query in WAYFAIR_CATEGORIES:
         tasks.append(sync_wayfair_task.s(query, limit))
 
-    job    = group(*tasks)
+    job = group(*tasks)
     result = job.apply_async()
     return result.id
 
@@ -327,16 +329,15 @@ def sync_all_platforms_task(query, limit=30):
 def hourly_fixed_category_sync():
     from api_integration.models import Category
     
-    # DB থেকে সব child categories নাও
     categories = list(
         Category.objects.filter(parent__isnull=False)
-        .values_list('name', flat=True)
+        .only('name', 'slug')  # object হিসেবে নাও
     )
     
-    for index, category_name in enumerate(categories):
+    for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category_name, 10],
-            countdown=index * 30  # প্রতিটা ৩০ সেকেন্ড পর পর
+            args=[category.name, 10, category.slug],
+            countdown=index * 30
         )
     
     logger.info(f"Scheduled sync for {len(categories)} categories.")

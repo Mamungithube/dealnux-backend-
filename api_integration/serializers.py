@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from twisted.test import obj
 from .models import (
     Platform, Category, Product, ProductListing,
     ProductImage, ProductSpecification, PriceHistory , Favorite
@@ -31,7 +32,12 @@ class CategorySerializer(serializers.ModelSerializer):
                   'parent_name', 'products_count', 'created_at']
 
     def get_products_count(self, obj):
-        return obj.products.filter(is_active=True).count()
+        from .models import Product
+        child_ids = list(obj.children.values_list('id', flat=True))
+        all_ids = [obj.id] + child_ids
+        return Product.objects.filter(
+            category__id__in=all_ids, is_active=True
+        ).count()
 
 class CategoryChildSerializer(serializers.ModelSerializer):
     class Meta:

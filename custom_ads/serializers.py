@@ -104,7 +104,6 @@ class AdSerializer(serializers.ModelSerializer):
         return value
     
     def validate_image(self, value):
-        # ১. ইমেজ ডাইমেনশন চেক (১২৮০x৭২০ এর কম হলে নিবে না)
         width, height = get_image_dimensions(value)
         
         if width < 1280 or height < 720:
@@ -113,11 +112,9 @@ class AdSerializer(serializers.ModelSerializer):
                 f"The size of your image: {width}x{height}"
             )
 
-        # ২. ফাইল সাইজ চেক (সর্বোচ্চ ২ এমবি)
         if value.size > 2 * 1024 * 1024:
             raise serializers.ValidationError("The image file size must be less than 2MB.")
 
-        # ৩. সিকিউরিটি: ফাইল ফরম্যাট চেক
         ext = value.name.split('.')[-1].lower()
         valid_extensions = ['jpg', 'jpeg', 'png', 'gif']
         if ext not in valid_extensions:
