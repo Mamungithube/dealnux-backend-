@@ -38,6 +38,7 @@ services:
   celery_worker:
     build: .
     container_name: dealnux_celery_worker
+    restart: always
     command: celery -A dealnux worker -l info --concurrency=4
     volumes:
       - .:/app
@@ -50,6 +51,7 @@ services:
   celery_beat:
     build: .
     container_name: dealnux_celery_beat
+    restart: always
     command: celery -A dealnux beat -l info
     volumes:
       - .:/app

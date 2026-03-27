@@ -115,6 +115,8 @@ _KEYWORD_CATEGORY_MAP = [
 
 def _resolve_category(category_path, title, cache):
     title_lower = (title or '').lower()
+    print(f"DEBUG: 3rd Party Category Path: {category_path}") # এটি আপনার কনসোলে দেখাবে
+    print(f"DEBUG: Product Title: {title}")
 
     if category_path:
         clean_name = category_path.split('>')[0].strip()

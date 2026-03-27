@@ -3,8 +3,7 @@ from .models import AdvertiserRequest, CustomAd, AdReview , AdDailyPerformance
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
-from datetime import timedelta
-
+from django.core.files.images import get_image_dimensions
 
 class AdReviewSerializer(serializers.ModelSerializer):
     reviewer_email = serializers.EmailField(source='reviewer.email', read_only=True)
@@ -102,6 +101,28 @@ class AdSerializer(serializers.ModelSerializer):
             validator(value)
         except DjangoValidationError:
             raise serializers.ValidationError("Enter a valid URL")
+        return value
+    
+    def validate_image(self, value):
+        # ১. ইমেজ ডাইমেনশন চেক (১২৮০x৭২০ এর কম হলে নিবে না)
+        width, height = get_image_dimensions(value)
+        
+        if width < 1280 or height < 720:
+            raise serializers.ValidationError(
+                f"The image size is very small! It must be at least 1280x720 pixels. "
+                f"The size of your image: {width}x{height}"
+            )
+
+        # ২. ফাইল সাইজ চেক (সর্বোচ্চ ২ এমবি)
+        if value.size > 2 * 1024 * 1024:
+            raise serializers.ValidationError("The image file size must be less than 2MB.")
+
+        # ৩. সিকিউরিটি: ফাইল ফরম্যাট চেক
+        ext = value.name.split('.')[-1].lower()
+        valid_extensions = ['jpg', 'jpeg', 'png', 'gif']
+        if ext not in valid_extensions:
+            raise serializers.ValidationError("Only JPG, PNG, or GIF files are allowed.")
+
         return value
 
 

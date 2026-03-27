@@ -11,7 +11,6 @@ from django.utils.text import slugify
 # Delete all previous categories and start over.
 # ============================================================
 deleted, _ = Category.objects.all().delete()
-print(f"🗑  Deleted {deleted} old categories\n")
 
 CATEGORY_TREE = [
 
@@ -348,10 +347,10 @@ for parent_name, children in CATEGORY_TREE:
     )
     if parent_new:
         created += 1
-        print(f"  ✚ {parent_name}")
+        # print(f"  ✚ {parent_name}")
     else:
         skipped += 1
-        print(f"  • {parent_name} (exists)")
+        # print(f"  • {parent_name} (exists)")
 
     for child_name in children:
         child_slug = slugify(child_name)
@@ -361,12 +360,6 @@ for parent_name, children in CATEGORY_TREE:
         )
         if child_new:
             created += 1
-            print(f"      + {child_name}")
+            # print(f"      + {child_name}")
         else:
             skipped += 1
-
-print(f"\n{'='*45}")
-print(f"  ✓ Created : {created}")
-print(f"  ○ Skipped : {skipped}")
-print(f"  ✓ Total   : {Category.objects.count()}")
-print(f"{'='*45}")

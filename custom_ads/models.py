@@ -2,7 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-
+from django.core.files.images import get_image_dimensions
 
 class CustomAd(models.Model):
     STATUS_CHOICES = [
@@ -16,7 +16,10 @@ class CustomAd(models.Model):
     advertiser      = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='ads')
     title           = models.CharField(max_length=255)
     description     = models.TextField(blank=True, default="")
-    image           = models.ImageField(upload_to='ads/', help_text="Recommended size: 1200x628px")
+    image           = models.ImageField(
+        upload_to='ads/', 
+        help_text="Ideal size: 1280x720px (16:9), Max 2MB. Formats: JPG, PNG, GIF"
+    )
     target_url      = models.URLField(help_text="Valid URL required")
     target_section  = models.CharField(max_length=100, blank=True, null=True)
 
@@ -51,13 +54,38 @@ class CustomAd(models.Model):
         return f"{self.title} - {self.advertiser.email}"
 
     def clean(self):
-        """Custom validation"""
+        """Custom validation for dates, budget, and image"""
+        super().clean()
+
+        # 1. Date and budget validation (previous ones)
         if self.end_date <= self.start_date:
             raise ValidationError("End date must be after start date")
         if self.priority_weight > 100:
             raise ValidationError("Priority weight cannot exceed 100")
         if self.total_budget <= 0:
             raise ValidationError("Budget must be greater than 0")
+
+        # ২. image validation (YouTube Thumbnail Size & Security)
+        if self.image:
+            # File size check (2 MB = 2 * 1024 * 1024 bytes)
+            if self.image.size > 2 * 1024 * 1024:
+                raise ValidationError("Image size must be less than 2MB.")
+
+            # ডাইমেনশন চেক (Width & Height)
+            width, height = get_image_dimensions(self.image)
+            
+            if width < 640:
+                raise ValidationError("Image width must be at least 640 pixels.")
+            
+            # 1280x720 and 16:9 aspect ratio check
+            if width != 1280 or height != 720:
+                # You can choose to only show a warning or strictly block it
+                raise ValidationError(f"Image size must be 1280x720 pixels. Your image size {width}x{height}")
+
+            # File format check (for security)
+            extension = self.image.name.split('.')[-1].lower()
+            if extension not in ['jpg', 'jpeg', 'png', 'gif']:
+                raise ValidationError("Upload only JPG, PNG, or GIF formats.")
 
     @property
     def ctr(self):
@@ -71,7 +99,7 @@ class CustomAd(models.Model):
         return float(self.total_budget - self.spent_amount)
 
     def save(self, *args, **kwargs):
-    # Save হওয়ার আগে check করো
+    # Check before saving.
         if self.status == 'active':
             if self.end_date <= timezone.now() or self.spent_amount >= self.total_budget:
                 self.status = 'expired'
@@ -96,8 +124,12 @@ class AdSetting(models.Model):
         return f"Current CPC: {self.cpc_amount}"
 
     def save(self, *args, **kwargs):
-        # This will ensure that there will only be one settings row in the database (Singleton)
-        self.pk = 1
+        if self.status == 'active':
+            if self.end_date <= timezone.now() or self.spent_amount >= self.total_budget:
+                self.status = 'expired'
+        if not self.id:
+            self.full_clean()
+
         super().save(*args, **kwargs)
 
 
