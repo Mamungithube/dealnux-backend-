@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 
 
 def clean_display_title(title):
-    title = re.sub(r'\d+opens?', '', title, flags=re.IGNORECASE)
+    import re
+    # শুধু "Opens in a new window or tab" pattern টা সরাও
+    title = re.sub(r'\d+%?\s*opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?', '', title, flags=re.IGNORECASE)
     title = re.sub(r'opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\s+', ' ', title).strip(' -')
     return title
