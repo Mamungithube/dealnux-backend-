@@ -200,7 +200,7 @@ class CartItemSerializer(serializers.ModelSerializer):
 
 
 class FavoriteSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(read_only=True)
+    product = serializers.SerializerMethodField() 
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source='product', write_only=True
     )
@@ -209,3 +209,9 @@ class FavoriteSerializer(serializers.ModelSerializer):
         model = Favorite
         fields = ['id', 'product', 'product_id', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def get_product(self, obj):
+        return ProductSerializer(
+            obj.product,
+            context=self.context
+        ).data

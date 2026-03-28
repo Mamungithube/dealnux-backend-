@@ -21,7 +21,9 @@ from .services.aliexpress_service import AliExpressService
 from .services.bestbuy_service import BestBuyService
 from .tasks import sync_all_platforms_task, sync_ebay_task
 from .db_helpers import save_generic_product_to_db
-
+from django.db.models import Q, Min, FloatField, Value
+from difflib import SequenceMatcher
+import re
 from .models import (
     Product, ProductListing, Platform, Category,
     CartItem, SavingsActivity, Favorite
@@ -37,8 +39,46 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_title(title):
+    """Title normalize করবে comparison এর জন্য"""
+    title = title.lower().strip()
+    # special characters সরাবে
+    title = re.sub(r'[^\w\s]', '', title)
+    # extra spaces সরাবে
+    title = re.sub(r'\s+', ' ', title)
+    return title
+
+
+def similarity_score(title1, title2):
+    """দুইটা title এর মধ্যে similarity score বের করবে (0-100)"""
+    t1 = normalize_title(title1)
+    t2 = normalize_title(title2)
+    score = SequenceMatcher(None, t1, t2).ratio() * 100
+    return round(score, 2)
+
+
+def extract_keywords(title):
+    """Title থেকে important keywords বের করবে"""
+    normalized = normalize_title(title)
+    # common stop words বাদ দেবে
+    stop_words = {'the', 'a', 'an', 'and', 'or',
+                  'for', 'with', 'in', 'on', 'at', 'by'}
+    words = [w for w in normalized.split(
+    ) if w not in stop_words and len(w) > 1]
+    return words
+
+
+def token_similarity(title1, title2):
+    t1 = re.sub(r'[^\w\s]', ' ', title1.lower())
+    t2 = re.sub(r'[^\w\s]', ' ', title2.lower())
+    t1 = re.sub(r'\s+', ' ', t1).strip()
+    t2 = re.sub(r'\s+', ' ', t2).strip()
+    return round(SequenceMatcher(None, t1, t2).ratio() * 100, 2)
 
 
 @api_view(['GET'])
@@ -393,6 +433,62 @@ class ProductViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
     lookup_field = 'slug'
 
+    def get_object(self):
+        slug = self.kwargs.get('slug')
+
+        try:
+            obj = Product.objects.get(slug=slug, is_active=True)
+            self.check_object_permissions(self.request, obj)
+            return obj
+        except Product.DoesNotExist:
+            pass
+
+        import re
+        from difflib import SequenceMatcher
+        from django.db.models import Q
+
+        slug_as_title = slug.replace('-', ' ').lower()
+        slug_as_title = re.sub(r'\d+opens?', '', slug_as_title)
+        slug_as_title = re.sub(r'opens?\s+in\s+a\s+new', '', slug_as_title)
+        slug_as_title = re.sub(r'\b(window|tab|new|or)\b', '', slug_as_title)
+        slug_as_title = re.sub(r'\s+', ' ', slug_as_title).strip()
+
+        slug_words = [w for w in slug_as_title.split() if len(w) > 2]
+
+        # AND filter
+        query = Q()
+        for word in slug_words:
+            query &= Q(title__icontains=word)
+        candidates = Product.objects.filter(query, is_active=True)
+
+        # AND কাজ না করলে প্রথম ৫ word দিয়ে OR
+        if not candidates.exists():
+            query = Q()
+            for word in slug_words[:5]:
+                query |= Q(title__icontains=word)
+            candidates = Product.objects.filter(query, is_active=True)
+
+        best_match = None
+        best_score = 0
+
+        for product in candidates:
+            score = SequenceMatcher(
+                None,
+                slug_as_title,
+                product.title.lower()
+            ).ratio() * 100
+
+            if score > best_score:
+                best_score = score
+                best_match = product
+
+        if best_match and best_score >= 30:
+            self.check_object_permissions(self.request, best_match)
+            return best_match
+
+        from rest_framework.exceptions import NotFound
+        raise NotFound("No Product matches the given query.")
+
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return ProductDetailSerializer
@@ -400,12 +496,12 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-    
+
         # Query params নেওয়া হচ্ছে
         category = self.request.query_params.get('category', '').strip()
         search = self.request.query_params.get('search', '').strip()
         sort = self.request.query_params.get('sort', 'newest').strip()
-    
+
         # =========================
         # Category Filter
         # =========================
@@ -413,18 +509,18 @@ class ProductViewSet(viewsets.ModelViewSet):
             try:
                 # category slug দিয়ে category বের করবে
                 cat = Category.objects.get(slug=category)
-    
+
                 # child category থাকলে সেগুলাও নিবে
                 child_ids = list(cat.children.values_list('id', flat=True))
-    
+
                 # parent + child category ids
                 all_ids = [cat.id] + child_ids
-    
+
                 queryset = queryset.filter(category__id__in=all_ids)
-    
+
             except Category.DoesNotExist:
                 return queryset.none()
-    
+
         # =========================
         # Search Filter
         # =========================
@@ -434,7 +530,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(description__icontains=search) |
                 Q(brand__icontains=search)
             )
-    
+
         # =========================
         # Sorting
         # =========================
@@ -442,24 +538,24 @@ class ProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.annotate(
                 sort_price=Min('listings__price')
             ).order_by('sort_price')
-    
+
         elif sort == 'price_high':
             queryset = queryset.annotate(
                 sort_price=Min('listings__price')
             ).order_by('-sort_price')
-    
+
         elif sort == 'popular':
             queryset = queryset.annotate(
                 total_listing=Count('listings')
             ).order_by('-total_listing')
-    
+
         elif sort == 'oldest':
             queryset = queryset.order_by('created_at')
-    
+
         else:
             # newest default
             queryset = queryset.order_by('-created_at')
-    
+
         return queryset.distinct()
 
     def list(self, request, *args, **kwargs):
@@ -493,13 +589,65 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return success_response({'results': serializer.data})
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['favorite_ids'] = set(
+                Favorite.objects.filter(user=self.request.user)
+                .values_list('product_id', flat=True)
+            )
+        else:
+            context['favorite_ids'] = set()
+        return context
+
     @action(detail=True, methods=['get'])
     def compare_prices(self, request, slug=None):
         product = self.get_object()
-        listings = product.listings.filter(
-            is_available=True).select_related('platform')
 
-        comparison_data = {
+        # title এর প্রথম ৪টা word দিয়ে search
+        first_words = ' '.join(product.title.split()[:4])
+
+        # সব related product এর listings নাও
+        target_listings = ProductListing.objects.filter(
+            product__title__icontains=first_words,
+            is_available=True,
+            price__gt=0,
+        ).select_related('platform', 'product').distinct()
+
+        seen_platforms = {}
+
+        for listing in target_listings:
+            platform_code = listing.platform.code
+            total_price = float(listing.get_total_price())
+
+            listing_data = {
+                'platform':         listing.platform.name,
+                'platform_code':    platform_code,
+                'matched_title':    listing.product.title,
+                'price':            float(listing.price),
+                'currency':         listing.currency,
+                'shipping_cost':    float(listing.shipping_cost),
+                'free_shipping':    listing.free_shipping,
+                'total_price':      total_price,
+                'condition':        listing.condition,
+                'seller':           listing.seller_username,
+                'seller_rating':    float(listing.seller_rating) if listing.seller_rating else None,
+                'url':              listing.external_url,
+                'last_updated':     listing.last_checked,
+            }
+
+            # প্রতি platform এ সবচেয়ে কম দামেরটা রাখবে
+            if platform_code not in seen_platforms:
+                seen_platforms[platform_code] = listing_data
+            elif total_price < seen_platforms[platform_code]['total_price']:
+                seen_platforms[platform_code] = listing_data
+
+        price_comparison = sorted(
+            seen_platforms.values(),
+            key=lambda x: x['total_price']
+        )
+
+        return success_response({
             'product': {
                 'id':         product.id,
                 'title':      product.title,
@@ -507,33 +655,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'brand':      product.brand,
                 'main_image': product.main_image,
             },
-            'price_comparison': [],
-        }
-
-        for listing in listings:
-            comparison_data['price_comparison'].append({
-                'platform':      listing.platform.name,
-                'platform_code': listing.platform.code,
-                'price':         float(listing.price),
-                'currency':      listing.currency,
-                'shipping_cost': float(listing.shipping_cost),
-                'free_shipping': listing.free_shipping,
-                'total_price':   float(listing.get_total_price()),
-                'condition':     listing.condition,
-                'seller':        listing.seller_username,
-                'seller_rating': float(listing.seller_rating) if listing.seller_rating else None,
-                'url':           listing.external_url,
-                'last_updated':  listing.last_checked,
-            })
-
-        comparison_data['price_comparison'].sort(
-            key=lambda x: x['total_price'])
-        comparison_data['best_deal'] = (
-            comparison_data['price_comparison'][0]
-            if comparison_data['price_comparison'] else None
-        )
-
-        return success_response(comparison_data, message="Price comparison fetched")
+            'meta': {
+                'total_platforms': len(price_comparison),
+            },
+            'price_comparison': price_comparison,
+            'best_deal': price_comparison[0] if price_comparison else None,
+        }, message="Price comparison fetched")
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -675,7 +802,6 @@ def search_and_sync(request):
     return sync_func(platform, query, limit, category_slug=category_slug)
 
 
-
 @api_view(['GET'])
 def smart_search(request):
     query = request.GET.get('q', '')
@@ -685,7 +811,7 @@ def smart_search(request):
 
     if not query:
         return error_response('q is required', code=400)
-    
+
     favorite_ids = set()
     if request.user.is_authenticated:
         favorite_ids = set(
@@ -732,7 +858,7 @@ def smart_search(request):
         results = []
         for product in existing_products[:limit]:
             listings = product.listings.filter(
-                is_available=True, 
+                is_available=True,
                 price__gt=0
             ).select_related('platform').order_by('price')
 
@@ -1531,14 +1657,25 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+
+        favorite_ids = set(queryset.values_list('product_id', flat=True))
+
+        serializer = FavoriteSerializer(
+            queryset,
+            many=True,
+            context={
+                **self.get_serializer_context(),   # request, view, format ঠিক থাকবে
+                'favorite_ids': favorite_ids,      # এটা merge হবে
+            }
+        )
+
         return Response({
             "success": True, "code": 200,
             "message": "Favorites fetched",
             "timestamp": int(time.time()),
             "data": {"count": queryset.count(), "favorites": serializer.data},
         }, status=200)
-    
+
     @action(detail=False, methods=['delete'], url_path='remove')
     def remove(self, request):
         product_id = request.data.get('product_id')
