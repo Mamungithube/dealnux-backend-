@@ -18,6 +18,7 @@ urlpatterns = [
     path('categories/<slug:slug>/children/', views.CategoryChildrenView.as_view(), name='category-children'),
     path('products/<int:pk>/detail/', views.product_detail, name='product-detail'),
     path('', include(router.urls)),
+    path('compare-prices/<slug:slug>/', views.compare_prices_api, name='compare-prices'),
     path('search-and-sync/', views.search_and_sync, name='search_and_sync'),
     path('bulk-sync/', views.bulk_sync_products, name='bulk_sync'),
     # path('sync-from-search/', views.sync_from_search_results, name='sync_from_search'),

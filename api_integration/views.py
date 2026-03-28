@@ -606,146 +606,167 @@ class ProductViewSet(viewsets.ModelViewSet):
         else:
             context['favorite_ids'] = set()
         return context
+    
 
-    @action(detail=True, methods=['get'])
-    def compare_prices(self, request, slug=None):
-        product = self.get_object()
-        target_title = clean_display_title(product.title)
+    
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def compare_prices_api(request, slug):
+    """
+    DB থেকে title match করে price comparison করবে।
+    GET /api/v1/fetch-products/compare-prices/<slug>/
+    """
+    # product খোঁজো
+    product = Product.objects.filter(slug=slug, is_active=True).first()
+    if not product:
+        return error_response("Product not found", code=404)
 
-        def get_tokens(title):
-            stop = {
-                'the','a','an','and','or','for','with','in','on','at','by','to',
-                'of','from','is','are','new','used','free','shipping','factory',
-                'excellent','good','mint','condition','refurbished','open','box',
-                'internal','external','device','supported','system','storage',
-                'series','model','product','compatible','portable','ultra','slim',
-                'opens','window','tab','new',
-            }
-            tokens = re.sub(r'[^\w\s]', ' ', title.lower()).split()
-            return set(t for t in tokens if t not in stop and len(t) > 1)
+    target_title = clean_display_title(product.title)
 
-        target_tokens = get_tokens(target_title)
-        
-        # numeric tokens আলাদা করো — এগুলো সবচেয়ে important
-        # যেমন: 1tb, 128gb, 10000rpm, 12gbs
-        numeric_tokens = [t for t in target_tokens if re.search(r'\d', t)]
-        text_tokens = [t for t in target_tokens if not re.search(r'\d', t)]
+    # ── Token helpers ─────────────────────────────────────────────────────
 
-        def token_overlap_score(title2):
-            """কতটুকু token match করলো সেটা 0-100 তে return করে"""
-            tokens2 = get_tokens(title2)
-            if not target_tokens or not tokens2:
-                return 0
-            common = target_tokens & tokens2
-            # Jaccard similarity
-            union = target_tokens | tokens2
-            return (len(common) / len(union)) * 100
+    STOP_WORDS = {
+        'the','a','an','and','or','for','with','in','on','at','by','to',
+        'of','from','is','are','new','used','free','shipping','factory',
+        'excellent','good','mint','condition','refurbished','open','box',
+        'internal','external','device','supported','system','storage',
+        'series','model','product','compatible','portable','ultra','slim',
+        'opens','window','tab',
+    }
 
-        def numeric_match(title2):
-            """সব numeric token match করলে True"""
-            if not numeric_tokens:
-                return True
-            tokens2 = get_tokens(title2)
-            # normalize: 1.80 == 1.8 == 180
-            def norm(t):
-                t = re.sub(r'\.0+([a-z])', r'\1', t)   # 1.80tb -> 1.8tb
-                t = re.sub(r'\.0+$', '', t)              # 1.80 -> 1.8
-                return t
-            normed_target = {norm(t) for t in numeric_tokens}
-            normed_t2 = {norm(t) for t in tokens2 if re.search(r'\d', t)}
-            matched = normed_target & normed_t2
-            # numeric token এর অন্তত ৬০% match করতে হবে
-            return len(matched) / len(normed_target) >= 0.6
+    def get_tokens(title):
+        tokens = re.sub(r'[^\w\s]', ' ', title.lower()).split()
+        return set(t for t in tokens if t not in STOP_WORDS and len(t) > 1)
 
-        # Step 1: DB থেকে candidate products বের করো
-        # numeric token থাকলে সেগুলো দিয়ে filter করো
-        if numeric_tokens:
-            q = Q(is_active=True)
-            for nt in numeric_tokens[:4]:
-                # প্রতিটা numeric token এর variant দিয়ে OR করো
-                variants = {nt, nt.replace('.', ''), re.sub(r'0+$', '', nt)}
-                q_or = Q()
-                for v in variants:
-                    q_or |= Q(title__icontains=v)
-                q &= q_or
-            candidates = Product.objects.filter(q).exclude(id=product.id)
-        else:
-            # numeric token নেই, text token দিয়ে OR filter
-            q = Q(is_active=True)
-            for t in list(text_tokens)[:6]:
-                q |= Q(title__icontains=t)
-            candidates = Product.objects.filter(q).exclude(id=product.id)
+    def normalize_num(t):
+        """1.80tb → 1.8tb, 1.80 → 1.8"""
+        t = re.sub(r'\.0+([a-z])', r'\1', t)
+        t = re.sub(r'(\d+\.\d*?)0+([a-z]*)', r'\1\2', t)
+        t = re.sub(r'\.0+$', '', t)
+        return t
 
-        # Step 2: score করো এবং threshold এ filter করো
-        THRESHOLD = 40  # jaccard 40% মানে অনেক token common
-        matched_ids = [product.id]
+    def jaccard_score(tokens_a, tokens_b):
+        if not tokens_a or not tokens_b:
+            return 0.0
+        common = tokens_a & tokens_b
+        union  = tokens_a | tokens_b
+        return (len(common) / len(union)) * 100
 
-        for candidate in candidates:
-            cand_title = clean_display_title(candidate.title)
-            
-            # numeric token match না করলে skip
-            if not numeric_match(cand_title):
-                continue
-            
-            score = token_overlap_score(cand_title)
-            if score >= THRESHOLD:
-                matched_ids.append(candidate.id)
+    target_tokens   = get_tokens(target_title)
+    numeric_tokens  = [t for t in target_tokens if re.search(r'\d', t)]
+    text_tokens     = [t for t in target_tokens if not re.search(r'\d', t)]
 
-        # Step 3: matched products এর listings নাও
-        all_listings = ProductListing.objects.filter(
-            product__id__in=matched_ids,
-            is_available=True,
-            price__gt=0,
-        ).select_related('platform', 'product')
+    # ── Step 1: DB candidate filter ───────────────────────────────────────
+    # numeric token থাকলে সেগুলো দিয়ে AND filter (variant সহ)
+    # না থাকলে text token দিয়ে OR filter
 
-        seen_platforms = {}
+    if numeric_tokens:
+        db_filter = Q(is_active=True)
+        for nt in numeric_tokens[:4]:
+            variants = {nt, normalize_num(nt), nt.replace('.', '')}
+            q_or = Q()
+            for v in variants:
+                q_or |= Q(title__icontains=v)
+            db_filter &= q_or
+    else:
+        db_filter = Q(is_active=True)
+        for t in list(text_tokens)[:6]:
+            db_filter |= Q(title__icontains=t)
 
-        for listing in all_listings:
-            listing_title = clean_display_title(listing.product.title)
-            score = token_overlap_score(listing_title)
-            platform_code = listing.platform.code
-            total_price = float(listing.get_total_price())
+    candidates = Product.objects.filter(db_filter).exclude(id=product.id)
 
-            data = {
-                'platform':         listing.platform.name,
-                'platform_code':    platform_code,
-                'matched_title':    listing_title,
-                'similarity_score': round(score, 2),
-                'price':            float(listing.price),
-                'currency':         listing.currency,
-                'shipping_cost':    float(listing.shipping_cost),
-                'free_shipping':    listing.free_shipping,
-                'total_price':      total_price,
-                'condition':        listing.condition,
-                'seller':           listing.seller_username,
-                'seller_rating':    float(listing.seller_rating) if listing.seller_rating else None,
-                'url':              listing.external_url,
-                'last_updated':     listing.last_checked,
-            }
+    # AND filter কিছু না দিলে OR এ fallback
+    if not candidates.exists() and numeric_tokens:
+        db_filter = Q(is_active=True)
+        for nt in numeric_tokens[:4]:
+            variants = {nt, normalize_num(nt), nt.replace('.', '')}
+            q_or = Q()
+            for v in variants:
+                q_or |= Q(title__icontains=v)
+            db_filter |= q_or
+        candidates = Product.objects.filter(db_filter).exclude(id=product.id)
 
-            if platform_code not in seen_platforms:
-                seen_platforms[platform_code] = data
-            elif total_price < seen_platforms[platform_code]['total_price']:
-                seen_platforms[platform_code] = data
+    # ── Step 2: Score করো, threshold এ filter করো ─────────────────────────
+    THRESHOLD = 35  # Jaccard 35%+
 
-        price_comparison = sorted(seen_platforms.values(), key=lambda x: x['total_price'])
+    def numeric_ok(cand_tokens):
+        """numeric token এর ৬০%+ match করতে হবে"""
+        if not numeric_tokens:
+            return True
+        normed_target = {normalize_num(t) for t in numeric_tokens}
+        normed_cand   = {normalize_num(t) for t in cand_tokens if re.search(r'\d', t)}
+        matched = normed_target & normed_cand
+        return len(matched) / len(normed_target) >= 0.6
 
-        return success_response({
-            'product': {
-                'id':         product.id,
-                'title':      target_title,
-                'slug':       product.slug,
-                'brand':      product.brand,
-                'main_image': product.main_image,
-            },
-            'meta': {
-                'total_platforms':  len(price_comparison),
-                'matched_products': len(matched_ids),
-            },
-            'price_comparison': price_comparison,
-            'best_deal':        price_comparison[0] if price_comparison else None,
-        }, message="Price comparison fetched")
-            
+    matched_ids = [product.id]
+
+    for cand in candidates:
+        cand_title  = clean_display_title(cand.title)
+        cand_tokens = get_tokens(cand_title)
+
+        if not numeric_ok(cand_tokens):
+            continue
+
+        score = jaccard_score(target_tokens, cand_tokens)
+        if score >= THRESHOLD:
+            matched_ids.append(cand.id)
+
+    # ── Step 3: Listings নাও ──────────────────────────────────────────────
+    listings = ProductListing.objects.filter(
+        product__id__in=matched_ids,
+        is_available=True,
+        price__gt=0,
+    ).select_related('platform', 'product')
+
+    seen_platforms = {}
+
+    for listing in listings:
+        listing_title  = clean_display_title(listing.product.title)
+        listing_tokens = get_tokens(listing_title)
+        score          = jaccard_score(target_tokens, listing_tokens)
+        platform_code  = listing.platform.code
+        total_price    = float(listing.get_total_price())
+
+        entry = {
+            'platform':         listing.platform.name,
+            'platform_code':    platform_code,
+            'matched_title':    listing_title,
+            'similarity_score': round(score, 2),
+            'price':            float(listing.price),
+            'currency':         listing.currency,
+            'shipping_cost':    float(listing.shipping_cost),
+            'free_shipping':    listing.free_shipping,
+            'total_price':      total_price,
+            'condition':        listing.condition,
+            'seller':           listing.seller_username,
+            'seller_rating':    float(listing.seller_rating) if listing.seller_rating else None,
+            'url':              listing.external_url,
+            'last_updated':     listing.last_checked,
+        }
+
+        # প্রতি platform এ সবচেয়ে সস্তা টা রাখো
+        if platform_code not in seen_platforms:
+            seen_platforms[platform_code] = entry
+        elif total_price < seen_platforms[platform_code]['total_price']:
+            seen_platforms[platform_code] = entry
+
+    price_comparison = sorted(seen_platforms.values(), key=lambda x: x['total_price'])
+
+    return success_response({
+        'product': {
+            'id':         product.id,
+            'title':      target_title,
+            'slug':       product.slug,
+            'brand':      product.brand,
+            'main_image': product.main_image,
+        },
+        'meta': {
+            'total_platforms':  len(price_comparison),
+            'matched_products': len(matched_ids),
+        },
+        'price_comparison': price_comparison,
+        'best_deal':        price_comparison[0] if price_comparison else None,
+    }, message="Price comparison fetched")
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
