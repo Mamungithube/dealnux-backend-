@@ -657,7 +657,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         return success_response({
             'product': {
                 'id':         product.id,
-                'title':      product.title,
+                'title':      clean_display_title(product.title),
                 'slug':       product.slug,
                 'brand':      product.brand,
                 'main_image': product.main_image,
