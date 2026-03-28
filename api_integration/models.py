@@ -240,22 +240,6 @@ class PriceHistory(models.Model):
         return f"{self.listing.product.title} - {self.price} {self.currency} on {self.recorded_at}"
     
 
-
-
-
-class CartItem(models.Model):
-    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cart_items')
-    product      = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity     = models.PositiveIntegerField(default=1)
-    created_at   = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('user', 'product') 
-
-    def __str__(self):
-        return f"{self.user.email} - {self.product.title}"
-    
-
 class SavingsActivity(models.Model):
     user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='savings_activities')
     title        = models.CharField(max_length=255)
@@ -275,7 +259,18 @@ class SavingsActivity(models.Model):
         elif diff.days == 1:
             return "Yesterday"
         return f"{diff.days} days ago"
+    
+class CartItem(models.Model):
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cart_items')
+    product      = models.ForeignKey(Product, on_delete=models.CASCADE)
+    quantity     = models.PositiveIntegerField(default=1)
+    created_at   = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('user', 'product') 
+
+    def __str__(self):
+        return f"{self.user.email} - {self.product.title}"
 
 
 class Favorite(models.Model):

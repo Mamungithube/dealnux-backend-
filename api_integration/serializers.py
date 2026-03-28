@@ -97,6 +97,7 @@ class ProductSerializer(serializers.ModelSerializer):
     lowest_price = serializers.SerializerMethodField()
     listings_count = serializers.SerializerMethodField()
     available_on = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -105,9 +106,13 @@ class ProductSerializer(serializers.ModelSerializer):
             'category', 'category_name',
             'main_image',
             'lowest_price', 'listings_count', 'available_on',
-            'is_active', 'created_at',
+            'is_active', 'created_at','is_favorite',
             # 'description', 'model_number', 'last_synced', 'updated_at',
         ]
+
+    def get_is_favorite(self, obj):
+        favorite_ids = self.context.get('favorite_ids', set())
+        return obj.id in favorite_ids
 
     def get_lowest_price(self, obj):
         price = obj.get_lowest_price()

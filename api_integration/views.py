@@ -1,6 +1,7 @@
 import time
 import logging
 from unicodedata import category
+from oauthlib.uri_validate import query
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
@@ -190,9 +191,9 @@ def _normalize_and_sync_generic(service, platform, query, limit, success_msg, no
 
 # ── Platform-specific sync functions ─────────────────────────────────────────
 
-def sync_ebay_products(platform, query, limit):
+def sync_ebay_products(platform, query, limit, category_slug=None):
     """eBay timeout is high so it is a background task."""
-    task = sync_ebay_task.delay(query, limit)
+    task = sync_ebay_task.delay(query, limit, category_slug)
     return success_response({
         'query':        query,
         'platform':     'ebay',
@@ -399,56 +400,66 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-
-        try:
-            category = self.request.query_params.get('category', '').strip()
-            search = self.request.query_params.get('search', '').strip()
-            sort = self.request.query_params.get('sort', '-created_at').strip()
-            min_price = self.request.query_params.get('min_price')
-            max_price = self.request.query_params.get('max_price')
-            min_price = max(0, float(min_price)) if min_price else None
-            max_price = max(0, float(max_price)) if max_price else None
-        except (ValueError, TypeError):
-            return queryset.none()
-
+    
+        # Query params নেওয়া হচ্ছে
+        category = self.request.query_params.get('category', '').strip()
+        search = self.request.query_params.get('search', '').strip()
+        sort = self.request.query_params.get('sort', 'newest').strip()
+    
+        # =========================
+        # Category Filter
+        # =========================
         if category:
             try:
+                # category slug দিয়ে category বের করবে
                 cat = Category.objects.get(slug=category)
+    
+                # child category থাকলে সেগুলাও নিবে
                 child_ids = list(cat.children.values_list('id', flat=True))
+    
+                # parent + child category ids
                 all_ids = [cat.id] + child_ids
+    
                 queryset = queryset.filter(category__id__in=all_ids)
+    
             except Category.DoesNotExist:
-                queryset = queryset.none()
-        if min_price is not None:
-            queryset = queryset.filter(listings__price__gte=min_price)
-        if max_price is not None:
-            queryset = queryset.filter(listings__price__lte=max_price)
+                return queryset.none()
+    
+        # =========================
+        # Search Filter
+        # =========================
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) |
                 Q(description__icontains=search) |
                 Q(brand__icontains=search)
             )
-
-        VALID_SORTS = {'price_low', 'price_high', 'newest',
-                       'popular', '-created_at', 'created_at'}
-        if sort not in VALID_SORTS:
-            sort = '-created_at'
-
+    
+        # =========================
+        # Sorting
+        # =========================
         if sort == 'price_low':
-            queryset = queryset.annotate(sort_price=Min(
-                'listings__price')).order_by('sort_price')
+            queryset = queryset.annotate(
+                sort_price=Min('listings__price')
+            ).order_by('sort_price')
+    
         elif sort == 'price_high':
-            queryset = queryset.annotate(sort_price=Min(
-                'listings__price')).order_by('-sort_price')
-        elif sort == 'newest':
-            queryset = queryset.order_by('-created_at')
+            queryset = queryset.annotate(
+                sort_price=Min('listings__price')
+            ).order_by('-sort_price')
+    
         elif sort == 'popular':
-            queryset = queryset.annotate(listing_count=Count(
-                'listings')).order_by('-listing_count')
+            queryset = queryset.annotate(
+                total_listing=Count('listings')
+            ).order_by('-total_listing')
+    
+        elif sort == 'oldest':
+            queryset = queryset.order_by('created_at')
+    
         else:
-            queryset = queryset.order_by(sort)
-
+            # newest default
+            queryset = queryset.order_by('-created_at')
+    
         return queryset.distinct()
 
     def list(self, request, *args, **kwargs):
@@ -664,6 +675,7 @@ def search_and_sync(request):
     return sync_func(platform, query, limit, category_slug=category_slug)
 
 
+
 @api_view(['GET'])
 def smart_search(request):
     query = request.GET.get('q', '')
@@ -673,15 +685,28 @@ def smart_search(request):
 
     if not query:
         return error_response('q is required', code=400)
+    
+    favorite_ids = set()
+    if request.user.is_authenticated:
+        favorite_ids = set(
+            Favorite.objects.filter(user=request.user)
+            .values_list('product_id', flat=True)
+        )
 
-    cache_key = f'smart_search_v4_{query}_{limit}'
+    user_id = request.user.id if request.user.is_authenticated else 'anon'
+    cache_key = f'smart_search_v4_{query}_{limit}_{user_id}'
     cached = cache.get(cache_key)
     if cached:
+        # cache এর results এ is_favorite inject করুন
+        results_with_fav = [
+            {**item, 'is_favorite': item['id'] in favorite_ids}
+            for item in cached
+        ]
         return success_response({
             'source':  'cache',
             'query':   query,
             'count':   len(cached),
-            'results': paginate_results(cached, page, page_size),
+            'results': paginate_results(results_with_fav, page, page_size),
             'pagination': get_pagination_meta(cached, page, page_size),
         }, message="Results from cache")
 
@@ -759,14 +784,15 @@ def smart_search(request):
                 'platforms_count': len(platforms),
                 'available_on':    platforms,
                 'lowest_price':    best_deal['price'],
-                'best_deal': {
-                    'platform':      best_deal['platform'],
-                    'platform_code': best_deal['platform_code'],
-                    'price':         best_deal['price'],
-                    'url':           best_deal['url'],
-                    'free_shipping': best_deal['free_shipping'],
-                },
-                'price_comparison': valid_prices,
+                'is_favorite':     product.id in favorite_ids,
+                # 'best_deal': {
+                #     'platform':      best_deal['platform'],
+                #     'platform_code': best_deal['platform_code'],
+                #     'price':         best_deal['price'],
+                #     'url':           best_deal['url'],
+                #     'free_shipping': best_deal['free_shipping'],
+                # },
+                # 'price_comparison': valid_prices,
             })
 
         results.sort(key=lambda x: x['lowest_price'] or 0)
@@ -1512,6 +1538,27 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             "timestamp": int(time.time()),
             "data": {"count": queryset.count(), "favorites": serializer.data},
         }, status=200)
+    
+    @action(detail=False, methods=['delete'], url_path='remove')
+    def remove(self, request):
+        product_id = request.data.get('product_id')
+
+        if not product_id:
+            return self._error("product_id is required", code=400)
+
+        favorite = Favorite.objects.filter(
+            user=request.user, product_id=product_id
+        ).first()
+
+        if not favorite:
+            return self._error("Favorite not found", code=404)
+
+        favorite.delete()
+        return self._success(
+            {},
+            message="Removed from favorites",
+            code=200,
+        )
 
     @action(detail=False, methods=['get'], url_path='check/(?P<product_id>[^/.]+)')
     def check(self, request, product_id=None):
