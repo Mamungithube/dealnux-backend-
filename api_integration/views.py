@@ -610,36 +610,93 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def compare_prices(self, request, slug=None):
         product = self.get_object()
-    
+
         from difflib import SequenceMatcher
         from django.db.models import Q
-    
-        # সব listings নিয়ে আসো
-        all_listings = ProductListing.objects.filter(
-            is_available=True,
-            price__gt=0,
-        ).select_related('platform', 'product').distinct()
-    
-        seen_platforms = {}
-    
-        for listing in all_listings:
-            # পুরো title দিয়ে similarity check
+
+        # Step 1: Extract meaningful keywords from the target product title
+        def extract_core_keywords(title):
+            """Extract the most important words — brand, model, numbers"""
+            title = clean_display_title(title)
+            # Remove noise words
+            stop_words = {
+                'the', 'a', 'an', 'and', 'or', 'for', 'with', 'in', 'on',
+                'at', 'by', 'to', 'of', 'from', 'is', 'are', 'new', 'used',
+                'free', 'shipping', 'unlocked', 'factory', 'excellent',
+                'good', 'mint', 'condition', 'refurbished', 'open', 'box'
+            }
+            words = re.sub(r'[^\w\s]', ' ', title.lower()).split()
+            # Keep words that are meaningful (numbers, brand names, model identifiers)
+            keywords = [w for w in words if w not in stop_words and len(w) > 1]
+            return keywords
+
+        target_title = clean_display_title(product.title)
+        target_brand = (product.brand or '').lower().strip()
+        keywords = extract_core_keywords(target_title)
+
+        # Must-have keywords: brand name words + important model identifiers (numbers, "Pro", "Max", etc.)
+        must_have = []
+        if target_brand and target_brand not in ('unlocked apple', ''):
+            must_have.extend(target_brand.lower().split())
+
+        # Add model-specific keywords (numbers + capitalized words like Pro, Max, Air)
+        model_words = [
+            w for w in keywords
+            if re.search(r'\d', w) or w[0].isupper() or w in ('pro', 'max', 'air', 'plus', 'ultra', 'mini')
+        ]
+        must_have.extend(model_words[:4])  # top 4 model identifiers
+        must_have = list(set(must_have))
+
+        if not must_have:
+            must_have = keywords[:3]
+
+        # Step 2: Filter products that contain ALL must-have keywords (AND filter)
+        product_filter = Q(is_active=True)
+        for kw in must_have:
+            product_filter &= Q(title__icontains=kw)
+
+        candidate_products = Product.objects.filter(product_filter).exclude(id=product.id)
+
+        # Step 3: Among candidates, score similarity and keep only strong matches
+        SIMILARITY_THRESHOLD = 70  # raised from 50 to 70
+
+        matched_product_ids = [product.id]  # include the product itself
+
+        for candidate in candidate_products:
+            candidate_title = clean_display_title(candidate.title)
             score = SequenceMatcher(
                 None,
-                product.title.lower(),
-                listing.product.title.lower()
+                target_title.lower(),
+                candidate_title.lower()
             ).ratio() * 100
-    
-            if score < 50:  # 50% এর কম হলে বাদ
-                continue
-            
+
+            if score >= SIMILARITY_THRESHOLD:
+                matched_product_ids.append(candidate.id)
+
+        # Step 4: Get listings ONLY from matched products
+        all_listings = ProductListing.objects.filter(
+            product__id__in=matched_product_ids,
+            is_available=True,
+            price__gt=0,
+        ).select_related('platform', 'product')
+
+        seen_platforms = {}
+
+        for listing in all_listings:
+            listing_title = clean_display_title(listing.product.title)
+            score = SequenceMatcher(
+                None,
+                target_title.lower(),
+                listing_title.lower()
+            ).ratio() * 100
+
             platform_code = listing.platform.code
             total_price = float(listing.get_total_price())
-    
+
             listing_data = {
                 'platform':         listing.platform.name,
                 'platform_code':    platform_code,
-                'matched_title':    clean_display_title(listing.product.title),
+                'matched_title':    listing_title,
                 'similarity_score': round(score, 2),
                 'price':            float(listing.price),
                 'currency':         listing.currency,
@@ -652,31 +709,34 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'url':              listing.external_url,
                 'last_updated':     listing.last_checked,
             }
-    
+
+            # Keep the cheapest listing per platform
             if platform_code not in seen_platforms:
                 seen_platforms[platform_code] = listing_data
             elif total_price < seen_platforms[platform_code]['total_price']:
                 seen_platforms[platform_code] = listing_data
-    
+
         price_comparison = sorted(
             seen_platforms.values(),
             key=lambda x: x['total_price']
         )
-    
+
         return success_response({
             'product': {
                 'id':         product.id,
-                'title':      clean_display_title(product.title),
+                'title':      target_title,
                 'slug':       product.slug,
                 'brand':      product.brand,
                 'main_image': product.main_image,
             },
             'meta': {
-                'total_platforms': len(price_comparison),
+                'total_platforms':   len(price_comparison),
+                'matched_products':  len(matched_product_ids),
             },
             'price_comparison': price_comparison,
             'best_deal': price_comparison[0] if price_comparison else None,
         }, message="Price comparison fetched")
+        
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
