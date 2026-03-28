@@ -610,27 +610,37 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def compare_prices(self, request, slug=None):
         product = self.get_object()
-
-        # title এর প্রথম ৪টা word দিয়ে search
-        first_words = ' '.join(product.title.split()[:4])
-
-        # সব related product এর listings নাও
-        target_listings = ProductListing.objects.filter(
-            product__title__icontains=first_words,
+    
+        from difflib import SequenceMatcher
+        from django.db.models import Q
+    
+        # সব listings নিয়ে আসো
+        all_listings = ProductListing.objects.filter(
             is_available=True,
             price__gt=0,
         ).select_related('platform', 'product').distinct()
-
+    
         seen_platforms = {}
-
-        for listing in target_listings:
+    
+        for listing in all_listings:
+            # পুরো title দিয়ে similarity check
+            score = SequenceMatcher(
+                None,
+                product.title.lower(),
+                listing.product.title.lower()
+            ).ratio() * 100
+    
+            if score < 50:  # 50% এর কম হলে বাদ
+                continue
+            
             platform_code = listing.platform.code
             total_price = float(listing.get_total_price())
-
+    
             listing_data = {
                 'platform':         listing.platform.name,
                 'platform_code':    platform_code,
-                'matched_title': clean_display_title(listing.product.title),
+                'matched_title':    clean_display_title(listing.product.title),
+                'similarity_score': round(score, 2),
                 'price':            float(listing.price),
                 'currency':         listing.currency,
                 'shipping_cost':    float(listing.shipping_cost),
@@ -642,18 +652,17 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'url':              listing.external_url,
                 'last_updated':     listing.last_checked,
             }
-
-            # প্রতি platform এ সবচেয়ে কম দামেরটা রাখবে
+    
             if platform_code not in seen_platforms:
                 seen_platforms[platform_code] = listing_data
             elif total_price < seen_platforms[platform_code]['total_price']:
                 seen_platforms[platform_code] = listing_data
-
+    
         price_comparison = sorted(
             seen_platforms.values(),
             key=lambda x: x['total_price']
         )
-
+    
         return success_response({
             'product': {
                 'id':         product.id,
