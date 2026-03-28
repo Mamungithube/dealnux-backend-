@@ -44,6 +44,13 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 
 
+def clean_display_title(title):
+    title = re.sub(r'\d+opens?', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s+', ' ', title).strip(' -')
+    return title
+
+
 def normalize_title(title):
     """Title normalize করবে comparison এর জন্য"""
     title = title.lower().strip()
@@ -623,7 +630,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             listing_data = {
                 'platform':         listing.platform.name,
                 'platform_code':    platform_code,
-                'matched_title':    listing.product.title,
+                'matched_title': clean_display_title(listing.product.title),
                 'price':            float(listing.price),
                 'currency':         listing.currency,
                 'shipping_cost':    float(listing.shipping_cost),
@@ -1664,8 +1671,8 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             queryset,
             many=True,
             context={
-                **self.get_serializer_context(),   # request, view, format ঠিক থাকবে
-                'favorite_ids': favorite_ids,      # এটা merge হবে
+                **self.get_serializer_context(),  
+                'favorite_ids': favorite_ids,      
             }
         )
 
