@@ -610,15 +610,19 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        if self.request.user.is_authenticated:
-            # এখানে খেয়াল করুন: api_integration থেকে ইমপোর্ট করা হয়েছে
+        if self.request.user and self.request.user.is_authenticated:
+            # সঠিক অ্যাপ পাথ থেকে CartItem ইমপোর্ট করা হচ্ছে
             from api_integration.models import CartItem 
             
+            # ফেভারিট আইডি সেট
             context['favorite_ids'] = set(
-                Favorite.objects.filter(user=self.request.user).values_list('product_id', flat=True)
+                Favorite.objects.filter(user=self.request.user)
+                .values_list('product_id', flat=True)
             )
+            # কার্ট আইডি সেট (সঠিক অ্যাপ ব্যবহার করে)
             context['cart_product_ids'] = set(
-                CartItem.objects.filter(user=self.request.user).values_list('product_id', flat=True)
+                CartItem.objects.filter(user=self.request.user)
+                .values_list('product_id', flat=True)
             )
         else:
             context['favorite_ids'] = set()
