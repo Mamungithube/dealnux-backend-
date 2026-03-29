@@ -115,7 +115,7 @@ def product_detail(request, pk):
     context = {'request': request}
 
     if request.user.is_authenticated:
-        from api_integration.models import CartItem, Favorite
+        from api_integration.models import CartItem, Favorite  # ← এইটা
         context['favorite_ids'] = set(
             Favorite.objects.filter(user=request.user)
             .values_list('product_id', flat=True)
@@ -628,10 +628,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.user and self.request.user.is_authenticated:
-            # সঠিক অ্যাপ পাথ থেকে ইমপোর্ট
-            from api_integration.models import CartItem 
-            from account.models import Favorite # ফেভারিট অ্যাপ পাথ ঠিক থাকলে এটা রাখুন
-            
+            from api_integration.models import CartItem, Favorite  # ← এইখানে fix
+
             context['favorite_ids'] = set(
                 Favorite.objects.filter(user=self.request.user)
                 .values_list('product_id', flat=True)
@@ -641,7 +639,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 .values_list('product_id', flat=True)
             )
         else:
-            context['favorite_ids'] = set()
+            context['favorite_ids']     = set()
             context['cart_product_ids'] = set()
         return context
     
