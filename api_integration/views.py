@@ -793,108 +793,109 @@ def product_match_score(title1: str, title2: str) -> float:
 
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
-
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_prices_api(request, slug):
-    # ১. মেইন প্রোডাক্টটি ডাটাবেজ থেকে বের করা
+    # ১. মেইন প্রোডাক্টটি স্লাগ দিয়ে ডাটাবেজ থেকে বের করা
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
+    # মেইন প্রোডাক্টের টাইটেল ক্লিন করা এবং ফিঙ্গারপ্রিন্ট নেওয়া
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
     target_core_name = target_fingerprint['core_name']
     
-    # ২. ক্যান্ডিডেট ফিল্টার (ব্র্যান্ড ও মডেল অনুযায়ী)
+    # ২. স্মার্ট ডাটাবেজ ক্যান্ডিডেট ফিল্টার (পারফরম্যান্স বুস্ট)
+    # টাইটেলের প্রথম ৩টি শব্দ দিয়ে সার্চ করা হচ্ছে যাতে হাজার হাজার ডাটা লুপ করতে না হয়
     keywords = target_core_name.split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
-        keyword_query = Q()
+        k_query = Q()
         for word in keywords:
             if len(word) > 2:
-                keyword_query |= Q(title__icontains=word)
-        q_filter &= keyword_query
+                k_query |= Q(title__icontains=word)
+        q_filter &= k_query
 
     candidates = Product.objects.filter(q_filter).exclude(id=product.id)
 
-    # ৩. NLP ম্যাচিং
+    # ৩. NLP ম্যাচিং এবং পটেনশিয়াল আইডি লিস্ট তৈরি
     potential_ids = [product.id] 
-    THRESHOLD = 70 
+    THRESHOLD = 70 # আপনার প্রয়োজন অনুযায়ী ৭০ থেকে ৮০ এর মধ্যে রাখতে পারেন
 
     for cand in candidates:
         score = calculate_match_score(target_title, cand.title)
         if score >= THRESHOLD:
             potential_ids.append(cand.id)
 
-    # ৪. লিস্টিংগুলো বের করা
-    # এখানে আমরা External ID এবং URL আলাদা এমন সব লিস্টিং আনবো
+    # ৪. সব ম্যাচড প্রোডাক্টের লিস্টিংগুলো বের করা (প্রাইজ ০ এর বেশি হতে হবে)
     listings = ProductListing.objects.filter(
         product__id__in=potential_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
+    # ৫. গ্রুপিং এবং ডুপ্লিকেট লিস্টিং হ্যান্ডলিং
     platform_listings = {}
-    seen_external_ids = set()           # একই লিস্টিং আইডি বারবার আসা রোধে
-    active_matched_product_ids = set()  # আসল ম্যাচড প্রোডাক্ট কাউন্ট
+    seen_external_ids = set()           # একই লিস্টিং আইডি (External ID) বারবার আসা রোধে
+    active_matched_product_ids = set()  # শুধুমাত্র প্রাইজ আছে এমন প্রোডাক্ট আইডি কাউন্ট করতে
 
     for listing in listings:
-        platform_code = listing.platform.code
-        price = float(listing.price)
-        ext_id = listing.external_id # প্ল্যাটফর্মের দেওয়া ইউনিক লিস্টিং আইডি
+        p_code = listing.platform.code
+        ext_id = listing.external_id     # প্ল্যাটফর্মের ইউনিক লিস্টিং আইডি
         
-        # ৫. ডুপ্লিকেট চেকিং লজিক (Listing Level)
-        # যদি এই লিস্টিং আইডি (ext_id) আগে একবার এসে থাকে, তবে স্কিপ করো
+        # ক. যদি এই লিস্টিং আইডি (ext_id) আগে একবার এসে থাকে, তবে স্কিপ করো
         if ext_id in seen_external_ids:
             continue
             
         seen_external_ids.add(ext_id)
         active_matched_product_ids.add(listing.product.id)
 
+        # লিস্টিং ডাটা ফরম্যাটিং
         listing_data = {
             'platform': listing.platform.name,
-            'platform_code': platform_code,
-            'product_id': listing.product.id,              # ডাটাবেজের প্রোডাক্ট আইডি
-            'listing_id': ext_id,                         # প্ল্যাটফর্মের অরিজিনাল লিস্টিং আইডি
-            'original_db_title': listing.product.title,
-            'clean_title': clean_display_title(listing.product.title),
-            'matched_slug': listing.product.slug,
-            'price': price,
+            'platform_code': p_code,
+            'product_id': listing.product.id,              # ডাটাবেজের অরিজিনাল প্রোডাক্ট আইডি
+            'listing_id': ext_id,                         # প্ল্যাটফর্মের ইউনিক লিস্টিং আইডি
+            'original_db_title': listing.product.title,    # ডাটাবেজের র টাইটেল
+            'clean_title': clean_display_title(listing.product.title), # ক্লিন টাইটেল
+            'matched_slug': listing.product.slug,         # ঐ ডিলের স্লাগ
+            'price': float(listing.price),
             'currency': listing.currency,
             'shipping_cost': float(listing.shipping_cost or 0),
             'free_shipping': listing.free_shipping,
             'total_price': float(listing.get_total_price()),
             'condition': listing.get_condition_display(),
             'seller': listing.seller_username,
-            'url': listing.external_url,                  # ইউনিক ইউআরএল
+            'url': listing.external_url,                  # আলাদা আলাদা URL সাপোর্ট করবে
             'main_image': listing.product.main_image,
             'last_updated': listing.last_checked,
         }
         
-        if platform_code not in platform_listings:
-            platform_listings[platform_code] = []
-        platform_listings[platform_code].append(listing_data)
+        if p_code not in platform_listings:
+            platform_listings[p_code] = []
+        platform_listings[p_code].append(listing_data)
 
     # ৬. প্ল্যাটফর্ম অনুযায়ী সেরা ডিল সাজানো
     final_comparison = []
     for code, entries in platform_listings.items():
-        # দাম অনুযায়ী সাজানো
+        # প্ল্যাটফর্মের ভেতরে সব ডিল দাম অনুযায়ী সর্ট করা
         sorted_entries = sorted(entries, key=lambda x: x['total_price'])
         
-        # আমরা প্রতি প্ল্যাটফর্মের সেরা ১০টি আলাদা আলাদা অফার/ইউআরএল দেখাবো
+        # প্রতি প্ল্যাটফর্মের সেরা ১০টি আলাদা ডিল (আলাদা URL/Seller) রাখা হচ্ছে
         top_deals = sorted_entries[:10] 
         cheapest = top_deals[0]
         
         final_comparison.append({
             **cheapest,
-            'listings_count': len(top_deals), # ঐ প্ল্যাটফর্মে কয়টি আলাদা অফার আছে
-            'all_listings': top_deals         # সব আলাদা ইউআরএল ও আইডি সহ ডিল
+            'listings_count': len(top_deals), # ঐ প্ল্যাটফর্মে মোট ইউনিক ডিল সংখ্যা
+            'all_listings': top_deals         # বিস্তারিত সব ডিল
         })
 
+    # সব প্ল্যাটফর্মের মধ্যে যেটিতে সবথেকে সস্তা ডিল আছে সেটি আগে থাকবে
     final_comparison = sorted(final_comparison, key=lambda x: x['total_price'])
 
+    # ৭. ফাইনাল রেসপন্স রিটার্ন
     return success_response({
         'product': {
             'id': product.id,
@@ -905,8 +906,9 @@ def compare_prices_api(request, slug):
         },
         'meta': {
             'total_platforms': len(final_comparison),
-            'matched_products_count': len(active_matched_product_ids),
-            'total_unique_listings': len(seen_external_ids) # মোট কয়টি আলাদা ডিল পাওয়া গেল
+            'matched_products_count': len(active_matched_product_ids), # প্রাইজ আছে এমন ইউনিক প্রোডাক্ট সংখ্যা
+            'total_unique_deals': len(seen_external_ids),             # মোট কয়টি আলাদা সেলার/অফার পাওয়া গেল
+            'active_matched_ids': list(active_matched_product_ids)
         },
         'price_comparison': final_comparison,
         'best_deal': final_comparison[0] if final_comparison else None

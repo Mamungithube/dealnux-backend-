@@ -9,6 +9,24 @@ except:
     spacy.cli.download("en_core_web_sm")
     nlp = spacy.load("en_core_web_sm")
 
+
+def get_critical_tokens(title):
+    """
+    টাইটেল থেকে 'Identity' শব্দগুলো বের করে। 
+    যেমন: S25, i7, 128GB, WH-1000XM5. 
+    যেসব শব্দে সংখ্যা এবং অক্ষর মিশে থাকে, সেগুলোই সাধারণত মডেল।
+    """
+    title = title.upper()
+    # ১. যেসব শব্দে সংখ্যা আছে সেগুলো আলাদা করি (e.g., A17, S25, 5330, 32GB)
+    tokens = re.findall(r'\b[A-Z0-9-]{2,}\b', title)
+    critical = set()
+    for t in tokens:
+        # যদি শব্দে অন্তত একটি সংখ্যা থাকে, তবে সেটি গুরুত্বপূর্ণ (Identity)
+        if any(char.isdigit() for char in t):
+            critical.add(t)
+    return critical
+
+
 def extract_attributes(title):
     specs = {}
     title_upper = title.upper()
@@ -84,9 +102,9 @@ def calculate_match_score(title1, title2):
     f2 = get_product_fingerprint(title2)
 
     # ১. ব্র্যান্ড ব্লক (HP vs Dell রোধ করবে)
-    brand1 = extract_brand(title1)
-    brand2 = extract_brand(title2)
-    if brand1 and brand2 and brand1 != brand2:
+    brand1 = title1.split()[0].upper()
+    brand2 = title2.split()[0].upper()
+    if brand1 != brand2:
         return 0.0
 
     # ২. হার্ড ব্লক: স্টোরেজ মিসম্যাচ
@@ -115,9 +133,20 @@ def calculate_match_score(title1, title2):
             return 0.0
 
     # মূল স্কোরিং
-    core1 = f1['core_name']
-    core2 = f2['core_name']
-    score = fuzz.token_set_ratio(core1, core2)
+    crit1 = get_critical_tokens(title1)
+    crit2 = get_critical_tokens(title2)
+
+    if crit1 and crit2:
+        # যদি একটি সেটে এমন সংখ্যা থাকে যা অন্যটিতে নেই, তবে সেটি আলাদা প্রোডাক্ট
+        # যেমন: সেট ১-এ {I3, 32GB}, সেট ২-এ {I7, 32GB}। I3 আর I7 মিলছে না।
+        diff = crit1.symmetric_difference(crit2)
+        # যদি ভেরিয়েশন খুব বেশি হয় (যেমন মডেল নম্বরই আলাদা) তবে ০
+        for d in diff:
+            # যদি কোনো মডেল কোড বা প্রসেসর কোড না মিলে
+            if len(d) > 1 and not d.endswith('GB') and not d.endswith('TB'):
+                return 0.0
+    score = fuzz.token_set_ratio(title1, title2)
+    
     
     # বোনাস বুস্ট
     if f1['attributes'].get('model_code') and f1['attributes']['model_code'].lower() in title2.lower():
