@@ -137,8 +137,8 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     images        = ProductImageSerializer(many=True, read_only=True)
     listings      = serializers.SerializerMethodField()
     lowest_price  = serializers.SerializerMethodField()
-    is_favorite = serializers.SerializerMethodField()
-    is_cart = serializers.SerializerMethodField()
+    is_favorite   = serializers.SerializerMethodField()
+    is_cart       = serializers.SerializerMethodField()
 
     class Meta:
         model  = Product
@@ -148,13 +148,15 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'brand', 'main_image', 'images',
             'lowest_price', 'listings',
             'is_active', 'created_at',
+            'is_favorite',  # <-- এখানে যোগ করা হলো
+            'is_cart',      # <-- এখানে যোগ করা হলো
         ]
 
     def get_is_favorite(self, obj):
         favorite_ids = self.context.get('favorite_ids', set())
         return obj.id in favorite_ids
 
-    def get_is_cart(self, obj): # এই মেথডটি যোগ করুন
+    def get_is_cart(self, obj):
         cart_product_ids = self.context.get('cart_product_ids', set())
         return obj.id in cart_product_ids
 
