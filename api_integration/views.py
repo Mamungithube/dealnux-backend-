@@ -11,6 +11,9 @@ from django.db import transaction
 from django.core.cache import cache
 import math
 from rest_framework import permissions as drf_permissions
+
+from api_integration.product_matcher import calculate_match_score, get_product_fingerprint
+
 from .services.walmart_service import WalmartService
 from .services.amazon_service import AmazonService
 from .services.sephora_service import SephoraService
@@ -618,78 +621,151 @@ class ProductViewSet(viewsets.ModelViewSet):
     
 
 """ contains viewsets and API views for product listing, price comparison, and platform syncing. """
+"""
+views.py — compare_prices_api (improved version)
+=================================================
+পরিবর্তন summary:
+  • product_matcher.py থেকে improved matching functions import
+  • Storage mismatch এখন correctly detect হয় (256GB vs 512GB → block)
+  • RAM mismatch detect হয়
+  • Brand normalize হয় ("Unlocked Apple" → "Apple")
+  • DB candidate query আরো smart — core words দিয়ে AND filter option
+  • Weighted score: Jaccard×0.4 + token_sort×0.35 + partial×0.25
+"""
 
-
+import re
 from rapidfuzz import fuzz
+from django.db.models import Q
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+
+# ── তোমার existing imports ──
+# from .models import Product, ProductListing
+# from .utils import clean_display_title, success_response, error_response
+# from .product_matcher import product_match_score, extract_core_title
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  product_matcher.py থেকে copy (অথবা import করো)
+# ══════════════════════════════════════════════════════════════════════════════
 
 VARIANT_TOKENS = {
     'max', 'plus', 'ultra', 'mini', 'pro', 'lite', 'fe',
-    'air', 'fold', 'flip', 'edge', 'note',
+    'air', 'fold', 'flip', 'edge', 'note', 'x', 'xl',
 }
 
-def extract_core_title(title):
-    noise_patterns = [
-        r'\(.*?\)',
-        r'\[.*?\]',
-        r'\b(at&t|t[\-]?mobile|verizon|sprint|tmobile|att)\b',
-        r'\b(unlocked|locked|factory|carrier)\b',
-        r'\b(great|good|fair|excellent|mint|poor)\s*(condition)?\b',
-        r'\b(refurbished|restored|renewed|remanufactured)\b',
-        r'\b(free\s*shipping|ships\s*fast|seller\s*refurbished)\b',
-        r'opens?\s+in\s+a\s+new\s+(window|tab).*',
-        r'\d+%?\s*opens?.*',
-        r'\b(black|white|silver|gold|blue|red|green|pink|purple|titanium|midnight|starlight|natural|cosmic|desert)\b',
-        r'\b\d+\s*gb\b',
-        r'\b\d+\s*tb\b',
-        r'\bsmartphone\b',
-        r'\bvery\b',
-        r'-\s*$',
-    ]
-    core = title
-    for pattern in noise_patterns:
-        core = re.sub(pattern, '', core, flags=re.IGNORECASE)
+STORAGE_PATTERN = re.compile(r'(\d+)\s*(gb|tb|mb)', re.IGNORECASE)
+RAM_PATTERN     = re.compile(r'(\d+)\s*gb\s*ram',   re.IGNORECASE)
+
+NOISE_PATTERNS = [
+    r'\(.*?\)',
+    r'\[.*?\]',
+    r'opens?\s+in\s+a\s+new\s+(window|tab).*',
+    r'\d+\s*%?\s*opens?.*',
+    r'\b(at&t|t[\-]?mobile|verizon|sprint|tmobile|att)\b',
+    r'\b(unlocked|locked|factory|carrier)\b',
+    r'\b(new|used|open[\s-]?box)\b',
+    r'\b(great|good|fair|excellent|mint|poor)\s*(condition)?\b',
+    r'\b(refurbished|restored|renewed|remanufactured|seller[\s-]refurbished)\b',
+    r'\b(free\s*shipping|ships\s*fast)\b',
+    r'\b(black|white|silver|gold|blue|red|green|pink|purple|titanium'
+    r'|midnight|starlight|natural|cosmic|desert|graphite|sierra|alpine'
+    r'|yellow|orange|lavender|sage|teal|burgundy|rose|space[\s]?gray)\b',
+    r'\b(very|sealed|brand)\b',
+    r'-\s*$',
+]
+
+BRAND_ALIASES = {
+    'unlocked apple': 'apple',
+    'apple unlocked': 'apple',
+    'sealed apple':   'apple',
+    'new apple':      'apple',
+}
+
+
+def extract_storage(title: str) -> dict:
+    result = {}
+    title_lower = title.lower()
+    ram_match = RAM_PATTERN.search(title_lower)
+    if ram_match:
+        result['ram'] = f"{ram_match.group(1)}gb"
+        title_lower = title_lower[:ram_match.start()] + title_lower[ram_match.end():]
+    for val, unit in STORAGE_PATTERN.findall(title_lower):
+        unit_lower = unit.lower()
+        if unit_lower == 'tb':
+            result['storage'] = f"{val}tb"
+            break
+        elif unit_lower == 'gb' and 'storage' not in result:
+            result['storage'] = f"{val}gb"
+    return result
+
+
+def normalize_brand(title: str) -> str:
+    lower = title.lower().strip()
+    for alias, canonical in BRAND_ALIASES.items():
+        if lower.startswith(alias):
+            return canonical.title() + title[len(alias):]
+    return title
+
+
+def extract_core_title(title: str) -> str:
+    core = normalize_brand(title)
+    core = re.sub(r'(\d+)\s*(gb|tb|mb)\b', r'\1', core, flags=re.IGNORECASE)
+    for pattern in NOISE_PATTERNS:
+        core = re.sub(pattern, ' ', core, flags=re.IGNORECASE)
     return re.sub(r'\s+', ' ', core).strip(' -,|/')
 
 
-def variant_check(core1, core2):
-    tokens1 = set(core1.lower().split())
-    tokens2 = set(core2.lower().split())
-    variants1 = tokens1 & VARIANT_TOKENS
-    variants2 = tokens2 & VARIANT_TOKENS
-    extra   = variants2 - variants1
-    missing = variants1 - variants2
-    return len(extra) == 0 and len(missing) == 0
+def variant_check(core1: str, core2: str) -> bool:
+    t1 = set(core1.lower().split()) & VARIANT_TOKENS
+    t2 = set(core2.lower().split()) & VARIANT_TOKENS
+    return t1 == t2
 
 
-def number_check(core1, core2):
-    nums1 = set(re.findall(r'\b\d+\b', core1))
-    nums2 = set(re.findall(r'\b\d+\b', core2))
-    if not nums1 and not nums2:
+def storage_check(title1: str, title2: str) -> bool:
+    s1 = extract_storage(title1)
+    s2 = extract_storage(title2)
+    for key in ('storage', 'ram'):
+        v1, v2 = s1.get(key), s2.get(key)
+        if v1 and v2 and v1 != v2:
+            return False
+    return True
+
+
+def model_number_check(core1: str, core2: str) -> bool:
+    def get_model_nums(core):
+        tmp = re.sub(r'\b(256|512|128|64|32|1024|2048)\b', '', core)
+        return set(re.findall(r'\b\d+\b', tmp))
+    n1, n2 = get_model_nums(core1), get_model_nums(core2)
+    if not n1 and not n2:
         return True
-    if not nums1 or not nums2:
+    if not n1 or not n2:
         return True
-    return len(nums1 - nums2) == 0
+    return bool(n1 & n2) and len(n1 - n2) == 0
 
 
-def product_match_score(title1, title2):
+def product_match_score(title1: str, title2: str) -> float:
+    """0–100 score। 75+ হলে same product ধরো।"""
+    if not storage_check(title1, title2):
+        return 0.0
+
     core1 = extract_core_title(title1)
     core2 = extract_core_title(title2)
 
-    # Hard block — variant বা number mismatch
     if not variant_check(core1, core2):
         return 0.0
-    if not number_check(core1, core2):
+    if not model_number_check(core1, core2):
         return 0.0
 
     tokens1 = set(core1.lower().split())
     tokens2 = set(core2.lower().split())
-
     jaccard = 0.0
     if tokens1 or tokens2:
         jaccard = len(tokens1 & tokens2) / len(tokens1 | tokens2) * 100
 
     token_sort = fuzz.token_sort_ratio(core1, core2)
-    return round((jaccard * 0.75) + (token_sort * 0.25), 1)
+    partial    = fuzz.partial_ratio(core1, core2)
+
+    return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
 
 @api_view(['GET'])
@@ -700,120 +776,109 @@ def compare_prices_api(request, slug):
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
-    target_core  = extract_core_title(target_title)
-    THRESHOLD    = 75
+    target_fingerprint = get_product_fingerprint(target_title)
+    target_core_name = target_fingerprint['core_name']
+    
+    # ১. ডাটাবেজ থেকে ক্যান্ডিডেট খোঁজা
+    keywords = target_core_name.split()[:3]
+    q_filter = Q(is_active=True)
+    if keywords:
+        k_query = Q()
+        for word in keywords:
+            if len(word) > 2:
+                k_query |= Q(title__icontains=word)
+        q_filter &= k_query
 
-    # Step 1: DB candidate filter
-    # core title এর words দিয়ে OR filter — broad net
-    core_words = [w for w in target_core.lower().split() if len(w) > 2]
+    candidates = Product.objects.filter(q_filter).exclude(id=product.id)
 
-    q = Q(is_active=True)
-    for word in core_words:
-        q |= Q(title__icontains=word)
-
-    candidates = Product.objects.filter(q).exclude(id=product.id)
-
-    # Step 2: score করো
-    matched_ids = [product.id]
+    # ২. NLP ম্যাচিং
+    potential_ids = [product.id] 
+    THRESHOLD = 70 
 
     for cand in candidates:
-        cand_title = clean_display_title(cand.title)
-        score = product_match_score(target_title, cand_title)
+        score = calculate_match_score(target_title, cand.title)
         if score >= THRESHOLD:
-            matched_ids.append(cand.id)
+            potential_ids.append(cand.id)
 
-    # Step 3: listings নাও
+    # ৩. লিস্টিং বের করা (শুধুমাত্র প্রাইজ > ০ হতে হবে)
     listings = ProductListing.objects.filter(
-        product__id__in=matched_ids,
+        product__id__in=potential_ids,
         is_available=True,
-        price__gt=0,
+        price__gt=0 # প্রাইজ ০ হলে সেগুলোকে কুয়েরিতেই আনবে না
     ).select_related('platform', 'product')
 
     platform_listings = {}
+    seen_listing_keys = set() 
+    active_matched_product_ids = set() # এটি দিয়ে আমরা আসল কাউন্ট করবো
 
     for listing in listings:
-        listing_title = clean_display_title(listing.product.title)
-        score         = product_match_score(target_title, listing_title)
         platform_code = listing.platform.code
-        total_price   = float(listing.get_total_price())
+        price = float(listing.price)
+        
+        listing_key = f"{platform_code}-{price}-{listing.condition}"
+        
+        if listing_key in seen_listing_keys:
+            continue
+        
+        seen_listing_keys.add(listing_key)
+        
+        # ৪. যদি লিস্টিংটি ভ্যালিড হয়, তবে ঐ প্রোডাক্ট আইডিটি একটি সেটে জমিয়ে রাখছি
+        active_matched_product_ids.add(listing.product.id)
 
-        # ── Hard validation: যেকোনো একটা missing হলে পুরো entry skip ──
-        if not listing_title:
-            continue
-        if not listing.price or float(listing.price) <= 0:
-            continue
-        if not listing.product.main_image:
-            continue
-
-        entry = {
-            'platform':         listing.platform.name,
-            'platform_code':    platform_code,
-            'matched_title':    listing_title,
-            'similarity_score': score,
-            'price':            float(listing.price),
-            'currency':         listing.currency or 'USD',
-            'shipping_cost':    float(listing.shipping_cost or 0),
-            'free_shipping':    listing.free_shipping,
-            'total_price':      total_price,
-            'condition':        listing.condition or None,
-            'seller':           listing.seller_username or None,
-            'seller_rating':    float(listing.seller_rating) if listing.seller_rating else None,
-            'url':              listing.external_url or None,
-            'main_image':       listing.product.main_image,
-            'last_updated':     listing.last_checked,
+        listing_data = {
+            'platform': listing.platform.name,
+            'platform_code': platform_code,
+            'product_id': listing.product.id,
+            'original_db_title': listing.product.title,
+            'clean_title': clean_display_title(listing.product.title),
+            'matched_slug': listing.product.slug,
+            'price': price,
+            'currency': listing.currency,
+            'shipping_cost': float(listing.shipping_cost or 0),
+            'free_shipping': listing.free_shipping,
+            'total_price': float(listing.get_total_price()),
+            'condition': listing.get_condition_display(),
+            'seller': listing.seller_username,
+            'url': listing.external_url,
+            'main_image': listing.product.main_image,
+            'last_updated': listing.last_checked,
         }
+        
+        if platform_code not in platform_listings:
+            platform_listings[platform_code] = []
+        platform_listings[platform_code].append(listing_data)
 
-        platform_listings.setdefault(platform_code, []).append(entry)
-
-    # ── Circular reference fix ──────────────────────────────────
-    price_comparison = []
-
-    for platform_code, entries in platform_listings.items():
-        # entries sort করো price অনুযায়ী
+    final_comparison = []
+    for code, entries in platform_listings.items():
         sorted_entries = sorted(entries, key=lambda x: x['total_price'])
+        top_deals = sorted_entries[:10] 
+        cheapest = top_deals[0]
         
-        # cheapest টা আলাদা dict হিসেবে বানাও — reference না
-        cheapest = sorted_entries[0]
-        
-        platform_summary = {
-            'platform':         cheapest['platform'],
-            'platform_code':    cheapest['platform_code'],
-            'matched_title':    cheapest['matched_title'],
-            'similarity_score': cheapest['similarity_score'],
-            'price':            cheapest['price'],
-            'currency':         cheapest['currency'],
-            'shipping_cost':    cheapest['shipping_cost'],
-            'free_shipping':    cheapest['free_shipping'],
-            'total_price':      cheapest['total_price'],
-            'condition':        cheapest['condition'],
-            'seller':           cheapest['seller'],
-            'seller_rating':    cheapest['seller_rating'],
-            'url':              cheapest['url'],
-            'last_updated':     cheapest['last_updated'],
-            # আলাদাভাবে all_listings যোগ করো
-            'listings_count':   len(sorted_entries),
-            'all_listings':     sorted_entries,  # এখন circular না
-        }
-        
-        price_comparison.append(platform_summary)
+        final_comparison.append({
+            **cheapest,
+            'listings_count': len(top_deals),
+            'all_listings': top_deals
+        })
 
-    price_comparison = sorted(price_comparison, key=lambda x: x['total_price'])
+    final_comparison = sorted(final_comparison, key=lambda x: x['total_price'])
 
     return success_response({
         'product': {
-            'id':         product.id,
-            'title':      target_title,
-            'slug':       product.slug,
-            'brand':      product.brand,
+            'id': product.id,
+            'title': target_title,
+            'slug': product.slug,
+            'brand': product.brand,
             'main_image': product.main_image,
         },
         'meta': {
-            'total_platforms':  len(price_comparison),
-            'matched_products': len(matched_ids),
+            'total_platforms': len(final_comparison),
+            # ৫. এখানে আমরা শুধু 'Active' প্রোডাক্টগুলোর সংখ্যা পাঠাচ্ছি
+            'matched_products_count': len(active_matched_product_ids), 
+            'active_ids': list(active_matched_product_ids)
         },
-        'price_comparison': price_comparison,
-        'best_deal':        price_comparison[0] if price_comparison else None,
-    }, message="Price comparison fetched")
+        'price_comparison': final_comparison,
+        'best_deal': final_comparison[0] if final_comparison else None
+    }, message="Price comparison fetched successfully")
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProductListing.objects.filter(

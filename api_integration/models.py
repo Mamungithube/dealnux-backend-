@@ -1,3 +1,5 @@
+import re
+
 from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -101,7 +103,9 @@ class Product(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.title)[:500]
+            clean = re.sub(r'opens?\s+in\s+a\s+new.*', '', self.title, flags=re.IGNORECASE)
+            clean = re.sub(r'\d+%?\s*opens?.*', '', clean, flags=re.IGNORECASE)
+            self.slug = slugify(clean.strip())[:500]
         super().save(*args, **kwargs)
 
     def __str__(self):
