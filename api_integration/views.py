@@ -611,12 +611,19 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.user.is_authenticated:
+            # ফেভারিট আইডি সেট
             context['favorite_ids'] = set(
                 Favorite.objects.filter(user=self.request.user)
                 .values_list('product_id', flat=True)
             )
+            # কার্ট আইডি সেট (নতুন যোগ করা হয়েছে)
+            context['cart_product_ids'] = set(
+                CartItem.objects.filter(user=self.request.user)
+                .values_list('product_id', flat=True)
+            )
         else:
             context['favorite_ids'] = set()
+            context['cart_product_ids'] = set()
         return context
     
 
@@ -768,9 +775,11 @@ def product_match_score(title1: str, title2: str) -> float:
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
 
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_prices_api(request, slug):
+    # ১. মেইন প্রোডাক্টটি ডাটাবেজ থেকে বের করা
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
@@ -779,19 +788,19 @@ def compare_prices_api(request, slug):
     target_fingerprint = get_product_fingerprint(target_title)
     target_core_name = target_fingerprint['core_name']
     
-    # ১. ডাটাবেজ থেকে ক্যান্ডিডেট খোঁজা
+    # ২. ক্যান্ডিডেট ফিল্টার (ব্র্যান্ড ও মডেল অনুযায়ী)
     keywords = target_core_name.split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
-        k_query = Q()
+        keyword_query = Q()
         for word in keywords:
             if len(word) > 2:
-                k_query |= Q(title__icontains=word)
-        q_filter &= k_query
+                keyword_query |= Q(title__icontains=word)
+        q_filter &= keyword_query
 
     candidates = Product.objects.filter(q_filter).exclude(id=product.id)
 
-    # ২. NLP ম্যাচিং
+    # ৩. NLP ম্যাচিং
     potential_ids = [product.id] 
     THRESHOLD = 70 
 
@@ -800,35 +809,36 @@ def compare_prices_api(request, slug):
         if score >= THRESHOLD:
             potential_ids.append(cand.id)
 
-    # ৩. লিস্টিং বের করা (শুধুমাত্র প্রাইজ > ০ হতে হবে)
+    # ৪. লিস্টিংগুলো বের করা
+    # এখানে আমরা External ID এবং URL আলাদা এমন সব লিস্টিং আনবো
     listings = ProductListing.objects.filter(
         product__id__in=potential_ids,
         is_available=True,
-        price__gt=0 # প্রাইজ ০ হলে সেগুলোকে কুয়েরিতেই আনবে না
-    ).select_related('platform', 'product')
+        price__gt=0
+    ).select_related('platform', 'product').order_by('price')
 
     platform_listings = {}
-    seen_listing_keys = set() 
-    active_matched_product_ids = set() # এটি দিয়ে আমরা আসল কাউন্ট করবো
+    seen_external_ids = set()           # একই লিস্টিং আইডি বারবার আসা রোধে
+    active_matched_product_ids = set()  # আসল ম্যাচড প্রোডাক্ট কাউন্ট
 
     for listing in listings:
         platform_code = listing.platform.code
         price = float(listing.price)
+        ext_id = listing.external_id # প্ল্যাটফর্মের দেওয়া ইউনিক লিস্টিং আইডি
         
-        listing_key = f"{platform_code}-{price}-{listing.condition}"
-        
-        if listing_key in seen_listing_keys:
+        # ৫. ডুপ্লিকেট চেকিং লজিক (Listing Level)
+        # যদি এই লিস্টিং আইডি (ext_id) আগে একবার এসে থাকে, তবে স্কিপ করো
+        if ext_id in seen_external_ids:
             continue
-        
-        seen_listing_keys.add(listing_key)
-        
-        # ৪. যদি লিস্টিংটি ভ্যালিড হয়, তবে ঐ প্রোডাক্ট আইডিটি একটি সেটে জমিয়ে রাখছি
+            
+        seen_external_ids.add(ext_id)
         active_matched_product_ids.add(listing.product.id)
 
         listing_data = {
             'platform': listing.platform.name,
             'platform_code': platform_code,
-            'product_id': listing.product.id,
+            'product_id': listing.product.id,              # ডাটাবেজের প্রোডাক্ট আইডি
+            'listing_id': ext_id,                         # প্ল্যাটফর্মের অরিজিনাল লিস্টিং আইডি
             'original_db_title': listing.product.title,
             'clean_title': clean_display_title(listing.product.title),
             'matched_slug': listing.product.slug,
@@ -839,7 +849,7 @@ def compare_prices_api(request, slug):
             'total_price': float(listing.get_total_price()),
             'condition': listing.get_condition_display(),
             'seller': listing.seller_username,
-            'url': listing.external_url,
+            'url': listing.external_url,                  # ইউনিক ইউআরএল
             'main_image': listing.product.main_image,
             'last_updated': listing.last_checked,
         }
@@ -848,16 +858,20 @@ def compare_prices_api(request, slug):
             platform_listings[platform_code] = []
         platform_listings[platform_code].append(listing_data)
 
+    # ৬. প্ল্যাটফর্ম অনুযায়ী সেরা ডিল সাজানো
     final_comparison = []
     for code, entries in platform_listings.items():
+        # দাম অনুযায়ী সাজানো
         sorted_entries = sorted(entries, key=lambda x: x['total_price'])
+        
+        # আমরা প্রতি প্ল্যাটফর্মের সেরা ১০টি আলাদা আলাদা অফার/ইউআরএল দেখাবো
         top_deals = sorted_entries[:10] 
         cheapest = top_deals[0]
         
         final_comparison.append({
             **cheapest,
-            'listings_count': len(top_deals),
-            'all_listings': top_deals
+            'listings_count': len(top_deals), # ঐ প্ল্যাটফর্মে কয়টি আলাদা অফার আছে
+            'all_listings': top_deals         # সব আলাদা ইউআরএল ও আইডি সহ ডিল
         })
 
     final_comparison = sorted(final_comparison, key=lambda x: x['total_price'])
@@ -872,9 +886,8 @@ def compare_prices_api(request, slug):
         },
         'meta': {
             'total_platforms': len(final_comparison),
-            # ৫. এখানে আমরা শুধু 'Active' প্রোডাক্টগুলোর সংখ্যা পাঠাচ্ছি
-            'matched_products_count': len(active_matched_product_ids), 
-            'active_ids': list(active_matched_product_ids)
+            'matched_products_count': len(active_matched_product_ids),
+            'total_unique_listings': len(seen_external_ids) # মোট কয়টি আলাদা ডিল পাওয়া গেল
         },
         'price_comparison': final_comparison,
         'best_deal': final_comparison[0] if final_comparison else None

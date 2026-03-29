@@ -98,6 +98,7 @@ class ProductSerializer(serializers.ModelSerializer):
     listings_count = serializers.SerializerMethodField()
     available_on = serializers.SerializerMethodField()
     is_favorite = serializers.SerializerMethodField()
+    is_cart = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -106,9 +107,13 @@ class ProductSerializer(serializers.ModelSerializer):
             'category', 'category_name',
             'main_image',
             'lowest_price', 'listings_count', 'available_on',
-            'is_active', 'created_at','is_favorite',
+            'is_active', 'created_at','is_favorite','is_cart' ,
             # 'description', 'model_number', 'last_synced', 'updated_at',
         ]
+
+    def get_is_cart(self, obj): # নতুন মেথড
+        cart_product_ids = self.context.get('cart_product_ids', set())
+        return obj.id in cart_product_ids
 
     def get_is_favorite(self, obj):
         favorite_ids = self.context.get('favorite_ids', set())
