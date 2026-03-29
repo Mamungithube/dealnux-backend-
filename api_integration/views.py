@@ -504,33 +504,32 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        # Query params নেওয়া হচ্ছে
         category = self.request.query_params.get('category', '').strip()
-        search = self.request.query_params.get('search', '').strip()
-        sort = self.request.query_params.get('sort', 'newest').strip()
+        search   = self.request.query_params.get('search', '').strip()
+        sort     = self.request.query_params.get('sort', 'newest').strip()
 
-        # =========================
+        # ── Hard validation: title, image, price সব থাকতে হবে ──
+        queryset = queryset.filter(
+            title__isnull=False,
+            main_image__isnull=False,
+            listings__price__gt=0,
+            listings__is_available=True,
+        ).exclude(
+            title='',
+            main_image='',
+        )
+
         # Category Filter
-        # =========================
         if category:
             try:
-                # category slug দিয়ে category বের করবে
-                cat = Category.objects.get(slug=category)
-
-                # child category থাকলে সেগুলাও নিবে
+                cat      = Category.objects.get(slug=category)
                 child_ids = list(cat.children.values_list('id', flat=True))
-
-                # parent + child category ids
-                all_ids = [cat.id] + child_ids
-
+                all_ids  = [cat.id] + child_ids
                 queryset = queryset.filter(category__id__in=all_ids)
-
             except Category.DoesNotExist:
                 return queryset.none()
 
-        # =========================
         # Search Filter
-        # =========================
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) |
@@ -538,29 +537,22 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Q(brand__icontains=search)
             )
 
-        # =========================
         # Sorting
-        # =========================
         if sort == 'price_low':
             queryset = queryset.annotate(
                 sort_price=Min('listings__price')
             ).order_by('sort_price')
-
         elif sort == 'price_high':
             queryset = queryset.annotate(
                 sort_price=Min('listings__price')
             ).order_by('-sort_price')
-
         elif sort == 'popular':
             queryset = queryset.annotate(
                 total_listing=Count('listings')
             ).order_by('-total_listing')
-
         elif sort == 'oldest':
             queryset = queryset.order_by('created_at')
-
         else:
-            # newest default
             queryset = queryset.order_by('-created_at')
 
         return queryset.distinct()
@@ -573,13 +565,21 @@ class ProductViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(page, many=True)
             paginated = self.get_paginated_response(serializer.data)
 
+            # ── Validation filter ──────────────────────────────────
+            valid_results = [
+                item for item in serializer.data
+                if item.get('title')
+                and item.get('main_image')
+                and item.get('lowest_price') and float(item.get('lowest_price', 0)) > 0
+            ]
+
             total_count = paginated.data['count']
-            page_size = self.paginator.get_page_size(request)
+            page_size   = self.paginator.get_page_size(request)
             current_page = self.paginator.page.number
             total_pages = math.ceil(total_count / page_size)
 
             return success_response({
-                'count':   total_count,
+                'count': len(valid_results),
                 'pagination': {
                     'total_count':  total_count,
                     'total_pages':  total_pages,
@@ -590,11 +590,20 @@ class ProductViewSet(viewsets.ModelViewSet):
                     'next_page':    current_page + 1 if self.paginator.page.has_next() else None,
                     'prev_page':    current_page - 1 if self.paginator.page.has_previous() else None,
                 },
-                'results': serializer.data,
+                'results': valid_results,
             })
 
         serializer = self.get_serializer(queryset, many=True)
-        return success_response({'results': serializer.data})
+
+        # ── Validation filter (non-paginated) ──────────────────────
+        valid_results = [
+            item for item in serializer.data
+            if item.get('title')
+            and item.get('main_image')
+            and item.get('lowest_price') and float(item.get('lowest_price', 0)) > 0
+        ]
+
+        return success_response({'results': valid_results})
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -607,6 +616,9 @@ class ProductViewSet(viewsets.ModelViewSet):
             context['favorite_ids'] = set()
         return context
     
+
+""" contains viewsets and API views for product listing, price comparison, and platform syncing. """
+
 
 from rapidfuzz import fuzz
 
@@ -717,7 +729,7 @@ def compare_prices_api(request, slug):
         price__gt=0,
     ).select_related('platform', 'product')
 
-    seen_platforms = {}
+    platform_listings = {}
 
     for listing in listings:
         listing_title = clean_display_title(listing.product.title)
@@ -725,29 +737,67 @@ def compare_prices_api(request, slug):
         platform_code = listing.platform.code
         total_price   = float(listing.get_total_price())
 
+        # ── Hard validation: যেকোনো একটা missing হলে পুরো entry skip ──
+        if not listing_title:
+            continue
+        if not listing.price or float(listing.price) <= 0:
+            continue
+        if not listing.product.main_image:
+            continue
+
         entry = {
             'platform':         listing.platform.name,
             'platform_code':    platform_code,
             'matched_title':    listing_title,
             'similarity_score': score,
             'price':            float(listing.price),
-            'currency':         listing.currency,
-            'shipping_cost':    float(listing.shipping_cost),
+            'currency':         listing.currency or 'USD',
+            'shipping_cost':    float(listing.shipping_cost or 0),
             'free_shipping':    listing.free_shipping,
             'total_price':      total_price,
-            'condition':        listing.condition,
-            'seller':           listing.seller_username,
+            'condition':        listing.condition or None,
+            'seller':           listing.seller_username or None,
             'seller_rating':    float(listing.seller_rating) if listing.seller_rating else None,
-            'url':              listing.external_url,
+            'url':              listing.external_url or None,
+            'main_image':       listing.product.main_image,
             'last_updated':     listing.last_checked,
         }
 
-        if platform_code not in seen_platforms:
-            seen_platforms[platform_code] = entry
-        elif total_price < seen_platforms[platform_code]['total_price']:
-            seen_platforms[platform_code] = entry
+        platform_listings.setdefault(platform_code, []).append(entry)
 
-    price_comparison = sorted(seen_platforms.values(), key=lambda x: x['total_price'])
+    # ── Circular reference fix ──────────────────────────────────
+    price_comparison = []
+
+    for platform_code, entries in platform_listings.items():
+        # entries sort করো price অনুযায়ী
+        sorted_entries = sorted(entries, key=lambda x: x['total_price'])
+        
+        # cheapest টা আলাদা dict হিসেবে বানাও — reference না
+        cheapest = sorted_entries[0]
+        
+        platform_summary = {
+            'platform':         cheapest['platform'],
+            'platform_code':    cheapest['platform_code'],
+            'matched_title':    cheapest['matched_title'],
+            'similarity_score': cheapest['similarity_score'],
+            'price':            cheapest['price'],
+            'currency':         cheapest['currency'],
+            'shipping_cost':    cheapest['shipping_cost'],
+            'free_shipping':    cheapest['free_shipping'],
+            'total_price':      cheapest['total_price'],
+            'condition':        cheapest['condition'],
+            'seller':           cheapest['seller'],
+            'seller_rating':    cheapest['seller_rating'],
+            'url':              cheapest['url'],
+            'last_updated':     cheapest['last_updated'],
+            # আলাদাভাবে all_listings যোগ করো
+            'listings_count':   len(sorted_entries),
+            'all_listings':     sorted_entries,  # এখন circular না
+        }
+        
+        price_comparison.append(platform_summary)
+
+    price_comparison = sorted(price_comparison, key=lambda x: x['total_price'])
 
     return success_response({
         'product': {
