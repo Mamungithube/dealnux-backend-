@@ -96,7 +96,7 @@ def token_similarity(title1, title2):
 def product_detail(request, pk):
     product = None
 
-    # ১. SellerProduct id দিয়ে খোঁজা (local seller)
+    # ১. SellerProduct id দিয়ে খোঁজা
     try:
         from store.models import SellerProduct
         seller_product = SellerProduct.objects.get(id=pk, status='APPROVED')
@@ -104,14 +104,31 @@ def product_detail(request, pk):
     except SellerProduct.DoesNotExist:
         pass
 
-    # ২. সরাসরি Product id দিয়ে খোঁজা (3rd party)
+    # ২. সরাসরি Product id দিয়ে খোঁজা
     if not product:
         product = Product.objects.filter(id=pk, is_active=True).first()
 
     if not product:
         return error_response("Product not found", code=404)
 
-    serializer = ProductDetailSerializer(product)
+    # ── context build করো ──────────────────────────────────
+    context = {'request': request}
+
+    if request.user.is_authenticated:
+        from api_integration.models import CartItem, Favorite
+        context['favorite_ids'] = set(
+            Favorite.objects.filter(user=request.user)
+            .values_list('product_id', flat=True)
+        )
+        context['cart_product_ids'] = set(
+            CartItem.objects.filter(user=request.user)
+            .values_list('product_id', flat=True)
+        )
+    else:
+        context['favorite_ids']     = set()
+        context['cart_product_ids'] = set()
+
+    serializer = ProductDetailSerializer(product, context=context)
     return success_response(serializer.data, message="Product fetched")
 # ============================================================================
 # Response Helpers
