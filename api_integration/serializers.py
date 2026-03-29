@@ -177,10 +177,17 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 
 class CartItemSerializer(serializers.ModelSerializer):
     product_title = serializers.CharField(source='product.title', read_only=True)
+    product_image = serializers.URLField(source='product.main_image', read_only=True)
+    listings = serializers.SerializerMethodField()
 
     class Meta:
-        model  = CartItem
-        fields = ['id', 'product', 'product_title', 'quantity']
+        model = CartItem
+        fields = ['id', 'product', 'product_title', 'product_image', 'quantity', 'listings']
+
+
+    def get_listings(self, obj):
+        listings = obj.product.listings.filter(is_available=True).select_related('platform')
+        return ProductListingSerializer(listings, many=True).data
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -197,7 +204,6 @@ class CartItemSerializer(serializers.ModelSerializer):
                 })
 
         return attrs
-
 
 class FavoriteSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField() 
