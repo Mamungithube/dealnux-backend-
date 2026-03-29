@@ -798,7 +798,7 @@ def product_match_score(title1: str, title2: str) -> float:
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_prices_api(request, slug):
-    # ১. মেইন প্রোডাক্টটি স্লাগ দিয়ে ডাটাবেজ থেকে বের করা
+    # ১. মেইন প্রোডাক্ট বের করা
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
@@ -807,91 +807,66 @@ def compare_prices_api(request, slug):
     target_fingerprint = get_product_fingerprint(target_title)
     target_core_name = target_fingerprint['core_name']
     
-    # ২. স্মার্ট ডাটাবেজ ক্যান্ডিডেট ফিল্টার
+    # ২. ডাটাবেজ থেকে ক্যান্ডিডেট ফিল্টার (Smart Search)
     keywords = target_core_name.split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
         k_query = Q()
         for word in keywords:
-            if len(word) > 2:
-                k_query |= Q(title__icontains=word)
+            if len(word) > 2: k_query |= Q(title__icontains=word)
         q_filter &= k_query
 
-    candidates = Product.objects.filter(q_filter).exclude(id=product.id)
+    candidates = Product.objects.filter(q_filter)
 
-    # ৩. NLP ম্যাচিং
-    potential_ids = [product.id] 
+    # ৩. NLP ম্যাচিং করে সব "একই" প্রোডাক্টের আইডি সংগ্রহ করা
+    matched_ids = [product.id]
     THRESHOLD = 70 
 
     for cand in candidates:
+        if cand.id == product.id: continue
         score = calculate_match_score(target_title, cand.title)
         if score >= THRESHOLD:
-            potential_ids.append(cand.id)
+            matched_ids.append(cand.id)
 
-    # ৪. লিস্টিং কুয়েরি (ordered by price)
+    # ৪. সব প্ল্যাটফর্মের লিস্টিং আনা (Ordered by Price)
     listings = ProductListing.objects.filter(
-        product__id__in=potential_ids,
+        product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    # ৫. গ্রুপিং এবং "ওয়ান প্রোডাক্ট পার প্ল্যাটফর্ম" লজিক
-    platform_listings = {}
-    seen_product_per_platform = set() # (Platform + Product ID) ট্র্যাক করার জন্য
-    active_matched_product_ids = set()
+    # ৫. প্ল্যাটফর্ম ভিত্তিক সেরা ডিল বাছাই করা (Compare Logic)
+    # আমরা একটি ডিকশনারিতে প্রতি প্ল্যাটফর্মের "সেরা দাম" রাখবো
+    best_deals_per_platform = {} 
 
     for listing in listings:
         p_code = listing.platform.code
-        p_id = listing.product.id
         
-        # ইউনিক কি: প্ল্যাটফর্ম কোড + প্রোডাক্ট আইডি (যেমন: ebay-36089)
-        unique_product_key = f"{p_code}-{p_id}"
-        
-        # যদি এই ল্যাপটপটি ঐ প্ল্যাটফর্মে একবার এসে থাকে, তবে স্কিপ করো 
-        # (যেহেতু লিস্টটি দাম অনুযায়ী সাজানো, তাই প্রথমটিই হবে সবথেকে সস্তা)
-        if unique_product_key in seen_product_per_platform:
-            continue
-            
-        seen_product_per_platform.add(unique_product_key)
-        active_matched_product_ids.add(p_id)
+        # যেহেতু ডাটাবেজ থেকে দাম অনুযায়ী সাজানো (ordered by price) আসছে,
+        # তাই লুপে প্রতিটি প্ল্যাটফর্মের প্রথম যে ডিলটি আসবে সেটিই সেরা।
+        if p_code not in best_deals_per_platform:
+            best_deals_per_platform[p_code] = {
+                'platform': listing.platform.name,
+                'platform_code': p_code,
+                'product_id': listing.product.id,
+                'listing_id': listing.external_id,
+                'clean_title': clean_display_title(listing.product.title),
+                'price': float(listing.price),
+                'currency': listing.currency,
+                'shipping_cost': float(listing.shipping_cost or 0),
+                'total_price': float(listing.get_total_price()),
+                'url': listing.external_url,
+                'main_image': listing.product.main_image,
+                'condition': listing.get_condition_display(),
+                'seller': listing.seller_username,
+                'last_updated': listing.last_checked,
+            }
 
-        listing_data = {
-            'platform': listing.platform.name,
-            'platform_code': p_code,
-            'product_id': p_id,
-            'listing_id': listing.external_id,
-            'original_db_title': listing.product.title,
-            'clean_title': clean_display_title(listing.product.title),
-            'matched_slug': listing.product.slug,
-            'price': float(listing.price),
-            'currency': listing.currency,
-            'shipping_cost': float(listing.shipping_cost or 0),
-            'free_shipping': listing.free_shipping,
-            'total_price': float(listing.get_total_price()),
-            'condition': listing.get_condition_display(),
-            'seller': listing.seller_username,
-            'url': listing.external_url,
-            'main_image': listing.product.main_image,
-            'last_updated': listing.last_checked,
-        }
-        
-        if p_code not in platform_listings:
-            platform_listings[p_code] = []
-        platform_listings[p_code].append(listing_data)
-
-    # ৬. ফাইনাল রেজাল্ট সাজানো (প্রতি প্ল্যাটফর্মে শুধু সেরা ডিলগুলো)
-    final_comparison = []
-    for code, entries in platform_listings.items():
-        # যেহেতু আমরা লুপেই সেরাটি নিয়েছি, এখানে entries[0]-ই হবে বেস্ট ডিল
-        best_entry = entries[0] 
-        
-        final_comparison.append({
-            **best_entry,
-            'other_matched_products_count': len(entries) - 1, # ঐ প্ল্যাটফর্মে অন্য আর কয়টি প্রোডাক্ট ম্যাচ করেছে
-            'all_unique_product_deals': entries              # ঐ প্ল্যাটফর্মের ইউনিক প্রোডাক্ট আইডিগুলোর সেরা ডিল
-        })
-
-    final_comparison = sorted(final_comparison, key=lambda x: x['total_price'])
+    # ডিকশনারিকে লিস্টে রূপান্তর করা
+    comparison_list = list(best_deals_per_platform.values())
+    
+    # ৬. সব প্ল্যাটফর্মের মধ্যে তুলনা করে সবথেকে সস্তা প্ল্যাটফর্মটি আগে রাখা
+    comparison_list = sorted(comparison_list, key=lambda x: x['total_price'])
 
     # ৭. ফাইনাল রেসপন্স
     return success_response({
@@ -903,14 +878,13 @@ def compare_prices_api(request, slug):
             'main_image': product.main_image,
         },
         'meta': {
-            'total_platforms': len(final_comparison),
-            'matched_products_count': len(active_matched_product_ids),
-            'active_matched_ids': list(active_matched_product_ids)
+            'total_platforms_found': len(comparison_list),
+            'matched_products_count': len(set(matched_ids)),
+            'active_matched_ids': matched_ids
         },
-        'price_comparison': final_comparison,
-        'best_deal': final_comparison[0] if final_comparison else None
-    }, message="Price comparison fetched successfully")
-
+        'price_comparison': comparison_list, # এখানে Amazon, eBay, Walmart সব থাকবে (যদি থাকে)
+        'best_deal': comparison_list[0] if comparison_list else None # সবার মধ্যে সেরাটি
+    }, message="Price comparison across all platforms fetched successfully")
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
