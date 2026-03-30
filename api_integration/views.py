@@ -91,18 +91,56 @@ def token_similarity(title1, title2):
     return round(SequenceMatcher(None, t1, t2).ratio() * 100, 2)
 
 
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def product_detail(request, pk):
-    # শুধু আইডি দিয়ে প্রোডাক্টটি খুঁজবে
     product = Product.objects.filter(id=pk, is_active=True).first()
-
     if not product:
         return error_response("Product not found", code=404)
 
-    # সিরিয়ালাইজ করে ডাটা পাঠিয়ে দেবে
-    serializer = ProductDetailSerializer(product)
-    return success_response(serializer.data, message="Product fetched")
+    # ── context build ──
+    context = {'request': request}
+    if request.user.is_authenticated:
+        from api_integration.models import CartItem, Favorite
+        context['favorite_ids'] = set(
+            Favorite.objects.filter(user=request.user)
+            .values_list('product_id', flat=True)
+        )
+        context['cart_product_ids'] = set(
+            CartItem.objects.filter(user=request.user)
+            .values_list('product_id', flat=True)
+        )
+    else:
+        context['favorite_ids']     = set()
+        context['cart_product_ids'] = set()
+
+    # ── তোমার existing logic ──
+    all_listings = product.listings.filter(is_available=True, price__gt=0)
+
+    exact_listings     = []
+    related_candidates = []
+
+    for listing in all_listings:
+        if "256GB" in listing.external_url or "512GB" in listing.external_url:
+            related_candidates.append(listing)
+        else:
+            exact_listings.append(listing)
+
+    related_products = Product.objects.filter(
+        category=product.category,
+        brand=product.brand
+    ).exclude(id=product.id)[:6]
+
+    serializer = ProductDetailSerializer(product, context=context)
+    data = serializer.data
+
+    data['listings'] = ProductListingSerializer(exact_listings, many=True).data
+    data['related_products'] = ProductSerializer(
+        related_products, many=True, context=context
+    ).data
+
+    return success_response(data, message="Product fetched with related items")
 # ============================================================================
 # Response Helpers
 # ============================================================================
@@ -765,7 +803,6 @@ def product_match_score(title1: str, title2: str) -> float:
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_prices_api(request, slug):
@@ -776,10 +813,9 @@ def compare_prices_api(request, slug):
 
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
-    target_core_name = target_fingerprint['core_name']
     
-    # ২. ডাটাবেজ থেকে ক্যান্ডিডেট ফিল্টার (Smart Search)
-    keywords = target_core_name.split()[:3]
+    # ২. ডাটাবেজ থেকে ক্যান্ডিডেট ফিল্টার
+    keywords = target_fingerprint['core_name'].split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
         k_query = Q()
@@ -789,57 +825,60 @@ def compare_prices_api(request, slug):
 
     candidates = Product.objects.filter(q_filter)
 
-    # ৩. NLP ম্যাচিং করে সব "একই" প্রোডাক্টের আইডি সংগ্রহ করা
+    # ৩. NLP ম্যাচিং
     matched_ids = [product.id]
     THRESHOLD = 70 
 
     for cand in candidates:
         if cand.id == product.id: continue
-        score = calculate_match_score(target_title, cand.title)
+        score = calculate_match_score(product.title, cand.title)
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # ৪. সব প্ল্যাটফর্মের লিস্টিং আনা (Ordered by Price)
+    # ৪. সব লিস্টিং বের করা (Ordered by Price)
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    # ৫. প্ল্যাটফর্ম ভিত্তিক সেরা ডিল বাছাই করা (Compare Logic)
-    # আমরা একটি ডিকশনারিতে প্রতি প্ল্যাটফর্মের "সেরা দাম" রাখবো
-    best_deals_per_platform = {} 
+    # ৫. সেলার ভিত্তিক ইউনিক ডিল ফিল্টার
+    comparison_list = []
+    seen_urls = set()  # একই ইউআরএল (URL) বার বার আসা বন্ধ করতে
+    active_matched_product_ids = set()
 
     for listing in listings:
-        p_code = listing.platform.code
-        
-        # যেহেতু ডাটাবেজ থেকে দাম অনুযায়ী সাজানো (ordered by price) আসছে,
-        # তাই লুপে প্রতিটি প্ল্যাটফর্মের প্রথম যে ডিলটি আসবে সেটিই সেরা।
-        if p_code not in best_deals_per_platform:
-            best_deals_per_platform[p_code] = {
-                'platform': listing.platform.name,
-                'platform_code': p_code,
-                'product_id': listing.product.id,
-                'listing_id': listing.external_id,
-                'clean_title': clean_display_title(listing.product.title),
-                'price': float(listing.price),
-                'currency': listing.currency,
-                'shipping_cost': float(listing.shipping_cost or 0),
-                'total_price': float(listing.get_total_price()),
-                'url': listing.external_url,
-                'main_image': listing.product.main_image,
-                'condition': listing.get_condition_display(),
-                'seller': listing.seller_username,
-                'last_updated': listing.last_checked,
-            }
+        # যদি এই ডিলের ইউআরএল আগে একবার এসে থাকে, তবে বাদ দাও
+        if listing.external_url in seen_urls:
+            continue
+            
+        seen_urls.add(listing.external_url)
+        active_matched_product_ids.add(listing.product.id)
 
-    # ডিকশনারিকে লিস্টে রূপান্তর করা
-    comparison_list = list(best_deals_per_platform.values())
-    
-    # ৬. সব প্ল্যাটফর্মের মধ্যে তুলনা করে সবথেকে সস্তা প্ল্যাটফর্মটি আগে রাখা
+        comparison_list.append({
+            'platform': listing.platform.name,
+            'platform_code': listing.platform.code,
+            'product_id': listing.product.id,
+            'listing_id': listing.external_id,
+            'clean_title': clean_display_title(listing.product.title),
+            'price': float(listing.price),
+            'currency': listing.currency,
+            'shipping_cost': float(listing.shipping_cost or 0),
+            'total_price': float(listing.get_total_price()),
+            'url': listing.external_url,
+            'main_image': listing.product.main_image,
+            'condition': listing.get_condition_display(),
+            'seller': listing.seller_username or "Unknown Seller",
+            'last_updated': listing.last_checked,
+        })
+
+    # ৬. সব ডিলকে দাম অনুযায়ী ছোট থেকে বড় সাজানো
+    # এতে বিভিন্ন প্ল্যাটফর্মের বিভিন্ন সেলাররা দাম অনুযায়ী সিরিয়াল হবে
     comparison_list = sorted(comparison_list, key=lambda x: x['total_price'])
 
-    # ৭. ফাইনাল রেসপন্স
+    # ৭. মেটা ডাটা ক্যালকুলেশন
+    unique_platforms = set(item['platform_code'] for item in comparison_list)
+
     return success_response({
         'product': {
             'id': product.id,
@@ -849,13 +888,14 @@ def compare_prices_api(request, slug):
             'main_image': product.main_image,
         },
         'meta': {
-            'total_platforms_found': len(comparison_list),
-            'matched_products_count': len(set(matched_ids)),
-            'active_matched_ids': matched_ids
+            'total_deals_found': len(comparison_list),      # মোট কয়টি ইউনিক ডিল পাওয়া গেল
+            'total_platforms': len(unique_platforms),       # কয়টি প্ল্যাটফর্ম থেকে ডাটা এল
+            'matched_products_count': len(active_matched_product_ids),
+            'active_ids': list(active_matched_product_ids)
         },
-        'price_comparison': comparison_list, # এখানে Amazon, eBay, Walmart সব থাকবে (যদি থাকে)
-        'best_deal': comparison_list[0] if comparison_list else None # সবার মধ্যে সেরাটি
-    }, message="Price comparison across all platforms fetched successfully")
+        'price_comparison': comparison_list,                # এখানে সব সেলারের ডিল দাম অনুযায়ী থাকবে
+        'best_deal': comparison_list[0] if comparison_list else None # সবার মধ্যে সেরা ডিল
+    }, message="Price comparison for all unique sellers fetched successfully")
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
