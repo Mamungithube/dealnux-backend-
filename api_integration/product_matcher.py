@@ -145,6 +145,15 @@ def calculate_match_score(title1, title2):
             # যদি কোনো মডেল কোড বা প্রসেসর কোড না মিলে
             if len(d) > 1 and not d.endswith('GB') and not d.endswith('TB'):
                 return 0.0
+            
+
+    model1 = re.search(r'\b(G\d{3}|PRO\s*X|SUPERLIGHT)\b', title1.upper())
+    model2 = re.search(r'\b(G\d{3}|PRO\s*X|SUPERLIGHT)\b', title2.upper())
+    
+    if model1 and model2:
+        if model1.group(0) != model2.group(0):
+            return 0.0
+        
     score = fuzz.token_set_ratio(title1, title2)
     
     

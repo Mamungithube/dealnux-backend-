@@ -165,21 +165,13 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return float(price) if price else None
 
     def get_listings(self, obj):
-        # লজিক: শুধুমাত্র Active এবং যেগুলোর প্রাইজ ০ এর বেশি (Price > 0)
+        # ওই প্রোডাক্টের আন্ডারে থাকা লিস্টিং থেকে শুধু ভ্যালিড দামগুলো নেবে
         listings = obj.listings.filter(
             is_available=True, 
             price__gt=0  # প্রাইজ ০ এর বেশি হতে হবে
         ).select_related('platform').order_by('price')
-
-        # প্রতিটি প্ল্যাটফর্ম থেকে সেরা ১টি ডিল ইউনিক করার জন্য
-        seen_platforms = set()
-        unique_listings = []
-        for listing in listings:
-            if listing.platform_id not in seen_platforms:
-                seen_platforms.add(listing.platform_id)
-                unique_listings.append(listing)
-
-        return ProductListingSerializer(unique_listings, many=True).data
+        
+        return ProductListingSerializer(listings, many=True).data
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):
