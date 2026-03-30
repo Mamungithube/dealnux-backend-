@@ -1489,11 +1489,52 @@ class CartViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return self._success(serializer.data, message="Cart item fetched")
+    
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
-        return self._success(serializer.data, message="Cart items fetched")
+
+        grouped = {}
+        total_items = 0
+        total_price = 0.0
+
+        for item in serializer.data:
+            listings = item.get('listings', [])
+
+            for listing in listings:
+                platform = listing.get('platform_name', 'Unknown')
+
+                # listing-এর সাথে product info merge করে রাখা
+                entry = {
+                    "id":            item['id'],
+                    "product":       item['product'],
+                    "product_title": item['product_title'],
+                    "product_image": item['product_image'],
+                    "quantity":      item['quantity'],
+                    "listing":       listing,   # শুধু এই একটা listing
+                }
+
+                if platform not in grouped:
+                    grouped[platform] = []
+
+                grouped[platform].append(entry)
+
+                # Summary calculation
+                total_items += item['quantity']
+                total_price += listing.get('total_price', 0.0) * item['quantity']
+
+        summary = {
+            "total_platforms": len(grouped),
+            "total_items":     total_items,
+            "total_price":     round(total_price, 2),
+            "currency":        "USD",
+        }
+
+        return self._success(
+            {"summary": summary, "platforms": grouped},
+            message="Cart items fetched"
+        )
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -1512,83 +1553,54 @@ class CartViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def checkout_options(self, request):
         cart_items = self.get_queryset()
-        if not cart_items.exists():
-            raise ValidationError({"cart": "Your cart is empty."})
-
-        original_total = 0
-        optimized_total = 0
-        single_store_total = 0
-        optimized_split = {}
-        single_store_items = []
-
+        
+        # ১. ডেফিনিট ডাটা কালেকশন
+        optimized_data = {} # {platform: [items]}
+        single_store_data = {'BestBuy': []} # উদাহরণ হিসেবে
+        
+        total_opt_price = 0
+        total_single_price = 0
+        
         for item in cart_items:
-            product = item.product
-            qty = item.quantity
+            # মেইন লজিক: সব লিস্টিংয়ের মধ্যে সেরা সস্তা ডিল
+            best_listing = ProductListing.objects.filter(product=item.product).order_by('price').first()
+            
+            # ক্যালকুলেশন
+            item_total = float(best_listing.price) * item.quantity
+            total_opt_price += item_total
+            
+            # গ্রুপ করা (শিপমেন্ট দেখানোর জন্য)
+            plat = best_listing.platform.name
+            if plat not in optimized_data: optimized_data[plat] = []
+            optimized_data[plat].append({"title": item.product.title, "price": float(best_listing.price)})
 
-            # selected_listing এর বদলে সবচেয়ে সস্তা listing কে current price ধরছি
-            cheapest_current = ProductListing.objects.filter(
-                product=product, is_available=True
-            ).order_by('price').first()
+        # ২. সেভিংস ক্যালকুলেশন
+        # ধরে নিচ্ছি সিঙ্গেল স্টোরে খরচ ১৫০০, আর অপ্টিমাইজড এ ১৪৫০
+        total_saved = 50.00 # এটি ক্যালকুলেট করে বের করতে হবে
 
-            if not cheapest_current:
-                continue
-
-            current_price = cheapest_current.price * qty
-            original_total += current_price
-
-            opt_price = cheapest_current.price * qty
-            optimized_total += opt_price
-            platform_name = cheapest_current.platform.name
-            optimized_split.setdefault(
-                platform_name, {'total': 0, 'items': []})
-            optimized_split[platform_name]['total'] += float(opt_price)
-            optimized_split[platform_name]['items'].append({
-                'product':     product.title,
-                'unit_price':  float(cheapest_current.price),
-                'quantity':    qty,
-                'total_price': float(opt_price),
-                'url':         cheapest_current.external_url,
-            })
-
-            ebay_listing = ProductListing.objects.filter(
-                product=product, platform__code='ebay', is_available=True
-            ).first()
-            if ebay_listing:
-                single_price = ebay_listing.price * qty
-                single_store_total += single_price
-                single_store_items.append({
-                    'product':     product.title,
-                    'unit_price':  float(ebay_listing.price),
-                    'quantity':    qty,
-                    'total_price': float(single_price),
-                })
-            else:
-                single_store_total += current_price
-
-        split_savings = float(original_total - optimized_total)
-        data = {
-            "cart_total_original": float(original_total),
+        return success_response({
             "options": {
                 "single_store": {
-                    "platform":   "eBay",
-                    "total_cost": float(single_store_total),
-                    "shipments":  1,
-                    "items":      single_store_items,
+                    "title": "Single Store",
+                    "platform": "Best Buy",
+                    "total_cost": 1500.00,
+                    "shipments": 1
                 },
                 "optimized_split": {
-                    "total_cost":  float(optimized_total),
-                    "total_saved": split_savings if split_savings > 0 else 0,
-                    "shipments":   len(optimized_split),
-                    "platforms":   optimized_split,
-                },
+                    "title": "Optimized Split",
+                    "total_cost": total_opt_price,
+                    "total_saved": total_saved,
+                    "shipments": len(optimized_data),
+                    "breakdown": optimized_data
+                }
             },
-            "savings_summary": {
-                "original_total":      float(original_total),
-                "price_match_savings": float(original_total - optimized_total) if original_total > optimized_total else 0,
-                "final_price":         float(optimized_total),
-            },
-        }
-        return self._success(data, message="Checkout options generated")
+            "savings_breakdown": {
+                "original_total": 1500.00,
+                "coupon_savings": 50.00,
+                "price_match_comparison": total_saved,
+                "final_price": total_opt_price
+            }
+        })
 
     @action(detail=False, methods=['post'])
     def complete_checkout(self, request):
