@@ -62,7 +62,7 @@ class ProductListingInline(admin.TabularInline):
     model = ProductListing
     extra = 0
     fields = ['platform', 'price', 'currency', 'condition', 'seller_username', 'is_available', 'external_url_link', 'view_link']
-    readonly_fields = ['external_url_link', 'view_link']  # দুটোই method হিসেবে থাকতে হবে
+    readonly_fields = ['external_url_link', 'view_link']  
     can_delete = False
 
     @display(description='URL')
@@ -71,7 +71,7 @@ class ProductListingInline(admin.TabularInline):
             return format_html('<a href="{}" target="_blank">🔗 View</a>', obj.external_url)
         return format_html('<span style="color:red;">No URL</span>')
 
-    @display(description='View')  # ← এই method টা add করুন
+    @display(description='View') 
     def view_link(self, obj):
         if obj.pk:
             url = reverse('admin:api_integration_productlisting_change', args=[obj.pk])

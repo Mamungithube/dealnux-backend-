@@ -216,7 +216,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(status=status_filter.upper())
             return qs
     
-        # Seller নিজের products (সব status)
+        # Seller own products (all status)
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
                 return SellerProduct.objects.filter(seller=user.seller_profile)

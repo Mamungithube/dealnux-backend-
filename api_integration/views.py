@@ -1,7 +1,5 @@
 import time
 import logging
-from unicodedata import category
-from oauthlib.uri_validate import query
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
@@ -55,7 +53,7 @@ def clean_display_title(title):
 
 
 def normalize_title(title):
-    """Title normalize করবে comparison এর জন্য"""
+    """Title will be normalized for comparison."""
     title = title.lower().strip()
     # special characters সরাবে
     title = re.sub(r'[^\w\s]', '', title)
@@ -65,7 +63,7 @@ def normalize_title(title):
 
 
 def similarity_score(title1, title2):
-    """দুইটা title এর মধ্যে similarity score বের করবে (0-100)"""
+    """Title will be compared and a similarity score will be returned (0-100)"""
     t1 = normalize_title(title1)
     t2 = normalize_title(title2)
     score = SequenceMatcher(None, t1, t2).ratio() * 100
@@ -73,7 +71,7 @@ def similarity_score(title1, title2):
 
 
 def extract_keywords(title):
-    """Title থেকে important keywords বের করবে"""
+    """Extract important keywords from the title"""
     normalized = normalize_title(title)
     # common stop words বাদ দেবে
     stop_words = {'the', 'a', 'an', 'and', 'or',
@@ -658,14 +656,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 """ contains viewsets and API views for product listing, price comparison, and platform syncing. """
 """
 views.py — compare_prices_api (improved version)
-=================================================
-পরিবর্তন summary:
-  • product_matcher.py থেকে improved matching functions import
-  • Storage mismatch এখন correctly detect হয় (256GB vs 512GB → block)
-  • RAM mismatch detect হয়
-  • Brand normalize হয় ("Unlocked Apple" → "Apple")
-  • DB candidate query আরো smart — core words দিয়ে AND filter option
-  • Weighted score: Jaccard×0.4 + token_sort×0.35 + partial×0.25
+================================================
+Change summary: 
+• Import improved matching functions from product_matcher.py 
+• Storage mismatch is now correctly detected (256GB vs 512GB → block) 
+• RAM mismatch is detected 
+• Brand normalizes ("Unlocked Apple" → "Apple") 
+• DB candidate query is smarter — AND filter option with core words 
+• Weighted score: Jaccard×0.4 + token_sort×0.35 + partial×0.25
 """
 
 import re
@@ -674,14 +672,14 @@ from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 
-# ── তোমার existing imports ──
+# ── your existing imports ──
 # from .models import Product, ProductListing
 # from .utils import clean_display_title, success_response, error_response
 # from .product_matcher import product_match_score, extract_core_title
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  product_matcher.py থেকে copy (অথবা import করো)
-# ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════
+# copy (or import) from product_matcher.py
+# ══════════════════════════════════
 
 VARIANT_TOKENS = {
     'max', 'plus', 'ultra', 'mini', 'pro', 'lite', 'fe',
@@ -806,7 +804,7 @@ def product_match_score(title1: str, title2: str) -> float:
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_prices_api(request, slug):
-    # ১. মেইন প্রোডাক্ট বের করা
+    # ১. Finding the main product
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
@@ -814,7 +812,7 @@ def compare_prices_api(request, slug):
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
     
-    # ২. ডাটাবেজ থেকে ক্যান্ডিডেট ফিল্টার
+    # ২. Finding the main product
     keywords = target_fingerprint['core_name'].split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
@@ -825,7 +823,7 @@ def compare_prices_api(request, slug):
 
     candidates = Product.objects.filter(q_filter)
 
-    # ৩. NLP ম্যাচিং
+    # ৩. NLP matching
     matched_ids = [product.id]
     THRESHOLD = 70 
 
@@ -835,20 +833,20 @@ def compare_prices_api(request, slug):
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # ৪. সব লিস্টিং বের করা (Ordered by Price)
+    # ৪. Retrieve all listings (Ordered by Price)
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    # ৫. সেলার ভিত্তিক ইউনিক ডিল ফিল্টার
+    # ৫. Seller-based unique deal filter
     comparison_list = []
-    seen_urls = set()  # একই ইউআরএল (URL) বার বার আসা বন্ধ করতে
+    seen_urls = set()  # To stop the same URL from coming up again and again
     active_matched_product_ids = set()
 
     for listing in listings:
-        # যদি এই ডিলের ইউআরএল আগে একবার এসে থাকে, তবে বাদ দাও
+        # If this deal URL has been found before, skip it.
         if listing.external_url in seen_urls:
             continue
             
@@ -872,8 +870,8 @@ def compare_prices_api(request, slug):
             'last_updated': listing.last_checked,
         })
 
-    # ৬. সব ডিলকে দাম অনুযায়ী ছোট থেকে বড় সাজানো
-    # এতে বিভিন্ন প্ল্যাটফর্মের বিভিন্ন সেলাররা দাম অনুযায়ী সিরিয়াল হবে
+    # 6. Sort all deals from lowest to highest by price
+    # In this, different sellers from different platforms will be serialized by price
     comparison_list = sorted(comparison_list, key=lambda x: x['total_price'])
 
     # ৭. মেটা ডাটা ক্যালকুলেশন
@@ -888,13 +886,13 @@ def compare_prices_api(request, slug):
             'main_image': product.main_image,
         },
         'meta': {
-            'total_deals_found': len(comparison_list),      # মোট কয়টি ইউনিক ডিল পাওয়া গেল
-            'total_platforms': len(unique_platforms),       # কয়টি প্ল্যাটফর্ম থেকে ডাটা এল
+            'total_deals_found': len(comparison_list),     
+            'total_platforms': len(unique_platforms),     
             'matched_products_count': len(active_matched_product_ids),
             'active_ids': list(active_matched_product_ids)
         },
-        'price_comparison': comparison_list,                # এখানে সব সেলারের ডিল দাম অনুযায়ী থাকবে
-        'best_deal': comparison_list[0] if comparison_list else None # সবার মধ্যে সেরা ডিল
+        'price_comparison': comparison_list,           
+        'best_deal': comparison_list[0] if comparison_list else None 
     }, message="Price comparison for all unique sellers fetched successfully")
 
 
@@ -1182,7 +1180,7 @@ def smart_search(request):
 # ── Pagination Helper Functions ───────────────────────────────────────────────
 
 def paginate_results(results: list, page: int, page_size: int) -> list:
-    """Result list থেকে নির্দিষ্ট page এর items return করে।"""
+    """Returns items from a specific page from the result list."""
     page = max(1, page)
     start = (page - 1) * page_size
     end = start + page_size
@@ -1190,7 +1188,7 @@ def paginate_results(results: list, page: int, page_size: int) -> list:
 
 
 def get_pagination_meta(results: list, page: int, page_size: int) -> dict:
-    """Pagination metadata তৈরি করে।"""
+    """Create pagination metadata."""
     total_count = len(results)
     total_pages = math.ceil(total_count / page_size) if page_size > 0 else 1
     page = max(1, page)
@@ -1426,7 +1424,6 @@ class CartViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    # ── এই দুটো method যোগ করুন ──
     def _success(self, data, message="Success", code=200):
         return Response({
             "success":   True,
@@ -1454,16 +1451,16 @@ class CartViewSet(viewsets.ModelViewSet):
 
         product = None
 
-        # ১. SellerProduct id দিয়ে linked_product খোঁজা
+        # ১. Searching linked_product by SellerProduct id
         try:
-            from store.models import SellerProduct  # আপনার app name অনুযায়ী বদলান
+            from store.models import SellerProduct 
             seller_product = SellerProduct.objects.get(
                 id=product_id, status='APPROVED')
             product = seller_product.linked_product
         except SellerProduct.DoesNotExist:
             pass
 
-        # ২. সরাসরি Product id দিয়েও খোঁজা (fallback)
+        # ২. Search directly by Product ID (fallback)
         if not product:
             try:
                 product = Product.objects.get(id=product_id)
@@ -1505,14 +1502,14 @@ class CartViewSet(viewsets.ModelViewSet):
             for listing in listings:
                 platform = listing.get('platform_name', 'Unknown')
 
-                # listing-এর সাথে product info merge করে রাখা
+                # Merge product info with listing
                 entry = {
                     "id":            item['id'],
                     "product":       item['product'],
                     "product_title": item['product_title'],
                     "product_image": item['product_image'],
                     "quantity":      item['quantity'],
-                    "listing":       listing,   # শুধু এই একটা listing
+                    "listing":       listing,  
                 }
 
                 if platform not in grouped:
@@ -1554,29 +1551,25 @@ class CartViewSet(viewsets.ModelViewSet):
     def checkout_options(self, request):
         cart_items = self.get_queryset()
         
-        # ১. ডেফিনিট ডাটা কালেকশন
+        # ১. Definite data collection
         optimized_data = {} # {platform: [items]}
-        single_store_data = {'BestBuy': []} # উদাহরণ হিসেবে
+        single_store_data = {'BestBuy': []} 
         
         total_opt_price = 0
         total_single_price = 0
         
         for item in cart_items:
-            # মেইন লজিক: সব লিস্টিংয়ের মধ্যে সেরা সস্তা ডিল
+            # Main Logic: Best cheap deal among all listings
             best_listing = ProductListing.objects.filter(product=item.product).order_by('price').first()
             
-            # ক্যালকুলেশন
             item_total = float(best_listing.price) * item.quantity
             total_opt_price += item_total
             
-            # গ্রুপ করা (শিপমেন্ট দেখানোর জন্য)
             plat = best_listing.platform.name
             if plat not in optimized_data: optimized_data[plat] = []
             optimized_data[plat].append({"title": item.product.title, "price": float(best_listing.price)})
 
-        # ২. সেভিংস ক্যালকুলেশন
-        # ধরে নিচ্ছি সিঙ্গেল স্টোরে খরচ ১৫০০, আর অপ্টিমাইজড এ ১৪৫০
-        total_saved = 50.00 # এটি ক্যালকুলেট করে বের করতে হবে
+        total_saved = 50.00 
 
         return success_response({
             "options": {
@@ -1840,7 +1833,6 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             user=self.request.user
         ).select_related('product')
 
-    # ── এই দুটো method যোগ করুন ──
     def _success(self, data, message="Success", code=200):
         return Response({
             "success":   True,
@@ -1867,7 +1859,6 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 
         product = None
 
-        # ১. SellerProduct id দিয়ে খোঁজা
         try:
             from store.models import SellerProduct
             seller_product = SellerProduct.objects.get(
@@ -1876,7 +1867,6 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         except SellerProduct.DoesNotExist:
             pass
 
-        # ২. সরাসরি Product id দিয়ে খোঁজা (fallback)
         if not product:
             product = Product.objects.filter(id=product_id).first()
 
@@ -1963,7 +1953,6 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 
         product = None
 
-        # ১. SellerProduct id দিয়ে খোঁজা
         try:
             from store.models import SellerProduct
             seller_product = SellerProduct.objects.get(
@@ -1972,7 +1961,6 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         except SellerProduct.DoesNotExist:
             pass
 
-        # ২. সরাসরি Product id দিয়ে খোঁজা (fallback)
         if not product:
             product = Product.objects.filter(id=product_id).first()
 

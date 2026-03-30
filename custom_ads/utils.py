@@ -24,7 +24,7 @@ def get_weighted_ads(count=3):
         ).values_list('id', flat=True))
         cache.set(cache_key, active_ad_ids, 60)
 
-    # Cache এর পরে fresh query
+    # Fresh query after cache
     active_ads = list(CustomAd.objects.filter(
         id__in=active_ad_ids,
         status='active',

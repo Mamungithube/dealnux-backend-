@@ -306,7 +306,7 @@ WAYFAIR_CATEGORIES = {
 
 @shared_task
 def sync_all_platforms_task(query, limit=30):
-    """সব active platform এ parallel sync।"""
+    """Parallel sync across all active platforms."""
     tasks = [
         sync_amazon_task.s(query, limit),
         sync_walmart_task.s(query, limit),
@@ -331,7 +331,7 @@ def hourly_fixed_category_sync():
     
     categories = list(
         Category.objects.filter(parent__isnull=False)
-        .only('name', 'slug')  # object হিসেবে নাও
+        .only('name', 'slug')
     )
     
     for index, category in enumerate(categories):

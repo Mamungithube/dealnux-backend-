@@ -111,7 +111,7 @@ class ProductSerializer(serializers.ModelSerializer):
             # 'description', 'model_number', 'last_synced', 'updated_at',
         ]
 
-    def get_is_cart(self, obj): # নতুন মেথড
+    def get_is_cart(self, obj):
         cart_product_ids = self.context.get('cart_product_ids', set())
         return obj.id in cart_product_ids
 
@@ -148,8 +148,8 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'brand', 'main_image', 'images',
             'lowest_price', 'listings',
             'is_active', 'created_at',
-            'is_favorite',  # <-- এখানে যোগ করা হলো
-            'is_cart',      # <-- এখানে যোগ করা হলো
+            'is_favorite', 
+            'is_cart',      
         ]
 
     def get_is_favorite(self, obj):
@@ -165,10 +165,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return float(price) if price else None
 
     def get_listings(self, obj):
-        # ওই প্রোডাক্টের আন্ডারে থাকা লিস্টিং থেকে শুধু ভ্যালিড দামগুলো নেবে
+
         listings = obj.listings.filter(
             is_available=True, 
-            price__gt=0  # প্রাইজ ০ এর বেশি হতে হবে
+            price__gt=0  
         ).select_related('platform').order_by('price')
         
         return ProductListingSerializer(listings, many=True).data

@@ -11,17 +11,13 @@ except:
 
 
 def get_critical_tokens(title):
-    """
-    টাইটেল থেকে 'Identity' শব্দগুলো বের করে। 
-    যেমন: S25, i7, 128GB, WH-1000XM5. 
-    যেসব শব্দে সংখ্যা এবং অক্ষর মিশে থাকে, সেগুলোই সাধারণত মডেল।
-    """
+
     title = title.upper()
-    # ১. যেসব শব্দে সংখ্যা আছে সেগুলো আলাদা করি (e.g., A17, S25, 5330, 32GB)
+
     tokens = re.findall(r'\b[A-Z0-9-]{2,}\b', title)
     critical = set()
     for t in tokens:
-        # যদি শব্দে অন্তত একটি সংখ্যা থাকে, তবে সেটি গুরুত্বপূর্ণ (Identity)
+
         if any(char.isdigit() for char in t):
             critical.add(t)
     return critical
@@ -31,22 +27,22 @@ def extract_attributes(title):
     specs = {}
     title_upper = title.upper()
     
-    # ১. স্টোরেজ (e.g., 256GB, 1TB)
+
     storage = re.search(r'(\d+)\s*(GB|TB|MB)', title_upper)
     if storage:
         specs['storage'] = storage.group(0).replace(" ", "")
 
-    # ২. র‍্যাম (e.g., 32GB RAM) - ল্যাপটপের জন্য এটি গুরুত্বপূর্ণ
+
     ram = re.search(r'(\d+)\s*GB\s*RAM', title_upper)
     if ram:
         specs['ram'] = ram.group(0).replace(" ", "")
 
-    # ৩. স্যামসাং সিরিজ/মডেল
+
     series_model_match = re.search(r'\b([SAZMN]\d{2}(?:\s*FE|\s*ULTRA|\s*PLUS|\s*PRO|\s*MAX)?)\b', title_upper)
     if series_model_match:
         specs['series_model'] = series_model_match.group(1).replace(" ", "")
 
-    # ৪. আইফোন মডেল
+
     iphone_model_match = re.search(r'\bIPHONE\s+(?:SE|(\d+))\b', title_upper)
     if iphone_model_match:
         if iphone_model_match.group(1):
@@ -54,12 +50,11 @@ def extract_attributes(title):
         elif "SE" in iphone_model_match.group(0):
             specs['iphone_model_num'] = "SE"
 
-    # ৫. মডেল কোড (e.g., SM-S731U, A1387)
+
     model_code = re.search(r'\b(?:SM-|A|MH|ML|MQ)\d{3,}[A-Z]{0,2}\b|\b[A-Z0-9]{3,}-[A-Z0-9]{1,}\b', title_upper)
     if model_code:
         specs['model_code'] = model_code.group(0)
 
-    # ৬. স্ক্রিন সাইজ (e.g., 6.3", 15.6")
     screen_size_match = re.search(r'(\d+\.?\d*)\s*(INCH|INCHES|\")', title_upper)
     if screen_size_match:
         specs['screen_size'] = screen_size_match.group(0).replace(" ", "")
@@ -88,7 +83,6 @@ def extract_core_title(title):
 
 def extract_brand(title):
     title_upper = title.upper()
-    # ল্যাপটপের জন্য ব্র্যান্ড লিস্ট বড় করা হলো
     brands = ['HP', 'DELL', 'SAMSUNG', 'APPLE', 'IPHONE', 'LENOVO', 'ASUS', 'ACER', 'MICROSOFT', 'MSI', 'RAZER', 'GOOGLE']
     for b in brands:
         if b in title_upper:
@@ -107,42 +101,33 @@ def calculate_match_score(title1, title2):
     if brand1 != brand2:
         return 0.0
 
-    # ২. হার্ড ব্লক: স্টোরেজ মিসম্যাচ
     if f1['attributes'].get('storage') and f2['attributes'].get('storage'):
         if f1['attributes']['storage'] != f2['attributes']['storage']:
             return 0.0
 
-    # ৩. হার্ড ব্লক: র‍্যাম মিসম্যাচ (ল্যাপটপের জন্য ইম্পরট্যান্ট)
     if f1['attributes'].get('ram') and f2['attributes'].get('ram'):
         if f1['attributes']['ram'] != f2['attributes']['ram']:
             return 0.0
 
-    # ৪. হার্ড ব্লক: মডেল/সিরিজ মিসম্যাচ
     if f1['attributes'].get('series_model') and f2['attributes'].get('series_model'):
         if f1['attributes']['series_model'] != f2['attributes']['series_model']:
             return 0.0
 
-    # ৫. হার্ড ব্লক: আইফোন মডেল নম্বর
     if f1['attributes'].get('iphone_model_num') and f2['attributes'].get('iphone_model_num'):
         if f1['attributes']['iphone_model_num'] != f2['attributes']['iphone_model_num']:
             return 0.0
 
-    # ৬. হার্ড ব্লক: স্ক্রিন সাইজ
     if f1['attributes'].get('screen_size') and f2['attributes'].get('screen_size'):
         if f1['attributes']['screen_size'] != f2['attributes']['screen_size']:
             return 0.0
 
-    # মূল স্কোরিং
     crit1 = get_critical_tokens(title1)
     crit2 = get_critical_tokens(title2)
 
     if crit1 and crit2:
-        # যদি একটি সেটে এমন সংখ্যা থাকে যা অন্যটিতে নেই, তবে সেটি আলাদা প্রোডাক্ট
-        # যেমন: সেট ১-এ {I3, 32GB}, সেট ২-এ {I7, 32GB}। I3 আর I7 মিলছে না।
+
         diff = crit1.symmetric_difference(crit2)
-        # যদি ভেরিয়েশন খুব বেশি হয় (যেমন মডেল নম্বরই আলাদা) তবে ০
         for d in diff:
-            # যদি কোনো মডেল কোড বা প্রসেসর কোড না মিলে
             if len(d) > 1 and not d.endswith('GB') and not d.endswith('TB'):
                 return 0.0
             
@@ -157,7 +142,6 @@ def calculate_match_score(title1, title2):
     score = fuzz.token_set_ratio(title1, title2)
     
     
-    # বোনাস বুস্ট
     if f1['attributes'].get('model_code') and f1['attributes']['model_code'].lower() in title2.lower():
         score += 20
     elif f2['attributes'].get('model_code') and f2['attributes']['model_code'].lower() in title1.lower():

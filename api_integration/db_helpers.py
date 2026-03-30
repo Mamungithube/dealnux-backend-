@@ -1,10 +1,3 @@
-"""
-db_helpers.py
-─────────────
-views.py ও tasks.py উভয়েই এই module use করে।
-Circular import ভাঙতে save logic এখানে রাখা হয়েছে।
-"""
-
 import time
 import logging
 from django.db import transaction
@@ -13,11 +6,6 @@ from django.db.models import Q
 from .product_matcher import calculate_match_score 
 
 logger = logging.getLogger(__name__)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Category Cache  (thread-safe নয়, single-worker dev এর জন্য যথেষ্ট;
-#                  production multi-worker এ Django cache framework use করো)
-# ─────────────────────────────────────────────────────────────────────────────
 
 _CATEGORY_CACHE = None
 
@@ -392,7 +380,7 @@ _KEYWORD_CATEGORY_MAP = [
 def _resolve_category(category_path, title, cache):
     title_lower = (title or '').lower()
 
-    # ── Step 1: category_path থেকে exact/partial match ───────────────────
+
     if category_path:
         parts = [p.strip() for p in category_path.split('>')]
         for part in parts:
@@ -411,7 +399,6 @@ def _resolve_category(category_path, title, cache):
                 ):
                     return cat_obj
 
-    # ── Step 2: keyword match — padded for whole-word ────────────────────
     if title_lower:
         padded = f' {title_lower} '
         for keywords, target_slug in _KEYWORD_CATEGORY_MAP:
@@ -425,7 +412,6 @@ def _resolve_category(category_path, title, cache):
                         if readable in cat_name_lower or cat_name_lower in readable:
                             return cat_obj
 
-    # ── Step 3: conservative fallback ────────────────────────────────────
     SKIP_WORDS = {'ring', 'fine', 'art', 'top', 'bag', 'set', 'kit',
                   'toy', 'cat', 'dog', 'pen', 'ram', 'ssd', 'tv'}
     if title_lower:
@@ -443,7 +429,6 @@ def _resolve_category(category_path, title, cache):
 def _find_matching_product(title, brand, gtin, asin):
     from .models import Product
 
-    # ১. ইউনিক আইডি (GTIN/ASIN) দিয়ে খোঁজা (এটি সবথেকে নির্ভুল)
     if gtin:
         product = Product.objects.filter(gtin=gtin).first()
         if product: return product
@@ -452,9 +437,9 @@ def _find_matching_product(title, brand, gtin, asin):
         product = Product.objects.filter(asin=asin).first()
         if product: return product
 
-    # ২. NLP ম্যাচিং (টাইটেল এবং ব্র্যান্ড দিয়ে)
+
     if title:
-        # সার্চ সহজ করার জন্য ব্র্যান্ড দিয়ে ফিল্টার করে ক্যান্ডিডেট বের করি
+
         brand_query = Q()
         if brand:
             brand_query = Q(brand__icontains=brand.split()[0])
@@ -470,12 +455,10 @@ def _find_matching_product(title, brand, gtin, asin):
         best_match = None
         best_score = 0
         
-        # সিঙ্ক করার সময় আমরা অনেক কড়া (Strict) হবো
-        # যাতে Meta Quest 128GB আর 256GB আলাদা আইডি পায়
-        REQUIRED_THRESHOLD = 85  # সেভ করার সময় ৮৫% এর নিচে মিললে আমরা ওটাকে নতুন প্রোডাক্ট ধরবো
+
+        REQUIRED_THRESHOLD = 85  
 
         for cand in candidates:
-            # আমাদের সেই পাওয়ারফুল NLP ফাংশনটি কল করছি
             score = calculate_match_score(title, cand.title)
             
             if score >= REQUIRED_THRESHOLD and score > best_score:
@@ -485,7 +468,6 @@ def _find_matching_product(title, brand, gtin, asin):
         if best_match:
             return best_match
 
-    # ৩. স্লাগ দিয়ে শেষ চেষ্টা
     slug = slugify(title)[:500]
     return Product.objects.filter(slug=slug).first()
 
@@ -532,14 +514,13 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         PriceHistory, ProductImage, ProductSpecification,
     )
 
-    # ── ১. ভ্যালিডেশন গার্ড (Strict Data Quality Check) ──────────────────────
     title = product_data.get('title', '').strip()
     price_val = float(product_data.get('price', 0) or 0)
     image_url = product_data.get('main_image', '').strip()
     external_url = product_data.get('external_url', '').strip()
     external_id = product_data.get('external_id')
 
-    # কোনো একটি গুরুত্বপূর্ণ ফিল্ড মিসিং থাকলে সেভ না করে রিটার্ন করবে
+
     if not title or title == 'Unknown Product':
         logger.warning(f"Skipped: Missing Title")
         return None, None, False
@@ -548,7 +529,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         logger.warning(f"Skipped: Invalid Price ({price_val}) for {title[:30]}")
         return None, None, False
     
-    if not image_url or len(image_url) < 10: # ইমেজের লিঙ্ক খুব ছোট হলে ওটা ভুল হতে পারে
+    if not image_url or len(image_url) < 10: 
         logger.warning(f"Skipped: Missing Image for {title[:30]}")
         return None, None, False
         
@@ -556,7 +537,6 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         logger.warning(f"Skipped: Missing URL/External ID for {title[:30]}")
         return None, None, False
 
-    # ── ২. কারেন্সি হ্যান্ডলিং ──────────────────────────────────────────────
     raw_currency = product_data.get('currency')
     if not raw_currency and product_data.get('_price_raw'):
         import re
@@ -565,11 +545,10 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             raw_currency = match.group()
     product_data['currency'] = raw_currency if raw_currency else 'USD'
 
-    # eBay non-USD ফিল্টার (যদি দরকার হয়)
     if not is_valid_usd_price(product_data.get('_price_raw', ''), price_val):
         return None, None, False
 
-    # ── ৩. বাকি সেভিং লজিক (আগে যা ছিল তাই থাকবে) ──────────────────────
+
     brand = (product_data.get('brand') or '').strip()
     gtin  = (product_data.get('gtin') or '').strip() or None
     asin  = (product_data.get('asin') or '').strip() or None
@@ -577,7 +556,6 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
     if not brand and title:
         brand = ' '.join(title.split()[:2])
 
-    # ক্যাটাগরি রেজল্ভ করা
     if all_categories is None:
         all_categories = list(Category.objects.all())
 
@@ -588,9 +566,8 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             product_data.get('category_path'), title, _get_category_cache()
         )
 
-    # প্রোডাক্ট এবং লিস্টিং সেভ করা (Atomic Transaction)
     with transaction.atomic():
-        # আমাদের সেই নতুন Strict NLP Matcher ব্যবহার করবে _find_matching_product
+
         product = _find_matching_product(title, brand, gtin, asin)
 
         if product:
@@ -629,7 +606,6 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                 asin         = asin,
             )
 
-        # ── Listing ───────────────────────────────────────────────────────
         shipping = product_data.get('shipping_info', {})
         listing, listing_created = ProductListing.objects.update_or_create(
             platform    = platform,
@@ -658,13 +634,11 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             }
         )
 
-        # ── Price History ─────────────────────────────────────────────────
         if listing_created:
             PriceHistory.objects.create(
                 listing=listing, price=listing.price, currency=listing.currency
             )
 
-        # ── Images (only on first create) ─────────────────────────────────
         additional_images = product_data.get('additional_images', [])
         if additional_images and created:
             for order, img_url in enumerate(additional_images[:10]):
@@ -675,7 +649,6 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                         defaults={'order': order}
                     )
 
-        # ── Specifications ────────────────────────────────────────────────
         specs = product_data.get('specifications', {})
         if specs:
             for name, value in specs.items():

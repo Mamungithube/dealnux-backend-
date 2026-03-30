@@ -422,8 +422,7 @@ TIME_ZONE     = 'UTC'
 USE_I18N      = True
 USE_TZ        = True
 
-
-REDIS_URL                = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+REDIS_URL     = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 
 CELERY_BROKER_URL        = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 CELERY_RESULT_BACKEND    = CELERY_BROKER_URL

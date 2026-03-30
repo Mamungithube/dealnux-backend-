@@ -3,16 +3,14 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
 
 from store.models import SellerRequest
-from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer,
-                         ChangePasswordSerializer, ResetPasswordSerializer,
-                         LoginSerializer, ProfileSerializer, ProfileUpdateSerializer,
-                          ProfileSetupSerializer)
+from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer, ChangePasswordSerializer, ResetPasswordSerializer,
+                         LoginSerializer, ProfileSerializer, ProfileUpdateSerializer, ProfileSetupSerializer)
 from .models import User, Profile
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import login
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.mail import EmailMessage
 from django.conf import settings
