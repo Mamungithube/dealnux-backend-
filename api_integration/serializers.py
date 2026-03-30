@@ -165,11 +165,13 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return float(price) if price else None
 
     def get_listings(self, obj):
-        # প্রতিটা platform থেকে শুধু সবচেয়ে সস্তা ১টা listing
+        # লজিক: শুধুমাত্র Active এবং যেগুলোর প্রাইজ ০ এর বেশি (Price > 0)
         listings = obj.listings.filter(
-            is_available=True
-        ).select_related('platform').order_by('platform', 'price')
+            is_available=True, 
+            price__gt=0  # প্রাইজ ০ এর বেশি হতে হবে
+        ).select_related('platform').order_by('price')
 
+        # প্রতিটি প্ল্যাটফর্ম থেকে সেরা ১টি ডিল ইউনিক করার জন্য
         seen_platforms = set()
         unique_listings = []
         for listing in listings:
