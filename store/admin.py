@@ -48,7 +48,7 @@ class SellerRequestAdmin(ModelAdmin):
     list_filter   = ['status', 'created_at']
     search_fields = ['user__email', 'user__name', 'shop_name', 'phone_number']
     readonly_fields = [
-        'user', 'created_at', 'updated_at',
+        'created_at', 'updated_at',
         'reviewed_at', 'reviewed_by',
     ]
     ordering = ['-created_at']
