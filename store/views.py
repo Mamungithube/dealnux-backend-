@@ -114,10 +114,25 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         if seller_request.status == 'APPROVED':
             return error_response("Already approved.", code=400)
 
-        seller_request.approve(admin_user=request.user)
+        # ট্রানজ্যাকশন ব্যবহার করা ভালো যাতে স্ট্যাটাস আপডেট এবং প্রোফাইল তৈরি একসাথে হয়
+        with transaction.atomic():
+            # ১. রিকোয়েস্ট অ্যাপ্রুভ করা (আপনার মডেলের approve মেথড কল হচ্ছে)
+            seller_request.approve(admin_user=request.user)
+
+            # ২. সেলার প্রোফাইল তৈরি করা (যদি আগে থেকে না থাকে)
+            # রিকোয়েস্ট থেকে শপের নাম এবং ফোন নম্বর প্রোফাইলে সেট করে দিচ্ছি
+            seller_profile, created = SellerProfile.objects.get_or_create(
+                user=seller_request.user,
+                defaults={
+                    'shop_name': seller_request.shop_name, # নিশ্চিত হয়ে নিন ফিল্ডের নাম ঠিক আছে কি না
+                    'phone_number': seller_request.phone_number,
+                    'is_active': True
+                }
+            )
+
         return success_response(
             AdminSellerRequestSerializer(seller_request).data,
-            message=f"{seller_request.user.email} approved as seller."
+            message=f"{seller_request.user.email} approved and profile created successfully."
         )
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
