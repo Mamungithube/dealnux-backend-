@@ -11,6 +11,8 @@ from .models import (
     SellerProduct, SellerProductImage,
     Order, Coupon,
 )
+from django.core.exceptions import ValidationError
+from django.contrib import messages
 
 
 # ============================================================================
@@ -75,19 +77,35 @@ class SellerRequestAdmin(ModelAdmin):
     actions_list = []
 
     def save_model(self, request, obj, form, change):
-        if change and 'status' in form.changed_data:
-            if obj.status == 'APPROVED':
-                obj.status = 'PENDING'
-                super().save_model(request, obj, form, change)
-                obj.approve(admin_user=request.user)
-                return
-            elif obj.status == 'REJECTED':
-                note = obj.admin_note or 'Rejected via admin panel.'
-                obj.status = 'PENDING'
-                super().save_model(request, obj, form, change)
-                obj.reject(admin_user=request.user, note=note)
-                return
-        super().save_model(request, obj, form, change)
+        try:
+            # ১. যদি নতুন এন্ট্রি হয় এবং ইউজার না থাকে
+            if not change and not hasattr(obj, 'user'):
+                # এখানে আপনি চাইলে অটোমেটিক বর্তমান ইউজারকে দিতে পারেন:
+                # obj.user = request.user 
+                # অথবা যদি ইউজার ছাড়া সেভ করা নিষিদ্ধ হয়, তবে নিচের ইররটি কাজ করবে:
+                if not obj.user:
+                    raise ValidationError("User ফিল্ডটি খালি রাখা যাবে না।")
+
+            # ২. আপনার আগের লজিক (Approval/Rejection)
+            if change and 'status' in form.changed_data:
+                if obj.status == 'APPROVED':
+                    obj.status = 'PENDING'
+                    super().save_model(request, obj, form, change)
+                    obj.approve(admin_user=request.user)
+                    return
+                elif obj.status == 'REJECTED':
+                    note = obj.admin_note or 'Rejected via admin panel.'
+                    obj.status = 'PENDING'
+                    super().save_model(request, obj, form, change)
+                    obj.reject(admin_user=request.user, note=note)
+                    return
+
+            # সব ঠিক থাকলে সেভ হবে
+            super().save_model(request, obj, form, change)
+
+        except Exception as e:
+            # ডাটাবেজ ইরর না দিয়ে অ্যাডমিন প্যানেলে সুন্দর মেসেজ দেখাবে
+            messages.error(request, f"Error: {e}")
 
     @display(description=_('User'), ordering='user__email')
     def display_user(self, obj):

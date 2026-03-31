@@ -38,8 +38,8 @@ class UserAdmin(ModelAdmin):
     #                    'address' , 'savings_comparison', 'savings_coupons', 'total_lifetime_savings')
     
     # Unfold specific configurations
-    list_filter_submit = True  # Add submit button to filters
-    list_fullwidth = True  # Full width list view
+    list_filter_submit = True 
+    list_fullwidth = True 
 
 
 @admin.register(Profile)
