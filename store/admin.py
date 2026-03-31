@@ -20,10 +20,10 @@ from django.contrib import messages
 # ============================================================================
 
 class SellerProductImageInline(TabularInline):
-    model  = SellerProductImage
-    extra  = 0
+    model = SellerProductImage
+    extra = 0
     fields = ['image', 'alt_text', 'order']
-    tab    = True
+    tab = True
 
 
 # ============================================================================
@@ -32,9 +32,9 @@ class SellerProductImageInline(TabularInline):
 
 @admin.register(SellerRequest)
 class SellerRequestAdmin(ModelAdmin):
-    compressed_fields  = True
-    warn_unsaved_form  = True
-    list_fullwidth     = True
+    compressed_fields = True
+    warn_unsaved_form = True
+    list_fullwidth = True
     list_filter_submit = True
 
     list_display = [
@@ -45,10 +45,10 @@ class SellerRequestAdmin(ModelAdmin):
         'display_status',
         'created_at',
     ]
-    list_filter   = ['status', 'created_at']
+    list_filter = ['status', 'created_at']
     search_fields = ['user__email', 'user__name', 'shop_name', 'phone_number']
     readonly_fields = [
-        'created_at', 'updated_at',
+        'status', 'created_at', 'updated_at',
         'reviewed_at', 'reviewed_by',
     ]
     ordering = ['-created_at']
@@ -73,25 +73,23 @@ class SellerRequestAdmin(ModelAdmin):
         }),
     )
 
-    actions_row  = ['action_approve_row', 'action_reject_row']
+    actions_row = ['action_approve_row', 'action_reject_row']
     actions_list = []
 
     def save_model(self, request, obj, form, change):
         try:
-            # ১. যদি নতুন এন্ট্রি হয় এবং ইউজার না থাকে
+
             if not change and not hasattr(obj, 'user'):
-                # এখানে আপনি চাইলে অটোমেটিক বর্তমান ইউজারকে দিতে পারেন:
-                # obj.user = request.user 
-                # অথবা যদি ইউজার ছাড়া সেভ করা নিষিদ্ধ হয়, তবে নিচের ইররটি কাজ করবে:
+
                 if not obj.user:
                     raise ValidationError("User ফিল্ডটি খালি রাখা যাবে না।")
 
-            # ২. আপনার আগের লজিক (Approval/Rejection)
+    
             if change and 'status' in form.changed_data:
                 if obj.status == 'APPROVED':
-                    obj.status = 'PENDING'
+                    obj.status = 'PENDING' 
                     super().save_model(request, obj, form, change)
-                    obj.approve(admin_user=request.user)
+                    obj.approve(admin_user=request.user)  
                     return
                 elif obj.status == 'REJECTED':
                     note = obj.admin_note or 'Rejected via admin panel.'
@@ -100,11 +98,10 @@ class SellerRequestAdmin(ModelAdmin):
                     obj.reject(admin_user=request.user, note=note)
                     return
 
-            # সব ঠিক থাকলে সেভ হবে
             super().save_model(request, obj, form, change)
 
         except Exception as e:
-            # ডাটাবেজ ইরর না দিয়ে অ্যাডমিন প্যানেলে সুন্দর মেসেজ দেখাবে
+
             messages.error(request, f"Error: {e}")
 
     @display(description=_('User'), ordering='user__email')
@@ -593,5 +590,7 @@ def pending_seller_requests_count(request):
 
 
 def pending_products_count(request):
-    count = SellerProduct.objects.filter(status='PENDING').count()
+    # PENDING অথবা DRAFT স্ট্যাটাসের প্রোডাক্টগুলো গণনা করবে
+    from django.db.models import Q
+    count = SellerProduct.objects.filter(Q(status='PENDING') | Q(status='DRAFT')).count()
     return str(count) if count > 0 else None

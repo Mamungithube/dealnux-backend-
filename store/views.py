@@ -10,8 +10,7 @@ from django.db.models import Q
 
 from .models import (
     SellerRequest, SellerProfile,
-    SellerProduct, SellerProductImage,
-    Order, Coupon,
+    SellerProduct, Order, Coupon,
 )
 from .serializers import (
     SellerRequestSerializer, AdminSellerRequestSerializer,
@@ -24,7 +23,44 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+import time
+class CustomPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
+    def get_paginated_response(self, data):
+        # পরবর্তী এবং পূর্ববর্তী পেজ নম্বর বের করার লজিক
+        next_page_number = None
+        if self.page.has_next():
+            next_page_number = self.page.next_page_number()
+
+        prev_page_number = None
+        if self.page.has_previous():
+            prev_page_number = self.page.previous_page_number()
+
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Success",
+            "timestamp": int(time.time()),
+            "data": {
+                "count": len(data),
+                "results": data
+            },
+            "pagination": {
+                "total_count": self.page.paginator.count,
+                "total_pages": self.page.paginator.num_pages,
+                "current_page": self.page.number,
+                "page_size": self.get_page_size(self.request),
+                "has_next": self.page.has_next(), # এখানে self.page ব্যবহার করা হয়েছে
+                "has_previous": self.page.has_previous(),
+                "next_page": next_page_number,
+                "prev_page": prev_page_number,
+            }
+        })
 # ============================================================================
 # Helpers
 # ============================================================================
@@ -206,7 +242,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
     Admin approves/rejects them.
     Public (AllowAny) - only shows APPROVED products.
     """
-    pagination_class = StandardPagination
+    pagination_class = CustomPagination
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'public_list']:
@@ -265,9 +301,11 @@ class SellerProductViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(qs)
+        
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
+            
         serializer = self.get_serializer(qs, many=True)
         return success_response(serializer.data, message="Products fetched")
 
