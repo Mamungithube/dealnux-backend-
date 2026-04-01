@@ -317,10 +317,10 @@ def sync_all_platforms_task(query, limit=30):
         sync_sephora_task.s(query, limit),
         sync_wayfair_task.s(query, limit),
     ]
-    if query in SEPHORA_CATEGORIES:
-        tasks.append(sync_sephora_task.s(query, limit))
-    if query in WAYFAIR_CATEGORIES:
-        tasks.append(sync_wayfair_task.s(query, limit))
+    # if query in SEPHORA_CATEGORIES:
+    #     tasks.append(sync_sephora_task.s(query, limit))
+    # if query in WAYFAIR_CATEGORIES:
+    #     tasks.append(sync_wayfair_task.s(query, limit))
 
     job = group(*tasks)
     result = job.apply_async()
@@ -331,16 +331,16 @@ def sync_all_platforms_task(query, limit=30):
 def hourly_fixed_category_sync():
     from api_integration.models import Category
     
+    # সাব-ক্যাটাগরিগুলো নিচ্ছি
     categories = list(
-        Category.objects.filter(parent__isnull=False)
-        .only('name', 'slug')
+        Category.objects.filter(parent__isnull=False).only('name', 'slug')
     )
     
     for index, category in enumerate(categories):
+        # এখানে ৩টি আর্গুমেন্ট পাঠানো হচ্ছে, যা এখন sync_all_platforms_task গ্রহণ করবে
         sync_all_platforms_task.apply_async(
-            args=[category.name, 50, category.slug],
-            countdown=index * 30
+            args=[category.name, 30, category.slug], 
+            countdown=index * 30 # এপিআই ওভারলোড এড়াতে গ্যাপ
         )
     
-    logger.info(f"Scheduled sync for {len(categories)} categories.")
-    return f"Scheduled {len(categories)} categories."
+    return f"Scheduled {len(categories)} categories for sync."
