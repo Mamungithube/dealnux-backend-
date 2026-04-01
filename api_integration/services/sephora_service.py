@@ -1,5 +1,6 @@
 import requests
 import re
+import json
 from django.conf import settings
 import logging
 
@@ -12,44 +13,64 @@ class SephoraService:
         self.headers = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
-            # GET রিকোয়েস্টে Content-Type না রাখাই ভালো
+            # User-Agent যোগ করা হয়েছে যাতে ব্রাউজার হিসেবে গণ্য হয়
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
         }
 
     def search_products(self, query, limit=20, page=1):
         url = f"https://{self.host}/search-by-keyword"
-        
-        # Sephora ড্যাশ ছাড়া স্পেস পছন্দ করে
         clean_query = query.replace('-', ' ').strip()
         
-        # প্যারামিটারগুলো স্ক্রিনশট অনুযায়ী একদম নিখুঁত করা হলো
         params = {
             'keyword':     clean_query,
-            'pageSize':    int(limit),  # স্ট্রিং না দিয়ে ইন্টিজার দিচ্ছি
-            'currentPage': int(page),   # স্ট্রিং না দিয়ে ইন্টিজার দিচ্ছি
+            'pageSize':    int(limit),
+            'currentPage': int(page),
             'sortBy':      'BEST_SELLING'
         }
 
         try:
-            # params এর বদলে সরাসরি এন্ডপয়েন্টে রিকোয়েস্ট
             response = requests.get(url, headers=self.headers, params=params, timeout=30)
             
-            if response.status_code == 200:
+            # যদি এপিআই সাকসেস না হয়
+            if response.status_code != 200:
+                logger.error(f"Sephora API HTTP {response.status_code}: {response.text[:200]}")
+                return []
+
+            # রেসপন্স টেক্সট চেক করা
+            content = response.text.strip()
+            if not content:
+                logger.error("Sephora API returned an empty response body.")
+                return []
+
+            # সেফলি JSON পার্স করা
+            try:
                 data = response.json()
-                products = []
+            except json.JSONDecodeError:
+                logger.error(f"Sephora JSON Decode Error. Raw content: {content[:200]}")
+                return []
+
+            # ডাটা এক্সট্রাকশন (ডিপ রিকভারি লজিক)
+            products = []
+            if isinstance(data, dict):
+                # প্যাথ ১: data -> products
+                products = data.get('data', {}).get('products') or data.get('products') or []
                 
-                # ডাইনামিক প্যাথ ডিটেকশন
-                if isinstance(data, dict):
-                    products = data.get('data', {}).get('products') or data.get('products') or []
-                    
-                logger.info(f"Sephora Success: {len(products)} items found for '{clean_query}'")
-                return products
-            
-            # ৫০০ এরর আসলে লগে ডিটেইল দেখা যাবে
-            logger.error(f"Sephora API Error {response.status_code}: {response.text}")
-            return []
+                # প্যাথ ২: যদি লিস্টটা অন্য কোথাও লুকিয়ে থাকে (Recursive Search)
+                if not products:
+                    def find_list(obj):
+                        if isinstance(obj, list): return obj
+                        if isinstance(obj, dict):
+                            for v in obj.values():
+                                res = find_list(v)
+                                if res: return res
+                        return None
+                    products = find_list(data) or []
+
+            logger.info(f"Sephora Live Check: Found {len(products)} products for '{clean_query}'")
+            return products
 
         except Exception as e:
-            logger.error(f"Sephora Service Exception: {e}")
+            logger.error(f"Sephora Service Critical Error: {e}")
             return []
 
     def extract_product_data(self, item):
@@ -58,12 +79,13 @@ class SephoraService:
         title = (item.get('productName') or item.get('displayName') or 'Sephora Product').strip()
         
         # ইমেজ
-        main_image = item.get('heroImage') or item.get('image450') or ''
+        main_image = item.get('heroImage') or item.get('image450') or item.get('image250') or ''
         
-        # প্রাইস (রেজেক্স দিয়ে ক্লিন করা)
+        # প্রাইস হ্যান্ডলিং
         price_raw = item.get('currentSku', {}).get('listPrice') or item.get('price') or '0'
         price_val = 0.0
         try:
+            # $26.00 থেকে শুধু সংখ্যা বের করা
             nums = re.findall(r'\d+\.?\d*', str(price_raw).replace(',', ''))
             price_val = float(nums[0]) if nums else 0.0
         except: pass
@@ -79,7 +101,5 @@ class SephoraService:
             'main_image':     main_image,
             'brand':          item.get('brandName', 'Sephora'),
             'is_available':   True,
-            'condition':      'NEW',
-            'seller_username': 'Sephora',
             'shipping_info':  {'cost': 0, 'free_shipping': price_val >= 50},
         }
