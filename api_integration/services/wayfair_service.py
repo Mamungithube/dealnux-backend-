@@ -25,11 +25,7 @@ class WayfairService:
     # Search by keyword
     # ─────────────────────────────────────────────────────────────────────────
 
-    def search_products(self, query, limit=10, page=1):
-        """
-        keyword দিয়ে Wayfair products search করো।
-        Response path: data.data.keyword.results.category.browse.products
-        """
+    def search_products(self, query, limit=20, page=1):
         url    = f"https://{self.host}/products/v2/search"
         params = {
             'keyword':      query.replace('-', ' '),
@@ -39,29 +35,55 @@ class WayfairService:
         }
 
         try:
-            response = requests.get(
-                url, headers=self.headers, params=params, timeout=30
-            )
-            logger.debug(f"Wayfair search '{query}': {response.status_code}")
-
+            response = requests.get(url, headers=self.headers, params=params, timeout=30)
+            
             if response.status_code == 200:
-                data     = response.json()
-                products = (
-                    data.get('data', {})
-                        .get('keyword', {})
-                        .get('results', {})
-                        .get('products', [])
-                )
-                logger.info(f"Wayfair search '{query}': {len(products)} results")
-                return products[:limit]
+                data = response.json()
+                
+                # ── ডিবাগিং মেসেজ (লগ চেক করার জন্য) ──
+                # এটি আপনাকে Celery লগে দেখাবে এপিআই আসলে কী পাঠাচ্ছে
+                logger.info(f"Wayfair JSON Keys: {list(data.keys())}")
 
-            logger.error(f"Wayfair search error {response.status_code}: {response.text[:300]}")
+                # ── ১. স্মার্ট ডাটা রিকভারি (Smart Data Recovery) ──
+                # Wayfair অনেক সময় ডাটা keyword_search বা browse এর নিচে লুকায়
+                products = []
+                
+                # আমরা সব পসিবল প্যাথ চেক করছি
+                d = data.get('data', {})
+                if d:
+                    # প্যাথ ১: keyword -> results -> products
+                    k_res = d.get('keyword') or d.get('keyword_search') or {}
+                    products = k_res.get('results', {}).get('products', [])
+                    
+                    # প্যাথ ২: category -> browse -> products
+                    if not products:
+                        products = d.get('category', {}).get('browse', {}).get('products', [])
+                    
+                    # প্যাথ ৩: সরাসরি results এর নিচে
+                    if not products:
+                        products = d.get('results', {}).get('products', [])
+
+                # ২. যদি তাও না পায়, তবে ফুল ডিকশনারি সার্চ (Deep Search)
+                if not products:
+                    def find_products_recursive(obj):
+                        if isinstance(obj, dict):
+                            if 'products' in obj and isinstance(obj['products'], list):
+                                return obj['products']
+                            for v in obj.values():
+                                found = find_products_recursive(v)
+                                if found: return found
+                        return None
+                    products = find_products_recursive(data) or []
+
+                logger.info(f"Wayfair search result: {len(products)} products extracted")
+                return products
+            
+            logger.error(f"Wayfair API Error: {response.status_code}")
             return []
 
         except Exception as e:
-            logger.error(f"Wayfair search exception: {e}")
+            logger.error(f"Wayfair Service Exception: {e}")
             return []
-
     # ─────────────────────────────────────────────────────────────────────────
     # Data Extraction
     # ─────────────────────────────────────────────────────────────────────────
