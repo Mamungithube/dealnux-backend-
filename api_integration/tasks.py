@@ -305,7 +305,7 @@ WAYFAIR_CATEGORIES = {
 
 
 @shared_task
-def sync_all_platforms_task(query, limit=30):
+def sync_all_platforms_task(query, limit=30, category_slug=None):
     """Parallel sync across all active platforms."""
     tasks = [
         sync_amazon_task.s(query, limit),
@@ -314,7 +314,7 @@ def sync_all_platforms_task(query, limit=30):
         sync_target_task.s(query, limit),
         sync_aliexpress_task.s(query, limit),
         sync_bestbuy_task.s(query, limit),
-        sync_sephora_task.s(query, limit),
+        sync_sephora_task.s(query, limit), # এখন এগুলো সবসময় রান করবে
         sync_wayfair_task.s(query, limit),
     ]
     # if query in SEPHORA_CATEGORIES:
@@ -331,16 +331,16 @@ def sync_all_platforms_task(query, limit=30):
 def hourly_fixed_category_sync():
     from api_integration.models import Category
     
-    # সাব-ক্যাটাগরিগুলো নিচ্ছি
+    # সাব-ক্যাটাগরিগুলো নেওয়া হচ্ছে
     categories = list(
         Category.objects.filter(parent__isnull=False).only('name', 'slug')
     )
     
     for index, category in enumerate(categories):
-        # এখানে ৩টি আর্গুমেন্ট পাঠানো হচ্ছে, যা এখন sync_all_platforms_task গ্রহণ করবে
+        # এখন আর্গুমেন্ট সংখ্যা (৩টি) উপরের ফাংশনের সাথে মিলে যাবে
         sync_all_platforms_task.apply_async(
             args=[category.name, 30, category.slug], 
-            countdown=index * 30 # এপিআই ওভারলোড এড়াতে গ্যাপ
+            countdown=index * 30 # এপিআই রেট লিমিট এড়াতে ৩০ সেকেন্ড গ্যাপ
         )
     
     return f"Scheduled {len(categories)} categories for sync."
