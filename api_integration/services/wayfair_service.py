@@ -32,7 +32,7 @@ class WayfairService:
         """
         url    = f"https://{self.host}/products/v2/search"
         params = {
-            'keyword':      query,
+            'keyword':      query.replace('-', ' '),
             'itemsPerPage': str(min(limit, 48)),
             'page':         str(page),
             'domain':       'com',
