@@ -305,7 +305,7 @@ WAYFAIR_CATEGORIES = {
 
 
 @shared_task
-def sync_all_platforms_task(query, limit=30, category_slug=None):
+def sync_all_platforms_task(query, limit=100, category_slug=None):
     """Parallel sync across all active platforms."""
     tasks = [
         sync_amazon_task.s(query, limit),
