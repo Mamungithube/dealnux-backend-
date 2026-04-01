@@ -336,7 +336,7 @@ def hourly_fixed_category_sync():
     
     for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category.name, 10, category.slug],
+            args=[category.name, 50, category.slug],
             countdown=index * 30
         )
     

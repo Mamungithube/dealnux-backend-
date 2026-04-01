@@ -4,7 +4,6 @@ from unfold.decorators import display
 from django.utils.html import format_html
 from .models import User, Profile
 from django.contrib.auth.models import Group
-from unfold.forms import UserChangeForm, UserCreationForm
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 """=========================unregister Models from admin========================="""
@@ -26,7 +25,7 @@ class UserAdmin(ModelAdmin):
         'date_joined', 'referral_code', 'balance',
         'has_claimed_referral', 'referred_by'
     )
-    list_editable = ('ads_provided',)
+    # list_editable = ('ads_provided',) 
     search_fields = ('email', 'name', 'referral_code')
     list_filter = ('has_claimed_referral', 'is_active', 'ads_provided')
     ordering = ('email',)

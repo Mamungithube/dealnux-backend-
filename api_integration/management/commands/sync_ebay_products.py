@@ -22,7 +22,7 @@ class Command(BaseCommand):
         parser.add_argument('query', type=str, help='Search query for products')
         parser.add_argument(
             '--limit', type=int, default=20,
-            help='Number of products to sync (default: 20)'
+            help='Number of products to sync (default: 100)'
         )
         parser.add_argument(
             '--update-existing', action='store_true',

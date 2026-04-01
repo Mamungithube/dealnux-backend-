@@ -1014,7 +1014,7 @@ class CategoryChildrenView(APIView):
 def search_and_sync(request):
     query = request.GET.get('q', '')
     category_slug = request.GET.get('category_slug', '') or query
-    limit = min(int(request.GET.get('limit', 10)), 50)
+    limit = min(int(request.GET.get('limit', 10)), 200)
     platform_code = request.GET.get('platform', 'amazon')
 
     if not query:
@@ -1038,9 +1038,9 @@ def search_and_sync(request):
 @api_view(['GET'])
 def smart_search(request):
     query = request.GET.get('q', '')
-    limit = min(int(request.GET.get('limit', 10)), 50)
+    limit = min(int(request.GET.get('limit', 10)), 100)
     page = int(request.GET.get('page', 1))
-    page_size = min(int(request.GET.get('page_size', 10)), 50)
+    page_size = min(int(request.GET.get('page_size', 10)), 100)
 
     if not query:
         return error_response('q is required', code=400)
