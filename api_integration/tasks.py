@@ -314,6 +314,8 @@ def sync_all_platforms_task(query, limit=30):
         sync_target_task.s(query, limit),
         sync_aliexpress_task.s(query, limit),
         sync_bestbuy_task.s(query, limit),
+        sync_sephora_task.s(query, limit),
+        sync_wayfair_task.s(query, limit),
     ]
     if query in SEPHORA_CATEGORIES:
         tasks.append(sync_sephora_task.s(query, limit))
