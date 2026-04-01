@@ -5,7 +5,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class TargetService:
     """
     Target.com Shopping API via RapidAPI
@@ -29,7 +28,7 @@ class TargetService:
 
     def search_products(self, query, limit=10, offset=0):
         """
-        keyword দিয়ে Target products search করো।
+        Keyword : Search for target product.
         Response: data['data'] — flat list of product dicts
         """
         url    = f"https://{self.host}/search"
@@ -49,7 +48,6 @@ class TargetService:
             if response.status_code == 200:
                 data = response.json()
 
-                # নতুন API: {"status": "success", "data": [...]}
                 if data.get('status') == 'success':
                     products = data.get('data', []) or []
                 else:
@@ -73,7 +71,7 @@ class TargetService:
             return []
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Product Details  (optional — এই API তে আলাদা details endpoint নেই)
+    # Product Details (optional — this API does not have a separate details endpoint)
     # ─────────────────────────────────────────────────────────────────────────
 
     def get_product_details(self, tcin):
@@ -87,7 +85,7 @@ class TargetService:
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Data Extraction  —  নতুন flat response structure
+    # Data Extraction — New flat response structure
     # ─────────────────────────────────────────────────────────────────────────
 
     def extract_product_data(self, item):
@@ -112,7 +110,7 @@ class TargetService:
         # ── ID ───────────────────────────────────────────────────────────────
         external_id = str(item.get('tcin') or '')
 
-        # product_url থেকে TCIN extract করা fallback
+        # Fallback to extract TCIN from product_url
         if not external_id:
             url_str = item.get('product_url', '')
             match   = re.search(r'/A-(\d+)', url_str)
@@ -131,7 +129,7 @@ class TargetService:
         price       = self._parse_price(price_raw)
         orig_raw    = self._parse_price(price_info.get('original'))
 
-        # "Price Varies" — carrier/contract phone, price অজানা
+        # "Price Varies" — carrier/contract phone, price unknown
         is_price_varies = isinstance(price_raw, str) and 'varies' in price_raw.lower()
 
         original_price      = None
@@ -146,7 +144,7 @@ class TargetService:
         # ── Images ───────────────────────────────────────────────────────────
         main_image = item.get('primary_image') or ''
         alt_images = item.get('all_images') or []
-        # primary_image কে alt_images থেকে বাদ দাও (duplicate এড়াতে)
+        # Remove primary_image from alt_images (to avoid duplicates)
         alt_images = [img for img in alt_images if img != main_image]
 
         # ── URL ──────────────────────────────────────────────────────────────
@@ -155,7 +153,7 @@ class TargetService:
             external_url = f"https://www.target.com/p/-/A-{external_id}"
 
         # ── Rating & Reviews ─────────────────────────────────────────────────
-        # rating field টি dict হতে পারে: {'average': 4.35, 'count': 2389}
+        # The rating field can be a dict: {'average': 4.35, 'count': 2389}
         rating_raw   = item.get('rating')
         review_count = item.get('reviews_count') or 0
 
@@ -166,7 +164,7 @@ class TargetService:
             rating_val = rating_raw or 0
 
         try:
-            seller_rating = float(rating_val) * 20 if rating_val else None  # 5-star → 0-100
+            seller_rating = float(rating_val) * 20 if rating_val else None 
         except (ValueError, TypeError):
             seller_rating = None
 
@@ -175,13 +173,13 @@ class TargetService:
         except (ValueError, TypeError):
             review_count = 0
 
-        # ── Description — bullet_descriptions থেকে ───────────────────────────
+        # ── Description — from bullet_descriptions ───────────────────────────
         bullets     = item.get('bullet_descriptions') or []
         description = ' '.join(
             re.sub(r'<[^>]+>', '', b) for b in bullets[:5]
         ) if bullets else ''
 
-        # যদি bullet না থাকে soft_bullets try করো
+        # If there is no bullet, try soft_bullets.
         if not description:
             soft = item.get('soft_bullets') or []
             description = ' '.join(soft[:3])
@@ -189,7 +187,7 @@ class TargetService:
         # ── Category path ────────────────────────────────────────────────────
         category_path = item.get('category', '') or 'General Merchandise'
 
-        # ── Specifications — bullet_descriptions থেকে key-value parse ────────
+        # ── Specifications — key-value parse from bullet_descriptions ────────
         specs = {'Store': 'Target', 'Brand': brand or 'N/A'}
         if external_id:
             specs['TCIN'] = external_id
@@ -228,7 +226,7 @@ class TargetService:
             'gtin': None,
             'asin': None,
 
-            'is_available': not is_price_varies,  # Price Varies = contract phone, skip
+            'is_available': not is_price_varies, 
 
             'seller_username':       'Target',
             'seller_rating':         seller_rating,
@@ -238,7 +236,7 @@ class TargetService:
             'ships_from_country': 'US',
 
             'returns_accepted':   True,
-            'return_period_days': 90,  # Target 90-day return policy
+            'return_period_days': 90, 
 
             'shipping_info': {
                 'cost':           0,
@@ -256,15 +254,12 @@ class TargetService:
 
     @staticmethod
     def _parse_price(raw) -> float:
-        """
-        "$999.99", "999.99", "Price Varies", None — যেকোনো input থেকে float বের করো।
-        Parse করা না গেলে 0.0 return করো।
-        """
+
         if raw is None:
             return 0.0
         if isinstance(raw, (int, float)):
             return float(raw)
-        # string থেকে numbers + dot রাখো
+        # Put numbers + dot from string
         cleaned = re.sub(r'[^\d.]', '', str(raw))
         try:
             return float(cleaned) if cleaned else 0.0

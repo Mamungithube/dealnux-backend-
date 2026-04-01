@@ -43,7 +43,6 @@ class HomeDepotService:
 
     def get_product_details(self, product_id, zip_code="19090"):
         """
-        Official flow — ২ step async:
         Step 1: POST /rapidapi-homedepot-product-lookup  → asyncId পাবে
         Step 2: POST /rapidapi-homedepot-product-lookup-results  → actual data
         """
@@ -81,7 +80,7 @@ class HomeDepotService:
         result_url = f'https://{self.host}/rapidapi-homedepot-product-lookup-results'
         result_payload = {'asyncId': async_id}
 
-        for attempt in range(4):  # ৪ বার চেক করবে
+        for attempt in range(4):
             time.sleep(3)
             try:
                 res = requests.post(
@@ -106,7 +105,7 @@ class HomeDepotService:
         return None
 
     def extract_product_data(self, item):
-        """Home Depot product data কে আমাদের DB format এ convert করে"""
+        """Converts Home Depot product data to our DB format."""
 
         # Find out the price
         price = 0.0

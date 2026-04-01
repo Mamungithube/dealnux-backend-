@@ -51,7 +51,7 @@ class AmazonService:
 
     def get_product_details(self, asin, country='US'):
         """
-        GET /product-details — ASIN দিয়ে full product details আনে।
+        GET /product-details — Gets full product details with ASIN.
         """
         url = f"https://{self.host}/product-details"
         params = {'asin': asin, 'country': country}
@@ -87,8 +87,8 @@ class AmazonService:
 
     def extract_product_data(self, item):
         """
-        Amazon raw item dict কে আমাদের DB-compatible standard format এ convert করে।
-        search result item এবং product-details item উভয়ের সাথেই কাজ করে।
+        Converts Amazon raw item dict to our DB-compatible standard format.
+        Works with both search result items and product-details items.
         """
         # ── Price ────────────────────────────────────────────────────────────
         price_str = (

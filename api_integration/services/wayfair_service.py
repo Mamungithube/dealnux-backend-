@@ -40,30 +40,22 @@ class WayfairService:
             if response.status_code == 200:
                 data = response.json()
                 
-                # ── ডিবাগিং মেসেজ (লগ চেক করার জন্য) ──
-                # এটি আপনাকে Celery লগে দেখাবে এপিআই আসলে কী পাঠাচ্ছে
                 logger.info(f"Wayfair JSON Keys: {list(data.keys())}")
 
-                # ── ১. স্মার্ট ডাটা রিকভারি (Smart Data Recovery) ──
-                # Wayfair অনেক সময় ডাটা keyword_search বা browse এর নিচে লুকায়
                 products = []
                 
-                # আমরা সব পসিবল প্যাথ চেক করছি
                 d = data.get('data', {})
                 if d:
                     # প্যাথ ১: keyword -> results -> products
                     k_res = d.get('keyword') or d.get('keyword_search') or {}
                     products = k_res.get('results', {}).get('products', [])
-                    
-                    # প্যাথ ২: category -> browse -> products
+
                     if not products:
                         products = d.get('category', {}).get('browse', {}).get('products', [])
                     
-                    # প্যাথ ৩: সরাসরি results এর নিচে
                     if not products:
                         products = d.get('results', {}).get('products', [])
 
-                # ২. যদি তাও না পায়, তবে ফুল ডিকশনারি সার্চ (Deep Search)
                 if not products:
                     def find_products_recursive(obj):
                         if isinstance(obj, dict):
@@ -146,7 +138,6 @@ class WayfairService:
 
         # ── Title ────────────────────────────────────────────────────────────
         title = (item.get('name') or 'Wayfair Product').strip()
-        # brand prefix যোগ করো যদি না থাকে
         if brand and not title.lower().startswith(brand.lower()):
             title = f"{brand} {title}".strip()
 
