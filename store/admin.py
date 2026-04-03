@@ -48,7 +48,8 @@ class SellerRequestAdmin(ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['user__email', 'user__name', 'shop_name', 'phone_number']
     readonly_fields = [
-        'status', 'created_at', 'updated_at',
+        'user', 'shop_name', 'shop_description', 'phone_number',
+        'nid_document', 'business_document', 'created_at', 'updated_at',
         'reviewed_at', 'reviewed_by',
     ]
     ordering = ['-created_at']
@@ -73,6 +74,15 @@ class SellerRequestAdmin(ModelAdmin):
         }),
     )
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
+
     actions_row = ['action_approve_row', 'action_reject_row']
     actions_list = []
 
@@ -84,12 +94,11 @@ class SellerRequestAdmin(ModelAdmin):
                 if not obj.user:
                     raise ValidationError("User ফিল্ডটি খালি রাখা যাবে না।")
 
-    
             if change and 'status' in form.changed_data:
                 if obj.status == 'APPROVED':
-                    obj.status = 'PENDING' 
+                    obj.status = 'PENDING'
                     super().save_model(request, obj, form, change)
-                    obj.approve(admin_user=request.user)  
+                    obj.approve(admin_user=request.user)
                     return
                 elif obj.status == 'REJECTED':
                     note = obj.admin_note or 'Rejected via admin panel.'
@@ -146,7 +155,8 @@ class SellerRequestAdmin(ModelAdmin):
         obj = SellerRequest.objects.get(pk=object_id)
         if obj.status == 'PENDING':
             obj.approve(admin_user=request.user)
-            self.message_user(request, f'✓ {obj.user.email} approved as seller.')
+            self.message_user(
+                request, f'✓ {obj.user.email} approved as seller.')
         return HttpResponseRedirect('../..')
 
     @action(
@@ -163,20 +173,6 @@ class SellerRequestAdmin(ModelAdmin):
             self.message_user(request, f'✗ {obj.user.email} request rejected.')
         return HttpResponseRedirect('../..')
 
-    # @action(
-    #     description=_('Approve all PENDING'),
-    #     icon='done_all',
-    #     variant=ActionVariant.PRIMARY,
-    # )
-    # def action_approve_all_pending(self, request):
-    #     from django.http import HttpResponseRedirect
-    #     pending = SellerRequest.objects.filter(status='PENDING')
-    #     count   = pending.count()
-    #     for sr in pending:
-    #         sr.approve(admin_user=request.user)
-    #     self.message_user(request, f'✓ {count} request(s) approved.')
-    #     return HttpResponseRedirect('../..')
-
 
 # ============================================================================
 # Seller Profile Admin
@@ -186,7 +182,7 @@ class SellerRequestAdmin(ModelAdmin):
 class SellerProfileAdmin(ModelAdmin):
     compressed_fields = True
     warn_unsaved_form = True
-    list_fullwidth    = True
+    list_fullwidth = True
 
     list_display = [
         'display_shop',
@@ -196,9 +192,12 @@ class SellerProfileAdmin(ModelAdmin):
         'display_active',
         'created_at',
     ]
-    list_filter   = ['is_active', 'created_at']
+    list_filter = ['is_active', 'created_at']
     search_fields = ['shop_name', 'user__email', 'phone_number']
     readonly_fields = [
+        'user', 'shop_name', 'shop_description', 'shop_logo', 'phone_number',
+        'bank_name', 'bank_account_number',
+        'is_active',
         'total_products', 'total_orders',
         'total_earnings', 'created_at', 'updated_at',
     ]
@@ -218,6 +217,15 @@ class SellerProfileAdmin(ModelAdmin):
             'fields': ('is_active',),
         }),
     )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     @display(description=_('Shop'), ordering='shop_name')
     def display_shop(self, obj):
@@ -257,9 +265,9 @@ class SellerProfileAdmin(ModelAdmin):
 
 @admin.register(SellerProduct)
 class SellerProductAdmin(ModelAdmin):
-    compressed_fields  = True
-    warn_unsaved_form  = True
-    list_fullwidth     = True
+    compressed_fields = True
+    warn_unsaved_form = True
+    list_fullwidth = True
     list_filter_submit = True
 
     list_display = [
@@ -271,14 +279,23 @@ class SellerProductAdmin(ModelAdmin):
         'display_status',
         'created_at',
     ]
-    list_filter   = ['status', 'condition', 'category', 'created_at']
+    list_filter = ['status', 'condition', 'category', 'created_at']
     search_fields = ['title', 'brand', 'seller__shop_name', 'model_number']
     readonly_fields = [
+        'seller', 'category', 'title', 'description', 'brand', 'model_number',
+        'main_image', 'price', 'original_price', 'currency', 'quantity', 'condition',
+        'free_shipping', 'shipping_cost', 'estimated_delivery_days',
+        'returns_accepted', 'return_period_days',
+        'created_at', 'updated_at',
+    ]
+    tab_fields = [
+        'returns_accepted', 'return_period_days',
+
         'linked_product', 'linked_listing',
         'reviewed_by', 'reviewed_at',
         'created_at', 'updated_at',
     ]
-    inlines  = [SellerProductImageInline]
+    inlines = [SellerProductImageInline]
     ordering = ['-created_at']
 
     fieldsets = (
@@ -308,8 +325,17 @@ class SellerProductAdmin(ModelAdmin):
         }),
     )
 
-    actions_row  = ['action_approve_product', 'action_reject_product']
+    actions_row = ['action_approve_product', 'action_reject_product']
     actions_list = []
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     @display(description=_('Product'), ordering='title')
     def display_product(self, obj):
@@ -383,7 +409,8 @@ class SellerProductAdmin(ModelAdmin):
         obj = SellerProduct.objects.get(pk=object_id)
         if obj.status != 'APPROVED':
             obj.approve(admin_user=request.user)
-            self.message_user(request, f'✓ "{obj.title[:40]}" approved and listed.')
+            self.message_user(
+                request, f'✓ "{obj.title[:40]}" approved and listed.')
         return HttpResponseRedirect('../..')
 
     @action(
@@ -400,20 +427,6 @@ class SellerProductAdmin(ModelAdmin):
             self.message_user(request, f'✗ "{obj.title[:40]}" rejected.')
         return HttpResponseRedirect('../..')
 
-    # @action(
-    #     description=_('Approve all PENDING products'),
-    #     icon='done_all',
-    #     variant=ActionVariant.PRIMARY,
-    # )
-    # def action_approve_all_pending_products(self, request):
-    #     from django.http import HttpResponseRedirect
-    #     pending = SellerProduct.objects.filter(status='PENDING')
-    #     count   = pending.count()
-    #     for p in pending:
-    #         p.approve(admin_user=request.user)
-    #     self.message_user(request, f'✓ {count} product(s) approved and listed.')
-    #     return HttpResponseRedirect('../..')
-
 
 # ============================================================================
 # Order Admin
@@ -421,8 +434,8 @@ class SellerProductAdmin(ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(ModelAdmin):
-    compressed_fields  = True
-    list_fullwidth     = True
+    compressed_fields = True
+    list_fullwidth = True
     list_filter_submit = True
 
     list_display = [
@@ -434,14 +447,15 @@ class OrderAdmin(ModelAdmin):
         'display_order_status',
         'created_at',
     ]
-    list_filter   = ['status', 'created_at', 'currency']
+    list_filter = ['status', 'created_at', 'currency']
     search_fields = [
         'buyer__email', 'buyer__name',
         'seller__shop_name', 'tracking_number',
         'seller_product__title',
     ]
     readonly_fields = [
-        'buyer', 'seller', 'unit_price',
+        'buyer', 'seller', 'unit_price', 'seller_product', 'listing',
+        'quantity', 'currency', 'shipping_address', 'tracking_number', 'note',
         'total_price', 'created_at', 'updated_at',
     ]
     ordering = ['-created_at']
@@ -466,6 +480,15 @@ class OrderAdmin(ModelAdmin):
     )
 
     actions_submit_line = ['action_mark_shipped']
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     @display(description=_('Order'), ordering='id')
     def display_order_id(self, obj):
@@ -522,7 +545,7 @@ class OrderAdmin(ModelAdmin):
 @admin.register(Coupon)
 class CouponAdmin(ModelAdmin):
     compressed_fields = True
-    list_fullwidth    = True
+    list_fullwidth = True
 
     list_display = [
         'display_seller',
@@ -534,10 +557,29 @@ class CouponAdmin(ModelAdmin):
         'is_active',
         'expires_at',
     ]
-    list_filter   = ['discount_type', 'is_active', 'created_at']
+    list_filter = ['discount_type', 'is_active', 'created_at']
     search_fields = ['code', 'seller__shop_name']
-    readonly_fields = ['used_count', 'created_at']
-    list_editable = ['is_active']
+    readonly_fields = [
+        'seller', 'code', 'discount_type', 'discount_value',
+        'min_order_amount', 'created_at',
+        'display_seller',
+        'display_code',
+        'display_discount',
+        'used_count',
+        'max_uses',
+        'display_valid',
+        'is_active',
+        'expires_at',]
+    # list_editable = ['is_active']
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     fieldsets = (
         (_('🎟️ Coupon Info'), {
@@ -554,7 +596,7 @@ class CouponAdmin(ModelAdmin):
     @display(description=_('Code'), ordering='code')
     def display_code(self, obj):
         return format_html(
-            '<code style="background:#7489B4;padding:3px 8px;'
+            '<code style="background:#000000;padding:3px 8px;'
             'border-radius:4px;font-weight:600;letter-spacing:1px">{}</code>',
             obj.code,
         )
@@ -592,5 +634,6 @@ def pending_seller_requests_count(request):
 def pending_products_count(request):
     # PENDING অথবা DRAFT স্ট্যাটাসের প্রোডাক্টগুলো গণনা করবে
     from django.db.models import Q
-    count = SellerProduct.objects.filter(Q(status='PENDING') | Q(status='DRAFT')).count()
+    count = SellerProduct.objects.filter(
+        Q(status='PENDING') | Q(status='DRAFT')).count()
     return str(count) if count > 0 else None

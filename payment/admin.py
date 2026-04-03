@@ -45,6 +45,17 @@ class PaymentAdmin(ModelAdmin):
     ]
 
     readonly_fields = [
+        'buyer',
+        'shipping_address',
+        'note',
+        'seller_product',
+        'quantity',
+        'coupon_code',
+        'unit_price',
+        'discount_amount',
+        'currency',
+        'status',
+        'order',
         'stripe_checkout_session_id',
         'stripe_payment_intent_id',
         'stripe_checkout_url',
@@ -78,6 +89,15 @@ class PaymentAdmin(ModelAdmin):
             'fields': ('created_at', 'updated_at'),
         }),
     )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     @display(description='Buyer', ordering='buyer__email')
     def display_buyer(self, obj):

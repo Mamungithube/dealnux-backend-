@@ -15,7 +15,16 @@ class PlatformAdmin(ModelAdmin):
                     'listings_count', 'created_at']
     list_filter = ['api_enabled', 'created_at']
     search_fields = ['name', 'code']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = ['name', 'code', 'api_enabled', 'created_at', 'updated_at']
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     @display(description='Active Listings')
     def listings_count(self, obj):
@@ -28,8 +37,17 @@ class CategoryAdmin(ModelAdmin):
     list_display = ['name', 'slug', 'parent', 'products_count', 'created_at']
     list_filter = ['created_at']
     search_fields = ['name', 'slug']
-    prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['created_at', 'updated_at']
+    # prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ['name', 'slug', 'parent', 'created_at', 'updated_at']
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     @display(description='Products')
     def products_count(self, obj):
@@ -336,6 +354,15 @@ class FavoriteAdmin(ModelAdmin):
         }),
     )
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
+
     @display(description='User')
     def user_email(self, obj):
         return format_html(
@@ -377,14 +404,3 @@ class FavoriteAdmin(ModelAdmin):
                 obj.product.main_image
             )
         return 'No image'
-
-    def has_add_permission(self, request):
-        return False
-
-    actions = ['remove_favorites']
-
-    @admin.action(description='Remove selected favorites')
-    def remove_favorites(self, request, queryset):
-        count = queryset.count()
-        queryset.delete()
-        self.message_user(request, f'{count} favorites removed successfully.')

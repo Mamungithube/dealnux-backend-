@@ -41,7 +41,17 @@ class ReviewAdmin(ModelAdmin):
     list_display = ('user', 'rating','comment', 'created_at')
     ordering = ('-created_at',)
     search_fields = ('user__email', 'rating', 'created_at')
-    readonly_fields = ('created_at',)
+    list_filter = ('rating', 'created_at')
+    readonly_fields = ('user', 'rating','comment', 'created_at')
     
     # Unfold specific
     list_filter_submit = True
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
