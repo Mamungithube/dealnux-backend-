@@ -1,5 +1,6 @@
 from django.db import models
-
+from django.core.validators import MinValueValidator, MaxValueValidator
+from account.models import User
 # Create your models here.
 
 
@@ -30,3 +31,20 @@ class Cookie_Policy(models.Model):
 
     def __str__(self):
         return f"Cookie Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+    
+
+class Review(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='reviews')
+    
+    rating = models.PositiveIntegerField(validators=[
+                                         MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user',)
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.rating} stars"

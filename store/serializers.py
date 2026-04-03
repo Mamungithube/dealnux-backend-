@@ -115,6 +115,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
             'discount_percentage',
             'linked_product', 'linked_listing',
             'created_at', 'updated_at',
+
         ]
         read_only_fields = [
             'seller', 'status', 'admin_note',

@@ -232,3 +232,5 @@ class FavoriteSerializer(serializers.ModelSerializer):
             obj.product,
             context=self.context
         ).data
+    
+

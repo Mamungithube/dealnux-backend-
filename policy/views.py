@@ -1,11 +1,12 @@
 import time
 from rest_framework.views import APIView
 from rest_framework import permissions, status
-from policy.models import Privacy_Policy, Cookie_Policy, Terms_Of_Service
+from policy.models import Privacy_Policy, Cookie_Policy, Terms_Of_Service , Review
 from policy.serializers import (
     PrivacyPolicySerializer,
     CookiePolicySerializer,
-    TermsOfServiceSerializer
+    TermsOfServiceSerializer,
+    ReviewSerializer
 )
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
@@ -268,4 +269,36 @@ class TermsOfServiceView(APIView):
             code=status.HTTP_204_NO_CONTENT,
             message="Terms of service deleted successfully.",
             data=None
+        )
+
+
+class ReviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        reviews = Review.objects.all().order_by('-created_at')
+        serializer = ReviewSerializer(reviews, many=True)
+        return api_response(
+            success=True,
+            code=status.HTTP_200_OK,
+            message="Reviews retrieved successfully.",
+            data=serializer.data
+        ) 
+    
+    def post(self, request):
+        serializer = ReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return api_response(
+                success=True,
+                code=status.HTTP_201_CREATED,
+                message="Review created successfully.",
+                data=serializer.data
+            )
+
+        return api_response(
+            success=False,
+            code=status.HTTP_400_BAD_REQUEST,
+            message="Validation error.",
+            data=serializer.errors
         )

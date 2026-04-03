@@ -364,6 +364,11 @@ UNFOLD = {
                         "icon": "cookie",
                         "link": "/admin/policy/cookie_policy/",
                     },
+                    {
+                        "title": "Reviews",
+                        "icon": "reviews",
+                        "link": "/admin/policy/review/",
+                    },
                 ],
             },
         ],

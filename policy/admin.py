@@ -1,6 +1,6 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
-from .models import Privacy_Policy, Terms_Of_Service, Cookie_Policy
+from .models import Privacy_Policy, Terms_Of_Service, Cookie_Policy , Review
 
 
 @admin.register(Privacy_Policy)
@@ -31,6 +31,17 @@ class CookiePolicyAdmin(ModelAdmin):
     ordering = ('-last_updated',)
     search_fields = ('last_updated', 'created_at')
     readonly_fields = ('last_updated', 'created_at')
+    
+    # Unfold specific
+    list_filter_submit = True
+
+
+@admin.register(Review)
+class ReviewAdmin(ModelAdmin):
+    list_display = ('user', 'rating','comment', 'created_at')
+    ordering = ('-created_at',)
+    search_fields = ('user__email', 'rating', 'created_at')
+    readonly_fields = ('created_at',)
     
     # Unfold specific
     list_filter_submit = True
