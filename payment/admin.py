@@ -21,9 +21,9 @@ class PaymentAdmin(ModelAdmin):
     list_filter_submit  = True
 
     list_display = [
-        'id',
         'display_buyer',
         'display_product',
+        'id',
         'display_amount',
         'display_status',
         'display_stripe_session',
@@ -166,9 +166,9 @@ class SellerPayoutAdmin(ModelAdmin):
     list_filter_submit  = True
 
     list_display = [
-        'id',
         'display_seller',
         'display_amounts',
+        'id',
         'display_status',
         'display_transfer',
         'created_at',

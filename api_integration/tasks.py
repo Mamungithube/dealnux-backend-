@@ -312,7 +312,7 @@ def sync_all_platforms_task(query, limit=50, category_slug=None):
         sync_target_task.s(query, limit),
         sync_aliexpress_task.s(query, limit),
         sync_bestbuy_task.s(query, limit),
-        sync_sephora_task.s(query, limit), # এখন এগুলো সবসময় রান করবে
+        sync_sephora_task.s(query, limit),
         sync_wayfair_task.s(query, limit),
     ]
     # if query in SEPHORA_CATEGORIES:
@@ -328,17 +328,15 @@ def sync_all_platforms_task(query, limit=50, category_slug=None):
 @shared_task
 def hourly_fixed_category_sync():
     from api_integration.models import Category
-    
-    # সাব-ক্যাটাগরিগুলো নেওয়া হচ্ছে
+
     categories = list(
         Category.objects.filter(parent__isnull=False).only('name', 'slug')
     )
     
     for index, category in enumerate(categories):
-        # এখন আর্গুমেন্ট সংখ্যা (৩টি) উপরের ফাংশনের সাথে মিলে যাবে
         sync_all_platforms_task.apply_async(
             args=[category.name, 30, category.slug], 
-            countdown=index * 30 # এপিআই রেট লিমিট এড়াতে ৩০ সেকেন্ড গ্যাপ
+            countdown=index * 30 
         )
     
     return f"Scheduled {len(categories)} categories for sync."

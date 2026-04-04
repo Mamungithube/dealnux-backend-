@@ -32,7 +32,6 @@ class CustomPagination(PageNumberPagination):
     max_page_size = 100
 
     def get_paginated_response(self, data):
-        # পরবর্তী এবং পূর্ববর্তী পেজ নম্বর বের করার লজিক
         next_page_number = None
         if self.page.has_next():
             next_page_number = self.page.next_page_number()
@@ -55,7 +54,7 @@ class CustomPagination(PageNumberPagination):
                 "total_pages": self.page.paginator.num_pages,
                 "current_page": self.page.number,
                 "page_size": self.get_page_size(self.request),
-                "has_next": self.page.has_next(), # এখানে self.page ব্যবহার করা হয়েছে
+                "has_next": self.page.has_next(), 
                 "has_previous": self.page.has_previous(),
                 "next_page": next_page_number,
                 "prev_page": prev_page_number,
@@ -150,17 +149,13 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         if seller_request.status == 'APPROVED':
             return error_response("Already approved.", code=400)
 
-        # ট্রানজ্যাকশন ব্যবহার করা ভালো যাতে স্ট্যাটাস আপডেট এবং প্রোফাইল তৈরি একসাথে হয়
         with transaction.atomic():
-            # ১. রিকোয়েস্ট অ্যাপ্রুভ করা (আপনার মডেলের approve মেথড কল হচ্ছে)
             seller_request.approve(admin_user=request.user)
 
-            # ২. সেলার প্রোফাইল তৈরি করা (যদি আগে থেকে না থাকে)
-            # রিকোয়েস্ট থেকে শপের নাম এবং ফোন নম্বর প্রোফাইলে সেট করে দিচ্ছি
             seller_profile, created = SellerProfile.objects.get_or_create(
                 user=seller_request.user,
                 defaults={
-                    'shop_name': seller_request.shop_name, # নিশ্চিত হয়ে নিন ফিল্ডের নাম ঠিক আছে কি না
+                    'shop_name': seller_request.shop_name,
                     'phone_number': seller_request.phone_number,
                     'is_active': True
                 }
@@ -211,7 +206,6 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
         return success_response(serializer.data, message="Seller profile fetched")
 
     def update(self, request, *args, **kwargs):
-        # Only own profile update করা যাবে (unless admin)
         instance = self.get_object()
         if not request.user.is_staff and instance.user != request.user:
             return error_response("Permission denied.", code=403)

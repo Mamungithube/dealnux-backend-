@@ -95,7 +95,6 @@ def calculate_match_score(title1, title2):
     f1 = get_product_fingerprint(title1)
     f2 = get_product_fingerprint(title2)
 
-    # ১. ব্র্যান্ড ব্লক (HP vs Dell রোধ করবে)
     brand1 = title1.split()[0].upper()
     brand2 = title2.split()[0].upper()
     if brand1 != brand2:

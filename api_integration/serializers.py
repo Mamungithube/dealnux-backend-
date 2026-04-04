@@ -4,7 +4,6 @@ from .models import (
     Platform, Category, Product, ProductListing,
     ProductImage, ProductSpecification, PriceHistory , Favorite
 )
-from rest_framework.validators import UniqueTogetherValidator
 from rest_framework import serializers
 from .models import CartItem
 

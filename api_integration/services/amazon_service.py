@@ -20,9 +20,7 @@ class AmazonService:
         }
 
     def search_products(self, query, limit=10):
-        """
-        GET /search — query দিয়ে Amazon product search করে।
-        Returns list of product dicts, or [] on failure.
+        """GET /search — Search Amazon products with query.  Returns list of product dicts, or [] on failure.
         """
         url = f"https://{self.host}/search"
         params = {
@@ -125,7 +123,7 @@ class AmazonService:
             except (ValueError, TypeError):
                 original_price = None
         
-        # ── Price 0 হলে original_price দিয়ে replace ─────────────────────
+        # ── If price is 0, replace with original_price ─────────────────────
         if price == 0.0 and original_price:
             price = original_price
             original_price = None

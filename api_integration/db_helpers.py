@@ -444,7 +444,7 @@ def _find_matching_product(title, brand, gtin, asin):
         if brand:
             brand_query = Q(brand__icontains=brand.split()[0])
         
-        # টাইটেলের প্রথম ২ শব্দ দিয়ে ডাটাবেজে সার্চ করি
+        # Search the database using the first 2 words of the title.
         search_words = title.split()[:2]
         title_q = Q()
         for word in search_words:
@@ -473,17 +473,17 @@ def _find_matching_product(title, brand, gtin, asin):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# eBay currency validation — non-USD listings বাদ দাও
+# eBay currency validation — exclude non-USD listings
 # ─────────────────────────────────────────────────────────────────────────────
 
-# eBay international responses এ এই currency codes আসতে পারে
+# These currency codes may appear in eBay international responses
 _NON_USD_INDICATORS = [
     'HUF', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'KRW',
     'INR', 'BRL', 'MXN', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN',
     'CZK', 'HKD', 'SGD', 'NZD', 'ZAR', 'TRY', 'RUB', 'THB',
 ]
 
-MAX_REASONABLE_PRICE = 5000.0   # এর বেশি হলে anomaly হিসেবে ধরব
+MAX_REASONABLE_PRICE = 5000.0  
 
 
 def is_valid_usd_price(price_raw_str, price_float):
@@ -506,9 +506,7 @@ def is_valid_usd_price(price_raw_str, price_float):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def save_generic_product_to_db(product_data, platform, query=None, category_slug=None, all_categories=None):
-    """
-    Universal save helper. ডাটাবেজে সেভ করার আগে প্রাইজ, ইমেজ ও ইউআরএল চেক করবে।
-    """
+    """      Universal save helper. Will check price, image and URL before saving to database.      """
     from .models import (
         Product, ProductListing, Category,
         PriceHistory, ProductImage, ProductSpecification,

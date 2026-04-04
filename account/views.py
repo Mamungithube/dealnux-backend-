@@ -435,7 +435,7 @@ class LoginAPIView(APIView):
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
 
-        # ইউজার খুঁজুন
+        # find user by email
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
@@ -450,7 +450,7 @@ class LoginAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Password verify করুন (manual authentication)
+        # Password verify (manual authentication)
         if not user.check_password(password):
             return Response(
                 {
@@ -463,7 +463,7 @@ class LoginAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Account activate করা নাই
+        # OTP verify check (account activation check)
         if not user.is_active:
             return Response(
                 {
@@ -478,7 +478,7 @@ class LoginAPIView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Profile setup complete করা নাই
+        # Profile setup check
         if not user.profile_setup_completed:
             refresh = RefreshToken.for_user(user)
 
@@ -499,7 +499,7 @@ class LoginAPIView(APIView):
                 status=status.HTTP_402_PAYMENT_REQUIRED
             )
 
-        # সফল Login - manually set backend
+        # Login the user and generate JWT token
         user.backend = 'django.contrib.auth.backends.ModelBackend'
         login(request, user)
 

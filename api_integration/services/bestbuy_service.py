@@ -54,7 +54,7 @@ class BestBuyService:
 
     def extract_product_data(self, item):
         """
-        BestBuy API response কে standard DB format এ convert করে।
+        Converts the BestBuy API response to standard DB format.
 
         Response fields:
         - skuId: product ID
@@ -104,7 +104,6 @@ class BestBuyService:
             )
 
         # ── URL ──────────────────────────────────────────────────────────────
-        # API তে URL bug আছে: "https://www.bestbuy.comhttps://www.bestbuy.com/..."
         raw_url      = item.get('url') or ''
         external_url = raw_url.replace(
             'https://www.bestbuy.comhttps://', 'https://'
@@ -115,7 +114,7 @@ class BestBuyService:
         # ── Images ───────────────────────────────────────────────────────────
         main_image = item.get('imageUrl') or ''
 
-        # variations থেকে additional images
+        # variations to additional images
         variations         = item.get('variations', []) or []
         additional_images  = []
         for v in variations:
@@ -135,7 +134,7 @@ class BestBuyService:
 
         # ── Title & Brand ─────────────────────────────────────────────────────
         title = item.get('title') or 'BestBuy Product'
-        # Title এর প্রথম শব্দ brand হিসেবে নাও
+        # Take the first word of the title as the brand.
         brand = title.split(' - ')[0].split(',')[0].strip() if title else ''
 
         return {

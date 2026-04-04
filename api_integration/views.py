@@ -55,9 +55,7 @@ def clean_display_title(title):
 def normalize_title(title):
     """Title will be normalized for comparison."""
     title = title.lower().strip()
-    # special characters সরাবে
     title = re.sub(r'[^\w\s]', '', title)
-    # extra spaces সরাবে
     title = re.sub(r'\s+', ' ', title)
     return title
 

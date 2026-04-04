@@ -93,7 +93,7 @@ class SephoraService:
 
     def search_by_brand(self, brand_name, limit=10, page=1):
         """
-        brand name দিয়ে Sephora products search করো।
+        Search for Sephora products by brand name.
         """
         url    = f"https://{self.host}/search-by-brand"
         params = {
@@ -128,7 +128,7 @@ class SephoraService:
 
     def get_product_details(self, product_id):
         """
-        productId দিয়ে full details আনো।
+        Get full details with productId.
         """
         url    = f"https://{self.host}/product-details"
         params = {'productId': product_id}
@@ -158,7 +158,7 @@ class SephoraService:
 
     def extract_product_data(self, item):
         """
-        Sephora API response কে আমাদের standard DB format এ convert করে।
+        Converts the Sephora API response to standard DB format.
         """
 
         # ── ID ───────────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ class SephoraService:
         try:
             price_str = str(price_raw).replace('$', '').replace(',', '').strip()
 
-            # Range হলে যেমন "$39.00 - $59.00" — সবচেয়ে কম দাম নাও
+            # If the range is "$39.00 - $59.00" — take the lowest price
             if ' - ' in price_str:
                 price_str = price_str.split(' - ')[0].strip()
 

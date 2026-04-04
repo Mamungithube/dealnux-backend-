@@ -79,13 +79,13 @@ class SubscriptionPlan(models.Model):
     price                = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     free_trial_days      = models.PositiveIntegerField(default=14)
-    is_trial_enabled     = models.BooleanField(default=True)  # admin on/off করতে পারবে
+    is_trial_enabled     = models.BooleanField(default=True) 
 
     max_searches_per_day = models.PositiveIntegerField(default=10)
     can_compare_prices   = models.BooleanField(default=True)
     can_use_cart         = models.BooleanField(default=False)
      
-    stripe_price_id      = models.CharField(max_length=200, blank=True)  # Stripe এর price ID
+    stripe_price_id      = models.CharField(max_length=200, blank=True) 
     is_active            = models.BooleanField(default=True)
      
     created_at           = models.DateTimeField(auto_now_add=True)
