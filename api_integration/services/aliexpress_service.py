@@ -27,10 +27,8 @@ class AliExpressService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def search_products(self, query, limit=10, page=1):
-        """
-        keyword দিয়ে AliExpress products search করো।
-        Response: data['products']['product'] — list
-        """
+        """  Search AliExpress products by keyword. Response: data['products']['product'] — list  """
+
         url    = f"https://{self.host}/api/v3/products"
         params = {
             'keywords':        query,
@@ -65,9 +63,7 @@ class AliExpressService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def get_product_details(self, product_id):
-        """
-        product_id দিয়ে AliExpress product details আনো।
-        """
+        """ Get AliExpress product details using product_id."""
         url    = f"https://{self.host}/api/v3/product-info"
         params = {
             'product_id':      str(product_id),
@@ -82,7 +78,6 @@ class AliExpressService:
             )
             if response.status_code == 200:
                 data = response.json()
-                # response সরাসরি list আসে
                 if isinstance(data, list) and data:
                     return data[0]
                 if isinstance(data, dict):

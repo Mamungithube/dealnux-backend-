@@ -4,7 +4,6 @@ from .models import (
     Platform, Category, Product, ProductListing,
     ProductImage, ProductSpecification, PriceHistory , Favorite
 )
-from rest_framework.validators import UniqueTogetherValidator
 from rest_framework import serializers
 from .models import CartItem
 
@@ -139,13 +138,14 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     lowest_price  = serializers.SerializerMethodField()
     is_favorite   = serializers.SerializerMethodField()
     is_cart       = serializers.SerializerMethodField()
+    price_analysis = serializers.SerializerMethodField()
 
     class Meta:
         model  = Product
         fields = [
             'id', 'title', 'slug', 'description',
             'category', 'category_name',
-            'brand', 'main_image', 'images',
+            'brand', 'main_image', 'images','price_analysis',
             'lowest_price', 'listings',
             'is_active', 'created_at',
             'is_favorite', 
@@ -172,6 +172,27 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         ).select_related('platform').order_by('price')
         
         return ProductListingSerializer(listings, many=True).data
+    
+    def get_price_analysis(self, obj):
+        listings = obj.listings.filter(is_available=True, price__gt=0)
+        
+        if listings.count() < 2:
+            price = float(listings.first().price) if listings.exists() else 0
+            return {
+                "lowest_price": price,
+                "highest_price": price,
+                "potential_savings": 0.0
+            }
+
+        prices = [float(l.price) for l in listings]
+        low = min(prices)
+        high = max(prices)
+        
+        return {
+            "lowest_price": low,
+            "highest_price": high,
+            "potential_savings": round(high - low, 2)
+        }
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):

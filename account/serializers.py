@@ -6,7 +6,6 @@ from django.core.mail import EmailMessage
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 import json
-from django.db import transaction
 import random
 
 User = get_user_model()
@@ -51,7 +50,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User.objects.create_user(**validated_data)
         user.is_active = False
 
-        # ✅ Save OTP directly in User model
+        #  Save OTP directly in User model
         otp = generate_otp()
         user.otp = otp
         user.save()

@@ -31,7 +31,7 @@ class EbayRapidService:
     def search_products(self, query, limit=10, tld='com'):
         url = f"https://{self.host}/search_get.php"
 
-        # eBay search URL তৈরি করে `url` param হিসেবে পাঠাও
+        # Create an eBay search URL and send it as `url` param
         ebay_search_url = (
             f"https://www.ebay.com/sch/i.html"
             f"?_nkw={query.replace(' ', '+')}"

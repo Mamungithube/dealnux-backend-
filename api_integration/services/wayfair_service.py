@@ -46,7 +46,7 @@ class WayfairService:
                 
                 d = data.get('data', {})
                 if d:
-                    # প্যাথ ১: keyword -> results -> products
+                    # path 1: keyword -> results -> products
                     k_res = d.get('keyword') or d.get('keyword_search') or {}
                     products = k_res.get('results', {}).get('products', [])
 
@@ -82,7 +82,7 @@ class WayfairService:
 
     def extract_product_data(self, item):
         """
-        Wayfair API response কে standard DB format এ convert করে।
+        Converts the Wayfair API response to standard DB format.
 
         Response fields:
         - sku: product ID (e.g. 'W117447079')

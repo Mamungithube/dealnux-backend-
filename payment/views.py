@@ -1,5 +1,4 @@
 import stripe
-import json
 from decimal import Decimal
 
 from django.conf import settings
@@ -10,7 +9,6 @@ from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework import status
 
 from django.db.models import F
 from .models import Payment, SellerPayout

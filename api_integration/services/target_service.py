@@ -90,7 +90,7 @@ class TargetService:
 
     def extract_product_data(self, item):
         """
-        নতুন Target API response কে standard DB format এ convert করে।
+        Converts the new Target API response to standard DB format.
 
         New response structure:
         - item['title']           : product title
