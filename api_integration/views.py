@@ -650,6 +650,31 @@ class ProductViewSet(viewsets.ModelViewSet):
             context['cart_product_ids'] = set()
         return context
     
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def record_purchase_intent(self, request, slug=None):
+        product = self.get_object()
+        user = request.user
+        
+        # ডিটেইলস পেজের মতো এখানেও লজিক চেক করবে
+        listings = product.listings.filter(is_available=True, price__gt=0)
+        
+        if listings.count() < 2:
+            return success_response({}, message="Single listing found. No savings.")
+
+        prices = [float(l.get_total_price()) for l in listings]
+        savings = round(max(prices) - min(prices), 2)
+
+        if savings > 0:
+            with transaction.atomic():
+                current_total = float(getattr(user, 'total_lifetime_savings', 0.0))
+                user.total_lifetime_savings = current_total + savings
+                user.save()
+                SavingsActivity.objects.create(
+                    user=user, title=product.title, saved_amount=savings
+                )
+            return success_response({"added": savings}, message="Savings recorded!")
+        return success_response({}, message="No savings possible.")
+    
 
 """ contains viewsets and API views for product listing, price comparison, and platform syncing. """
 """
@@ -798,11 +823,9 @@ def product_match_score(title1: str, title2: str) -> float:
 
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def compare_prices_api(request, slug):
-    # ১. Finding the main product
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
@@ -810,20 +833,25 @@ def compare_prices_api(request, slug):
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
     
-    # ২. Finding the main product
+    # ১. Strict Matching (AND logic ব্যবহার করা হয়েছে যাতে সুইং সেট না আসে)
     keywords = target_fingerprint['core_name'].split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
         k_query = Q()
         for word in keywords:
-            if len(word) > 2: k_query |= Q(title__icontains=word)
+            if len(word) > 2: 
+                k_query &= Q(title__icontains=word) # '&' দিয়ে AND করা হয়েছে
         q_filter &= k_query
+
+    # ক্যাটাগরিও ম্যাচ করা হলো যাতে খেলনা ফোন আর সুইং সেট আলাদা থাকে
+    if product.category:
+        q_filter &= Q(category=product.category)
 
     candidates = Product.objects.filter(q_filter)
 
-    # ৩. NLP matching
+    # ২. NLP matching
     matched_ids = [product.id]
-    THRESHOLD = 70 
+    THRESHOLD = 75 # একটু বাড়িয়ে দেওয়া হলো
 
     for cand in candidates:
         if cand.id == product.id: continue
@@ -831,25 +859,25 @@ def compare_prices_api(request, slug):
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # ৪. Retrieve all listings (Ordered by Price)
+    # ৩. লিস্টিং সংগ্রহ
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    # ৫. Seller-based unique deal filter
     comparison_list = []
-    seen_urls = set()  # To stop the same URL from coming up again and again
+    seen_urls = set()
     active_matched_product_ids = set()
+    prices = []
 
     for listing in listings:
-        # If this deal URL has been found before, skip it.
-        if listing.external_url in seen_urls:
-            continue
-            
+        if listing.external_url in seen_urls: continue
+        
+        total_p = float(listing.get_total_price())
         seen_urls.add(listing.external_url)
         active_matched_product_ids.add(listing.product.id)
+        prices.append(total_p)
 
         comparison_list.append({
             'platform': listing.platform.name,
@@ -858,22 +886,18 @@ def compare_prices_api(request, slug):
             'listing_id': listing.external_id,
             'clean_title': clean_display_title(listing.product.title),
             'price': float(listing.price),
-            'currency': listing.currency,
-            'shipping_cost': float(listing.shipping_cost or 0),
-            'total_price': float(listing.get_total_price()),
+            'total_price': total_p,
             'url': listing.external_url,
             'main_image': listing.product.main_image,
-            'condition': listing.get_condition_display(),
             'seller': listing.seller_username or "Unknown Seller",
-            'last_updated': listing.last_checked,
         })
 
-    # 6. Sort all deals from lowest to highest by price
-    # In this, different sellers from different platforms will be serialized by price
-    comparison_list = sorted(comparison_list, key=lambda x: x['total_price'])
-
-    # ৭. মেটা ডাটা ক্যালকুলেশন
-    unique_platforms = set(item['platform_code'] for item in comparison_list)
+    # ৪. সেভিংস ক্যালকুলেশন (price_analysis)
+    analysis = {
+        'lowest_price': min(prices) if prices else 0,
+        'highest_price': max(prices) if prices else 0,
+        'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+    }
 
     return success_response({
         'product': {
@@ -883,15 +907,15 @@ def compare_prices_api(request, slug):
             'brand': product.brand,
             'main_image': product.main_image,
         },
+        'price_analysis': analysis, # এটি এড করা হয়েছে
         'meta': {
             'total_deals_found': len(comparison_list),     
-            'total_platforms': len(unique_platforms),     
             'matched_products_count': len(active_matched_product_ids),
             'active_ids': list(active_matched_product_ids)
         },
         'price_comparison': comparison_list,           
         'best_deal': comparison_list[0] if comparison_list else None 
-    }, message="Price comparison for all unique sellers fetched successfully")
+    }, message="Price comparison fetched successfully")
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
