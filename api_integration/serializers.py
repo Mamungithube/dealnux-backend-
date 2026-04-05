@@ -138,6 +138,9 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     lowest_price  = serializers.SerializerMethodField()
     is_favorite   = serializers.SerializerMethodField()
     is_cart       = serializers.SerializerMethodField()
+    platform_name = serializers.SerializerMethodField()
+    external_url  = serializers.SerializerMethodField()
+    is_available  = serializers.SerializerMethodField()
     # price_analysis = serializers.SerializerMethodField()
 
     class Meta:
@@ -147,9 +150,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'category', 'category_name',
             'brand', 'main_image', 'images',
             'lowest_price', 
+            'platform_name', 'external_url', 'is_available',
             'is_active', 'created_at',
             'is_favorite', 
-            'is_cart',      
+            'is_cart',
         ]
 
     def get_is_favorite(self, obj):
@@ -163,6 +167,18 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     def get_lowest_price(self, obj):
         price = obj.get_lowest_price()
         return float(price) if price else None
+    
+    def get_platform_name(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.platform.name if best else "N/A"
+
+    def get_external_url(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.external_url if best else ""
+
+    def get_is_available(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.is_available if best else False
 
     # def get_listings(self, obj):
 

@@ -21,9 +21,7 @@ from .serializers import (
     OrderSerializer, OrderCreateSerializer,
     CouponSerializer, CouponValidateSerializer,
 )
-
 logger = logging.getLogger(__name__)
-
 
 class CustomPagination(PageNumberPagination):
     page_size = 10
