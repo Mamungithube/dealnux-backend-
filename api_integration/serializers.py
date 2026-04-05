@@ -134,19 +134,19 @@ class ProductSerializer(serializers.ModelSerializer):
 class ProductDetailSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     images        = ProductImageSerializer(many=True, read_only=True)
-    listings      = serializers.SerializerMethodField()
+    # listings      = serializers.SerializerMethodField()
     lowest_price  = serializers.SerializerMethodField()
     is_favorite   = serializers.SerializerMethodField()
     is_cart       = serializers.SerializerMethodField()
-    price_analysis = serializers.SerializerMethodField()
+    # price_analysis = serializers.SerializerMethodField()
 
     class Meta:
         model  = Product
         fields = [
             'id', 'title', 'slug', 'description',
             'category', 'category_name',
-            'brand', 'main_image', 'images','price_analysis',
-            'lowest_price', 'listings',
+            'brand', 'main_image', 'images',
+            'lowest_price', 
             'is_active', 'created_at',
             'is_favorite', 
             'is_cart',      
@@ -164,35 +164,35 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         price = obj.get_lowest_price()
         return float(price) if price else None
 
-    def get_listings(self, obj):
+    # def get_listings(self, obj):
 
-        listings = obj.listings.filter(
-            is_available=True, 
-            price__gt=0  
-        ).select_related('platform').order_by('price')
+    #     listings = obj.listings.filter(
+    #         is_available=True, 
+    #         price__gt=0  
+    #     ).select_related('platform').order_by('price')
         
-        return ProductListingSerializer(listings, many=True).data
+    #     return ProductListingSerializer(listings, many=True).data
     
-    def get_price_analysis(self, obj):
-        listings = obj.listings.filter(is_available=True, price__gt=0)
+    # def get_price_analysis(self, obj):
+    #     listings = obj.listings.filter(is_available=True, price__gt=0)
         
-        if listings.count() < 2:
-            price = float(listings.first().price) if listings.exists() else 0
-            return {
-                "lowest_price": price,
-                "highest_price": price,
-                "potential_savings": 0.0
-            }
+    #     if listings.count() < 2:
+    #         price = float(listings.first().price) if listings.exists() else 0
+    #         return {
+    #             "lowest_price": price,
+    #             "highest_price": price,
+    #             "potential_savings": 0.0
+    #         }
 
-        prices = [float(l.price) for l in listings]
-        low = min(prices)
-        high = max(prices)
+    #     prices = [float(l.price) for l in listings]
+    #     low = min(prices)
+    #     high = max(prices)
         
-        return {
-            "lowest_price": low,
-            "highest_price": high,
-            "potential_savings": round(high - low, 2)
-        }
+    #     return {
+    #         "lowest_price": low,
+    #         "highest_price": high,
+    #         "potential_savings": round(high - low, 2)
+    #     }
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):

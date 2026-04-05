@@ -93,20 +93,14 @@ def token_similarity(title1, title2):
 @permission_classes([AllowAny])
 def product_detail(request, pk):
     product = None
-    seller_product = None
 
     try:
         from store.models import SellerProduct
         seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
-        
         if seller_product:
             if seller_product.linked_product:
-                # যদি মেইন প্রোডাক্টের সাথে লিঙ্ক থাকে, তবে সেটিই মেইন প্রোডাক্ট
                 product = seller_product.linked_product
             else:
-                # যদি লিঙ্ক না থাকে, তবে এই সেলার প্রোডাক্টটিকেই মেইন প্রোডাক্ট হিসেবে ধরুন
-                # (এক্ষেত্রে সেলার প্রোডাক্টের ইনফরমেশনই ডিটেইলসে দেখাবে)
-                # নোট: আপনার সিরিয়ালাইজার যদি শুধু 'Product' মডেল সাপোর্ট করে, তবে লিঙ্ক করা জরুরি।
                 return success_response(SellerProductSerializer(seller_product).data) 
     except ImportError:
         pass
@@ -117,33 +111,12 @@ def product_detail(request, pk):
     if not product:
         return error_response("Product not found", code=404)
 
-    # ── context build ──
     context = {'request': request}
     if request.user.is_authenticated:
-        from api_integration.models import CartItem, Favorite
-        context['favorite_ids'] = set(
-            Favorite.objects.filter(user=request.user)
-            .values_list('product_id', flat=True)
-        )
-        context['cart_product_ids'] = set(
-            CartItem.objects.filter(user=request.user)
-            .values_list('product_id', flat=True)
-        )
+        context['favorite_ids'] = set(Favorite.objects.filter(user=request.user).values_list('product_id', flat=True))
+        context['cart_product_ids'] = set(CartItem.objects.filter(user=request.user).values_list('product_id', flat=True))
     else:
-        context['favorite_ids']     = set()
-        context['cart_product_ids'] = set()
-
-    # ── তোমার existing logic ──
-    all_listings = product.listings.filter(is_available=True, price__gt=0)
-
-    exact_listings     = []
-    related_candidates = []
-
-    for listing in all_listings:
-        if "256GB" in listing.external_url or "512GB" in listing.external_url:
-            related_candidates.append(listing)
-        else:
-            exact_listings.append(listing)
+        context['favorite_ids'], context['cart_product_ids'] = set(), set()
 
     related_products = Product.objects.filter(
         category=product.category,
@@ -153,12 +126,9 @@ def product_detail(request, pk):
     serializer = ProductDetailSerializer(product, context=context)
     data = serializer.data
 
-    data['listings'] = ProductListingSerializer(exact_listings, many=True).data
-    data['related_products'] = ProductSerializer(
-        related_products, many=True, context=context
-    ).data
+    data['related_products'] = ProductSerializer(related_products, many=True, context=context).data
 
-    return success_response(data, message="Product fetched with related items")
+    return success_response(data, message="Product details fetched successfully")
 # ============================================================================
 # Response Helpers
 # ============================================================================
