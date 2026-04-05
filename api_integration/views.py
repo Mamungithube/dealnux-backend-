@@ -477,10 +477,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         except Product.DoesNotExist:
             pass
 
-        import re
-        from difflib import SequenceMatcher
-        from django.db.models import Q
-
         slug_as_title = slug.replace('-', ' ').lower()
         slug_as_title = re.sub(r'\d+opens?', '', slug_as_title)
         slug_as_title = re.sub(r'opens?\s+in\s+a\s+new', '', slug_as_title)
@@ -655,7 +651,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         user = request.user
         
-        # ডিটেইলস পেজের মতো এখানেও লজিক চেক করবে
         listings = product.listings.filter(is_available=True, price__gt=0)
         
         if listings.count() < 2:
@@ -800,7 +795,7 @@ def model_number_check(core1: str, core2: str) -> bool:
 
 
 def product_match_score(title1: str, title2: str) -> float:
-    """0–100 score। 75+ হলে same product ধরো।"""
+
     if not storage_check(title1, title2):
         return 0.0
 
@@ -840,18 +835,18 @@ def compare_prices_api(request, slug):
         k_query = Q()
         for word in keywords:
             if len(word) > 2: 
-                k_query &= Q(title__icontains=word) # '&' দিয়ে AND করা হয়েছে
+                k_query &= Q(title__icontains=word) 
         q_filter &= k_query
 
-    # ক্যাটাগরিও ম্যাচ করা হলো যাতে খেলনা ফোন আর সুইং সেট আলাদা থাকে
+
     if product.category:
         q_filter &= Q(category=product.category)
 
     candidates = Product.objects.filter(q_filter)
 
-    # ২. NLP matching
+
     matched_ids = [product.id]
-    THRESHOLD = 75 # একটু বাড়িয়ে দেওয়া হলো
+    THRESHOLD = 75 
 
     for cand in candidates:
         if cand.id == product.id: continue
@@ -892,7 +887,6 @@ def compare_prices_api(request, slug):
             'seller': listing.seller_username or "Unknown Seller",
         })
 
-    # ৪. সেভিংস ক্যালকুলেশন (price_analysis)
     analysis = {
         'lowest_price': min(prices) if prices else 0,
         'highest_price': max(prices) if prices else 0,
@@ -907,7 +901,7 @@ def compare_prices_api(request, slug):
             'brand': product.brand,
             'main_image': product.main_image,
         },
-        'price_analysis': analysis, # এটি এড করা হয়েছে
+        'price_analysis': analysis, 
         'meta': {
             'total_deals_found': len(comparison_list),     
             'matched_products_count': len(active_matched_product_ids),
@@ -960,7 +954,6 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='tree')
     def tree(self, request):
-        # শুধু parent categories (parent=None)
         parents = Category.objects.filter(
             parent=None).prefetch_related('children')
         serializer = CategoryTreeSerializer(parents, many=True)

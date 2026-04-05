@@ -1,3 +1,4 @@
+from rest_framework.views import APIView
 import math
 import time
 import logging
@@ -23,9 +24,7 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.response import Response
-import time
+
 class CustomPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
@@ -54,7 +53,7 @@ class CustomPagination(PageNumberPagination):
                 "total_pages": self.page.paginator.num_pages,
                 "current_page": self.page.number,
                 "page_size": self.get_page_size(self.request),
-                "has_next": self.page.has_next(), 
+                "has_next": self.page.has_next(),
                 "has_previous": self.page.has_previous(),
                 "next_page": next_page_number,
                 "prev_page": prev_page_number,
@@ -63,6 +62,8 @@ class CustomPagination(PageNumberPagination):
 # ============================================================================
 # Helpers
 # ============================================================================
+
+
 def success_response(data=None, message="Success", code=200):
     response = {
         "success": True,
@@ -107,7 +108,7 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
     User submits a request to become a seller.
     Admin approves/rejects it.
     """
-    serializer_class   = SellerRequestSerializer
+    serializer_class = SellerRequestSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -126,7 +127,8 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(
+            data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         return success_response(serializer.data, message="Seller request submitted successfully", code=201)
@@ -186,9 +188,9 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 # ============================================================================
 
 class SellerProfileViewSet(viewsets.ModelViewSet):
-    serializer_class   = SellerProfileSerializer
+    serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class   = StandardPagination
+    pagination_class = StandardPagination
 
     def get_queryset(self):
         if self.request.user.is_staff:
@@ -210,7 +212,8 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
         if not request.user.is_staff and instance.user != request.user:
             return error_response("Permission denied.", code=403)
         partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return success_response(serializer.data, message="Seller profile updated")
@@ -252,22 +255,24 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-    
-        # Admin
+
+        # Admin:
         if user.is_authenticated and user.is_staff:
-            qs = SellerProduct.objects.select_related('seller', 'category').all()
+            qs = SellerProduct.objects.select_related(
+                'seller', 'category').all()
             status_filter = self.request.query_params.get('status')
             if status_filter:
                 qs = qs.filter(status=status_filter.upper())
-            return qs
-    
-        # Seller own products (all status)
+            return qs.order_by('?')  
+
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
-                return SellerProduct.objects.filter(seller=user.seller_profile)
-    
-        # Public - only APPROVED
-        qs = SellerProduct.objects.filter(status='APPROVED').select_related('seller', 'category')
+                
+                return SellerProduct.objects.filter(seller=user.seller_profile).order_by('-created_at')
+
+        qs = SellerProduct.objects.filter(
+            status='APPROVED').select_related('seller', 'category')
+
         search = self.request.query_params.get('search')
         if search:
             qs = qs.filter(
@@ -275,19 +280,23 @@ class SellerProductViewSet(viewsets.ModelViewSet):
                 | Q(description__icontains=search)
                 | Q(brand__icontains=search)
             )
+
         category = self.request.query_params.get('category')
         if category:
             qs = qs.filter(category__slug=category)
-        return qs
+
+        return qs.order_by('?')
 
     def perform_create(self, serializer):
         if not is_approved_seller(self.request.user):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("You must be an approved seller to add products.")
+            raise PermissionDenied(
+                "You must be an approved seller to add products.")
         serializer.save(seller=self.request.user.seller_profile)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(
+            data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         return success_response(serializer.data, message="Product submitted for review.", code=201)
@@ -295,11 +304,11 @@ class SellerProductViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(qs)
-        
+
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-            
+
         serializer = self.get_serializer(qs, many=True)
         return success_response(serializer.data, message="Products fetched")
 
@@ -314,7 +323,8 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             return error_response("Permission denied.", code=403)
         # When editing an approved product, it returns to PENDING
         partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
         if not request.user.is_staff and obj.status == 'APPROVED':
@@ -328,8 +338,6 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             return error_response("Permission denied.", code=403)
         instance.delete()
         return success_response({}, message="Product deleted.")
-    
-    
 
     # ── Seller: their own products ─────────────────────────────────────────
 
@@ -337,23 +345,24 @@ class SellerProductViewSet(viewsets.ModelViewSet):
     def my_products(self, request):
         if not is_approved_seller(request.user):
             return error_response("You are not an approved seller.", code=403)
-    
+
         try:
-            page      = max(1, int(request.query_params.get('page', 1)))
-            page_size = min(max(1, int(request.query_params.get('page_size', 10))), 50)
+            page = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(
+                max(1, int(request.query_params.get('page_size', 10))), 50)
         except (ValueError, TypeError):
             page, page_size = 1, 10
-    
-        qs          = SellerProduct.objects.filter(seller=request.user.seller_profile)
+
+        qs = SellerProduct.objects.filter(seller=request.user.seller_profile)
         total_count = qs.count()
         total_pages = math.ceil(total_count / page_size)
-    
-        start   = (page - 1) * page_size
-        end     = start + page_size
+
+        start = (page - 1) * page_size
+        end = start + page_size
         results = qs[start:end]
-    
+
         serializer = SellerProductSerializer(results, many=True)
-    
+
         return success_response({
             'products': serializer.data,
             'pagination': {
@@ -408,9 +417,10 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 # Order ViewSet
 # ============================================================================
 
+
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    pagination_class   = StandardPagination
+    pagination_class = StandardPagination
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -429,7 +439,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         return qs.distinct()
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(
+            data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         order = serializer.save()
         return success_response(
@@ -491,7 +502,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 # ============================================================================
 
 class CouponViewSet(viewsets.ModelViewSet):
-    serializer_class   = CouponSerializer
+    serializer_class = CouponSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -509,7 +520,8 @@ class CouponViewSet(viewsets.ModelViewSet):
         serializer.save(seller=self.request.user.seller_profile)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(
+            data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         return success_response(serializer.data, message="Coupon created.", code=201)
@@ -521,7 +533,7 @@ class CouponViewSet(viewsets.ModelViewSet):
         serializer = CouponValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        coupon       = serializer.validated_data['coupon']
+        coupon = serializer.validated_data['coupon']
         order_amount = serializer.validated_data['order_amount']
 
         if coupon.discount_type == 'PERCENTAGE':
@@ -545,7 +557,6 @@ class CouponViewSet(viewsets.ModelViewSet):
 # Seller Dashboard
 # ============================================================================
 
-from rest_framework.views import APIView
 
 class SellerDashboardView(APIView):
     permission_classes = [IsAuthenticated]
@@ -554,12 +565,16 @@ class SellerDashboardView(APIView):
         if not is_approved_seller(request.user):
             return error_response("You are not an approved seller.", code=403)
 
-        seller  = request.user.seller_profile
-        pending = SellerProduct.objects.filter(seller=seller, status='PENDING').count()
-        approved = SellerProduct.objects.filter(seller=seller, status='APPROVED').count()
-        rejected = SellerProduct.objects.filter(seller=seller, status='REJECTED').count()
+        seller = request.user.seller_profile
+        pending = SellerProduct.objects.filter(
+            seller=seller, status='PENDING').count()
+        approved = SellerProduct.objects.filter(
+            seller=seller, status='APPROVED').count()
+        rejected = SellerProduct.objects.filter(
+            seller=seller, status='REJECTED').count()
 
-        recent_orders = Order.objects.filter(seller=seller).order_by('-created_at')[:5]
+        recent_orders = Order.objects.filter(
+            seller=seller).order_by('-created_at')[:5]
 
         data = {
             "shop_name":      seller.shop_name,
