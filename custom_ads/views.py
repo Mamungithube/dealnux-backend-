@@ -117,78 +117,70 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
 
 
 class CreateAdView(generics.CreateAPIView):
-    """
-    Approved advertisers can create ads
-    POST: /api/ads/create/
-    """
     serializer_class = AdSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, *args, **kwargs):
-        # Check if user is approved advertiser
         if not request.user.ads_provided:
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_403_FORBIDDEN,
-                    "message": "You must be an approved advertiser to create ads. Please apply first.",
-                    "timestamp": int(time.time()),
-                    "data": {
-                        "detail": "You must be an approved advertiser to create ads. Please apply first."
-                    }
-                },
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"error": "Not an approved advertiser"}, status=403)
 
-        # Validate serializer
         serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_400_BAD_REQUEST,
-                    "message": "Invalid ad data.",
-                    "timestamp": int(time.time()),
-                    "data": serializer.errors
-                },
-                status=status.HTTP_400_BAD_REQUEST
+        serializer.is_valid(raise_exception=True)
+        
+        # ১. বিজ্ঞাপনটি 'pending' হিসেবে সেভ করা (পেমেন্ট না হওয়া পর্যন্ত এটি লাইভ হবে না)
+        ad = serializer.save(advertiser=request.user, is_approved=False, status='pending')
+        
+        # ২. পেমেন্ট রেকর্ড তৈরি করা
+        payment = Payment.objects.create(
+            buyer=request.user,
+            ad=ad,
+            payment_type='AD',
+            unit_price=ad.total_budget,
+            total_amount=ad.total_budget,
+            final_amount=ad.total_budget,
+            currency='usd', # বা আপনার কারেন্সি
+            status='PENDING'
+        )
+
+        # ৩. Stripe Checkout Session তৈরি করা
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': int(ad.total_budget * 100), # Cents এ রূপান্তর
+                        'product_data': {
+                            'name': f"Ad Campaign: {ad.title}",
+                            'description': f"Budget for {ad.target_section} section",
+                        },
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=settings.STRIPE_SUCCESS_URL + "?session_id={CHECKOUT_SESSION_ID}",
+                cancel_url=settings.STRIPE_CANCEL_URL,
+                metadata={
+                    'payment_id': payment.id,
+                    'ad_id': ad.id,
+                    'type': 'ad_payment'
+                }
             )
 
-        # Create ad
-        try:
-            serializer.save(advertiser=request.user)
-            return Response(
-                {
-                    "success": True,
-                    "code": status.HTTP_201_CREATED,
-                    "message": "Ad created successfully and submitted for review.",
-                    "timestamp": int(time.time()),
-                    "data": serializer.data
-                },
-                status=status.HTTP_201_CREATED
-            )
-        except IntegrityError as e:
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "message": "Database error occurred.",
-                    "timestamp": int(time.time()),
-                    "data": {"detail": [str(e)]}
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            payment.stripe_checkout_session_id = session.id
+            payment.stripe_checkout_url = session.url
+            payment.save()
+
+            return Response({
+                "message": "Ad submitted. Please complete payment to proceed to admin review.",
+                "checkout_url": session.url,
+                "ad_id": ad.id
+            }, status=201)
+
         except Exception as e:
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    "message": "Failed to create ad.",
-                    "timestamp": int(time.time()),
-                    "data": {"detail": [str(e)]}
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            transaction.set_rollback(True)
+            return Response({"error": str(e)}, status=500)
 
 
 """--------------------Public Ad List (Weighted Algorithm)-----------------------"""

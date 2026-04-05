@@ -35,6 +35,7 @@ from .serializers import (
     CategorySerializer, PriceHistorySerializer,
     CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer
 )
+from store.serializers import SellerProductSerializer
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -91,7 +92,28 @@ def token_similarity(title1, title2):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def product_detail(request, pk):
-    product = Product.objects.filter(id=pk, is_active=True).first()
+    product = None
+    seller_product = None
+
+    try:
+        from store.models import SellerProduct
+        seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
+        
+        if seller_product:
+            if seller_product.linked_product:
+                # যদি মেইন প্রোডাক্টের সাথে লিঙ্ক থাকে, তবে সেটিই মেইন প্রোডাক্ট
+                product = seller_product.linked_product
+            else:
+                # যদি লিঙ্ক না থাকে, তবে এই সেলার প্রোডাক্টটিকেই মেইন প্রোডাক্ট হিসেবে ধরুন
+                # (এক্ষেত্রে সেলার প্রোডাক্টের ইনফরমেশনই ডিটেইলসে দেখাবে)
+                # নোট: আপনার সিরিয়ালাইজার যদি শুধু 'Product' মডেল সাপোর্ট করে, তবে লিঙ্ক করা জরুরি।
+                return success_response(SellerProductSerializer(seller_product).data) 
+    except ImportError:
+        pass
+
+    if not product:
+        product = Product.objects.filter(id=pk, is_active=True).first()
+
     if not product:
         return error_response("Product not found", code=404)
 

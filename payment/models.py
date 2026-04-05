@@ -11,6 +11,9 @@ class Payment(models.Model):
         ('REFUNDED',  'Refunded'),
         ('CANCELLED', 'Cancelled'),
     ]
+    ad = models.ForeignKey('custom_ads.CustomAd', on_delete=models.SET_NULL, 
+                            null=True, blank=True, related_name='payments')
+    payment_type = models.CharField(max_length=20, choices=[('STORE', 'Store Product'), ('AD', 'Custom Ad')], default='STORE')
     buyer               = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments')
     seller_product      = models.ForeignKey(SellerProduct, on_delete=models.SET_NULL, 
                             null=True, related_name='payments')
