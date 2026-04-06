@@ -73,7 +73,9 @@ class Product(models.Model):
     # Category
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True,
                                  blank=True, related_name='products')
-
+    
+    review_count = models.IntegerField(null=True, blank=True, default=0)
+    rating = models.FloatField(null=True, blank=True, default=0.0)
     # Identifiers
     brand = models.CharField(max_length=200, blank=True)
     model_number = models.CharField(max_length=200, blank=True)
