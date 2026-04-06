@@ -122,6 +122,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'lowest_price', 'listings_count', 'available_on',
             'is_active', 'created_at', 'is_favorite', 'is_cart',
             'has_coupon', 'coupon_text', 'deal_badge', 'is_best_seller',
+            'rating', 'review_count'
             
             # 'description', 'model_number', 'last_synced', 'updated_at',
         ]
