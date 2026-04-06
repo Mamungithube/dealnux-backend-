@@ -33,15 +33,18 @@ class AmazonService:
             'deals_and_discounts': 'NONE',
         }
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20)
             # print(f"API Response: {response.json()}")
             logger.debug(f"Amazon search status: {response.status_code}")
             if response.status_code == 200:
                 data = response.json().get('data', {})
                 products = data.get('products', [])
-                logger.info(f"Amazon search '{query}': {len(products)} results")
+                logger.info(
+                    f"Amazon search '{query}': {len(products)} results")
                 return products[:limit]
-            logger.error(f"Amazon search error {response.status_code}: {response.text[:300]}")
+            logger.error(
+                f"Amazon search error {response.status_code}: {response.text[:300]}")
             return []
         except Exception as e:
             logger.error(f"Amazon search exception: {e}")
@@ -54,10 +57,12 @@ class AmazonService:
         url = f"https://{self.host}/product-details"
         params = {'asin': asin, 'country': country}
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20)
             if response.status_code == 200:
                 return response.json().get('data', {})
-            logger.error(f"Amazon product-details error {response.status_code}: {asin}")
+            logger.error(
+                f"Amazon product-details error {response.status_code}: {asin}")
             return None
         except Exception as e:
             logger.error(f"Amazon product-details exception ({asin}): {e}")
@@ -75,7 +80,8 @@ class AmazonService:
             'page': '1',
         }
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20)
             if response.status_code == 200:
                 return response.json().get('data', {})
             return None
@@ -104,7 +110,7 @@ class AmazonService:
             )
         except (ValueError, TypeError):
             price = 0.0
-        
+
         # ── Original / list price ─────────────────────────────────────────
         original_price_str = (
             item.get('product_original_price')
@@ -122,12 +128,12 @@ class AmazonService:
                 )
             except (ValueError, TypeError):
                 original_price = None
-        
+
         # ── If price is 0, replace with original_price ─────────────────────
         if price == 0.0 and original_price:
             price = original_price
             original_price = None
-        
+
         # ── Discount ──────────────────────────────────────────────────────
         discount_percentage = None
         if original_price and price and original_price > price:
@@ -138,11 +144,13 @@ class AmazonService:
         # ── Rating / reviews ─────────────────────────────────────────────
         rating_raw = item.get('product_star_rating') or item.get('rating') or 0
         try:
-            seller_rating = float(str(rating_raw).split()[0]) * 20  # 5-star → 0-100 scale
+            seller_rating = float(str(rating_raw).split()[
+                                  0]) * 20  # 5-star → 0-100 scale
         except (ValueError, TypeError):
             seller_rating = None
 
-        review_count_raw = item.get('product_num_ratings') or item.get('reviews_count') or 0
+        review_count_raw = item.get(
+            'product_num_ratings') or item.get('reviews_count') or 0
         try:
             review_count = int(str(review_count_raw).replace(',', '').strip())
         except (ValueError, TypeError):
@@ -157,7 +165,8 @@ class AmazonService:
         )
         additional_images = item.get('product_photos', []) or []
         if isinstance(additional_images, list):
-            additional_images = [img for img in additional_images if img != main_image][:9]
+            additional_images = [
+                img for img in additional_images if img != main_image][:9]
 
         # ── ASIN / external ID ───────────────────────────────────────────
         external_id = (
@@ -174,7 +183,8 @@ class AmazonService:
         )
 
         # ── Availability ─────────────────────────────────────────────────
-        availability_raw = item.get('product_availability') or item.get('availability') or ''
+        availability_raw = item.get(
+            'product_availability') or item.get('availability') or ''
         is_available = item.get('is_available', True)
         if isinstance(availability_raw, str):
             is_available = 'in stock' in availability_raw.lower() or is_available
@@ -191,7 +201,8 @@ class AmazonService:
 
         # ── Shipping ─────────────────────────────────────────────────────
         shipping_raw = item.get('delivery') or item.get('shipping') or ''
-        free_shipping = 'free' in str(shipping_raw).lower() or price >= 25  # Amazon free shipping threshold
+        free_shipping = 'free' in str(shipping_raw).lower(
+        ) or price >= 25  # Amazon free shipping threshold
 
         return {
             'external_id': external_id,
@@ -219,7 +230,7 @@ class AmazonService:
                 or item.get('url')
                 or (f"https://www.amazon.com/dp/{external_id}" if external_id else '')
             ),
-            
+
             'price': price,
             'currency': 'USD',
             'original_price': original_price,
@@ -234,6 +245,19 @@ class AmazonService:
             'item_location': 'United States',
             'ships_from_country': 'US',
             'brand': brand,
+            'has_coupon': bool(
+                item.get('has_coupon', False)
+                or item.get('coupon_text')
+                or item.get('coupon_badge_text')
+            ),
+            'coupon_text':    item.get('coupon_text') or item.get('coupon_badge_text') or '',
+            'deal_badge':     (
+                item.get('deal_badge')
+                or item.get('deal_text')
+                or item.get('product_badge')  # ← এটা যোগ করুন
+                or ''
+            ),
+            'is_best_seller': bool(item.get('is_best_seller', False)),
             'model_number': (
                 item.get('model_number')
                 or item.get('model')

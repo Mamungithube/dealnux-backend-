@@ -2,7 +2,7 @@ from rest_framework import serializers
 from twisted.test import obj
 from .models import (
     Platform, Category, Product, ProductListing,
-    ProductImage, ProductSpecification, PriceHistory , Favorite
+    ProductImage, ProductSpecification, PriceHistory, Favorite
 )
 from rest_framework import serializers
 from .models import CartItem
@@ -38,10 +38,12 @@ class CategorySerializer(serializers.ModelSerializer):
             category__id__in=all_ids, is_active=True
         ).count()
 
+
 class CategoryChildSerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ['id', 'name', 'slug']
+
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = CategoryChildSerializer(many=True, read_only=True)
@@ -50,7 +52,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         model = Category
         fields = ['id', 'name', 'slug', 'children']
 
-        
+
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
@@ -64,12 +66,14 @@ class ProductSpecificationSerializer(serializers.ModelSerializer):
 
 
 class ProductListingSerializer(serializers.ModelSerializer):
-    platform_name = serializers.CharField(source='platform.name', read_only=True)
-    platform_code = serializers.CharField(source='platform.code', read_only=True)
-    total_price   = serializers.SerializerMethodField()
+    platform_name = serializers.CharField(
+        source='platform.name', read_only=True)
+    platform_code = serializers.CharField(
+        source='platform.code', read_only=True)
+    total_price = serializers.SerializerMethodField()
 
     class Meta:
-        model  = ProductListing
+        model = ProductListing
         fields = [
             'id',
             'platform_name',
@@ -84,6 +88,10 @@ class ProductListingSerializer(serializers.ModelSerializer):
             'total_price',
             'external_url',
             'is_available',
+            'has_coupon',
+            'coupon_text',
+            'deal_badge',
+            'is_best_seller',
         ]
 
     def get_total_price(self, obj):
@@ -99,6 +107,12 @@ class ProductSerializer(serializers.ModelSerializer):
     is_favorite = serializers.SerializerMethodField()
     is_cart = serializers.SerializerMethodField()
 
+    has_coupon = serializers.SerializerMethodField()
+    coupon_text = serializers.SerializerMethodField()
+    deal_badge = serializers.SerializerMethodField()
+    is_best_seller = serializers.SerializerMethodField()
+
+
     class Meta:
         model = Product
         fields = [
@@ -106,7 +120,9 @@ class ProductSerializer(serializers.ModelSerializer):
             'category', 'category_name',
             'main_image',
             'lowest_price', 'listings_count', 'available_on',
-            'is_active', 'created_at','is_favorite','is_cart' ,
+            'is_active', 'created_at', 'is_favorite', 'is_cart',
+            'has_coupon', 'coupon_text', 'deal_badge', 'is_best_seller',
+            
             # 'description', 'model_number', 'last_synced', 'updated_at',
         ]
 
@@ -129,31 +145,59 @@ class ProductSerializer(serializers.ModelSerializer):
         platforms = obj.listings.filter(is_available=True).values_list(
             'platform__name', flat=True).distinct()
         return list(platforms)
+    
+    def get_has_coupon(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.has_coupon if best else False
+
+    def get_coupon_text(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.coupon_text if best else ''
+
+    def get_deal_badge(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.deal_badge if best else ''
+
+    def get_is_best_seller(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.is_best_seller if best else False
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    images        = ProductImageSerializer(many=True, read_only=True)
+    category_name = serializers.CharField(
+        source='category.name', read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
     # listings      = serializers.SerializerMethodField()
-    lowest_price  = serializers.SerializerMethodField()
-    is_favorite   = serializers.SerializerMethodField()
-    is_cart       = serializers.SerializerMethodField()
+    lowest_price = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
+    is_cart = serializers.SerializerMethodField()
     platform_name = serializers.SerializerMethodField()
-    external_url  = serializers.SerializerMethodField()
-    is_available  = serializers.SerializerMethodField()
+    external_url = serializers.SerializerMethodField()
+    is_available = serializers.SerializerMethodField()
+    shipping_cost = serializers.SerializerMethodField()
+    has_coupon = serializers.SerializerMethodField()
+    coupon_text = serializers.SerializerMethodField()
+    deal_badge = serializers.SerializerMethodField()
+    is_best_seller = serializers.SerializerMethodField()
+    listings = serializers.SerializerMethodField()
     # price_analysis = serializers.SerializerMethodField()
 
     class Meta:
-        model  = Product
+        model = Product
         fields = [
             'id', 'title', 'slug', 'description',
             'category', 'category_name',
             'brand', 'main_image', 'images',
-            'lowest_price', 
+            'lowest_price', 'shipping_cost',
             'platform_name', 'external_url', 'is_available',
             'is_active', 'created_at',
-            'is_favorite', 
+            'is_favorite',
             'is_cart',
+            'has_coupon',
+            'coupon_text',
+            'deal_badge',
+            'is_best_seller',
+            'listings',
         ]
 
     def get_is_favorite(self, obj):
@@ -167,7 +211,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     def get_lowest_price(self, obj):
         price = obj.get_lowest_price()
         return float(price) if price else None
-    
+
     def get_platform_name(self, obj):
         best = obj.listings.filter(is_available=True).order_by('price').first()
         return best.platform.name if best else "N/A"
@@ -180,18 +224,49 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         best = obj.listings.filter(is_available=True).order_by('price').first()
         return best.is_available if best else False
 
+    def get_shipping_cost(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return float(best.shipping_cost) if best else 0.0
+
+    def get_has_coupon(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.has_coupon if best else False
+
+
+    def get_coupon_text(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.coupon_text if best else ''
+
+
+    def get_deal_badge(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.deal_badge if best else ''
+
+
+    def get_is_best_seller(self, obj):
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return best.is_best_seller if best else False
+
+
+    def get_listings(self, obj):
+        listings = obj.listings.filter(
+            is_available=True,
+            price__gt=0
+        ).select_related('platform').order_by('price')
+        return ProductListingSerializer(listings, many=True).data
+
     # def get_listings(self, obj):
 
     #     listings = obj.listings.filter(
-    #         is_available=True, 
-    #         price__gt=0  
+    #         is_available=True,
+    #         price__gt=0
     #     ).select_related('platform').order_by('price')
-        
+
     #     return ProductListingSerializer(listings, many=True).data
-    
+
     # def get_price_analysis(self, obj):
     #     listings = obj.listings.filter(is_available=True, price__gt=0)
-        
+
     #     if listings.count() < 2:
     #         price = float(listings.first().price) if listings.exists() else 0
     #         return {
@@ -203,7 +278,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     #     prices = [float(l.price) for l in listings]
     #     low = min(prices)
     #     high = max(prices)
-        
+
     #     return {
     #         "lowest_price": low,
     #         "highest_price": high,
@@ -224,22 +299,25 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    product_title = serializers.CharField(source='product.title', read_only=True)
-    product_image = serializers.URLField(source='product.main_image', read_only=True)
+    product_title = serializers.CharField(
+        source='product.title', read_only=True)
+    product_image = serializers.URLField(
+        source='product.main_image', read_only=True)
     listings = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'product_title', 'product_image', 'quantity', 'listings']
-
+        fields = ['id', 'product', 'product_title',
+                  'product_image', 'quantity', 'listings']
 
     def get_listings(self, obj):
-        listings = obj.product.listings.filter(is_available=True).select_related('platform')
+        listings = obj.product.listings.filter(
+            is_available=True).select_related('platform')
         return ProductListingSerializer(listings, many=True).data
 
     def validate(self, attrs):
         request = self.context.get('request')
-        user    = request.user if request else None
+        user = request.user if request else None
         product = attrs.get('product')
 
         if user and product:
@@ -253,8 +331,9 @@ class CartItemSerializer(serializers.ModelSerializer):
 
         return attrs
 
+
 class FavoriteSerializer(serializers.ModelSerializer):
-    product = serializers.SerializerMethodField() 
+    product = serializers.SerializerMethodField()
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source='product', write_only=True
     )
@@ -269,5 +348,3 @@ class FavoriteSerializer(serializers.ModelSerializer):
             obj.product,
             context=self.context
         ).data
-    
-

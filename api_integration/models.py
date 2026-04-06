@@ -182,6 +182,12 @@ class ProductListing(models.Model):
     is_available = models.BooleanField(default=True)
     last_checked = models.DateTimeField(auto_now=True)
 
+    has_coupon   = models.BooleanField(default=False)
+    coupon_text  = models.CharField(max_length=200, blank=True)
+    deal_type    = models.CharField(max_length=100, blank=True)  # LIGHTNING_DEAL etc.
+    deal_badge   = models.CharField(max_length=200, blank=True)  # "Limited time deal"
+    is_best_seller = models.BooleanField(default=False)
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

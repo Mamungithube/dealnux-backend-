@@ -452,9 +452,11 @@ class StandardResultsSetPagination(PageNumberPagination):
 # ============================================================================
 class ProductViewSet(viewsets.ModelViewSet):
 
-    queryset = Product.objects.filter(is_active=True).prefetch_related(
-        'listings', 'images', 'specifications', 'category'
-    )
+    queryset = Product.objects.all().prefetch_related(
+        'listings', 
+        'listings__platform', 
+        'images'
+    ).select_related('category')
     serializer_class = ProductSerializer
     pagination_class = StandardResultsSetPagination
     lookup_field = 'slug'
@@ -1736,9 +1738,9 @@ def category_compare_prices(request, slug):
 
     try:
         page = max(1, int(request.GET.get('page', 1)))
-        page_size = min(100, max(1, int(request.GET.get('page_size', 20))))
+        page_size = min(100, max(1, int(request.GET.get('page_size', 100))))
     except (ValueError, TypeError):
-        page, page_size = 1, 20
+        page, page_size = 1, 100
 
     total_count = products.count()
     total_pages = (total_count + page_size - 1) // page_size

@@ -1,3 +1,4 @@
+from PIL.Image import item
 import requests
 from django.conf import settings
 import logging
@@ -14,7 +15,7 @@ class WayfairService:
 
     def __init__(self):
         self.api_key = settings.RAPIDAPI_KEY
-        self.host    = 'wayfair.p.rapidapi.com'
+        self.host = 'wayfair.p.rapidapi.com'
         self.headers = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
@@ -26,7 +27,7 @@ class WayfairService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def search_products(self, query, limit=20, page=1):
-        url    = f"https://{self.host}/products/v2/search"
+        url = f"https://{self.host}/products/v2/search"
         params = {
             'keyword':      query.replace('-', ' '),
             'itemsPerPage': str(min(limit, 48)),
@@ -35,15 +36,16 @@ class WayfairService:
         }
 
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=30)
-            
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=30)
+
             if response.status_code == 200:
                 data = response.json()
-                
+
                 logger.info(f"Wayfair JSON Keys: {list(data.keys())}")
 
                 products = []
-                
+
                 d = data.get('data', {})
                 if d:
                     # path 1: keyword -> results -> products
@@ -51,8 +53,9 @@ class WayfairService:
                     products = k_res.get('results', {}).get('products', [])
 
                     if not products:
-                        products = d.get('category', {}).get('browse', {}).get('products', [])
-                    
+                        products = d.get('category', {}).get(
+                            'browse', {}).get('products', [])
+
                     if not products:
                         products = d.get('results', {}).get('products', [])
 
@@ -63,13 +66,15 @@ class WayfairService:
                                 return obj['products']
                             for v in obj.values():
                                 found = find_products_recursive(v)
-                                if found: return found
+                                if found:
+                                    return found
                         return None
                     products = find_products_recursive(data) or []
 
-                logger.info(f"Wayfair search result: {len(products)} products extracted")
+                logger.info(
+                    f"Wayfair search result: {len(products)} products extracted")
                 return products
-            
+
             logger.error(f"Wayfair API Error: {response.status_code}")
             return []
 
@@ -100,10 +105,10 @@ class WayfairService:
         external_id = str(item.get('sku') or '')
 
         # ── Price ────────────────────────────────────────────────────────────
-        pricing         = item.get('pricing', {}) or {}
-        customer_price  = pricing.get('customerPrice', {}) or {}
-        display_price   = customer_price.get('display', {}) or {}
-        unit_price      = customer_price.get('unitPrice', {}) or {}
+        pricing = item.get('pricing', {}) or {}
+        customer_price = pricing.get('customerPrice', {}) or {}
+        display_price = customer_price.get('display', {}) or {}
+        unit_price = customer_price.get('unitPrice', {}) or {}
 
         try:
             price = float(
@@ -116,8 +121,8 @@ class WayfairService:
 
         # ── Original Price ───────────────────────────────────────────────────
         list_price_info = pricing.get('listPrice', {}) or {}
-        list_unit       = list_price_info.get('unitPrice', {}) or {}
-        original_price  = None
+        list_unit = list_price_info.get('unitPrice', {}) or {}
+        original_price = None
         try:
             list_val = float(list_unit.get('value') or 0)
             if list_val > price:
@@ -134,7 +139,7 @@ class WayfairService:
 
         # ── Brand ────────────────────────────────────────────────────────────
         manufacturer = item.get('manufacturer', {}) or {}
-        brand        = manufacturer.get('name') or manufacturer.get('shortName') or ''
+        brand = manufacturer.get('name') or manufacturer.get('shortName') or ''
 
         # ── Title ────────────────────────────────────────────────────────────
         title = (item.get('name') or 'Wayfair Product').strip()
@@ -142,19 +147,20 @@ class WayfairService:
             title = f"{brand} {title}".strip()
 
         # ── URL ──────────────────────────────────────────────────────────────
-        external_url = item.get('url') or f"https://www.wayfair.com/product/{external_id}"
+        external_url = item.get(
+            'url') or f"https://www.wayfair.com/product/{external_id}"
 
         # ── Image ────────────────────────────────────────────────────────────
         lead_image = item.get('leadImage', {}) or {}
-        image_id   = lead_image.get('id', '')
+        image_id = lead_image.get('id', '')
         main_image = (
             f"https://assets.wfcdn.com/im/{image_id}/compr-r85/resize-h800-w800%5Ecompr-r85/{image_id}/image.jpg"
             if image_id else ''
         )
 
         # ── Rating ───────────────────────────────────────────────────────────
-        reviews     = item.get('customer_reviews', {}) or {}
-        rating_val  = reviews.get('average_rating_value', 0) or 0
+        reviews = item.get('customer_reviews', {}) or {}
+        rating_val = reviews.get('average_rating_value', 0) or 0
         review_count = int(reviews.get('rating_count', 0) or 0)
         try:
             seller_rating = float(rating_val) * 20  # 5-star → 0-100
@@ -163,18 +169,21 @@ class WayfairService:
 
         # ── Shipping ─────────────────────────────────────────────────────────
         shipping_info = item.get('shipping', {}) or {}
-        messages      = shipping_info.get('messages', []) or []
+        messages = shipping_info.get('messages', []) or []
         free_shipping = any(
             'free' in str(m.get('text', '')).lower()
             for m in messages
         )
 
         # ── Availability ─────────────────────────────────────────────────────
-        inventory   = item.get('inventory', {}) or {}
+        inventory = item.get('inventory', {}) or {}
         is_available = inventory.get('stockStatus', '') == 'IN_STOCK'
 
         # ── Promo ────────────────────────────────────────────────────────────
         promo_text = item.get('promo_text') or ''
+        promo_statuses = item.get('promotionStatuses', []) or []
+        deal_badge = promo_text or (promo_statuses[0].get(
+            'copy', '') if promo_statuses else '')
 
         return {
             'external_id':    external_id,
@@ -216,6 +225,11 @@ class WayfairService:
                 'free_shipping':  free_shipping,
                 'estimated_days': 5,
             },
+
+            'deal_badge':    deal_badge,   # "Sale"
+            'has_coupon':    False,
+            'coupon_text':   '',
+            'is_best_seller': False,
 
             'specifications': {
                 'Store':    'Wayfair',

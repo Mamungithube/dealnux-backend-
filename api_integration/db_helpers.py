@@ -3,7 +3,7 @@ import logging
 from django.db import transaction
 from django.utils.text import slugify
 from django.db.models import Q
-from .product_matcher import calculate_match_score 
+from .product_matcher import calculate_match_score
 
 logger = logging.getLogger(__name__)
 
@@ -380,11 +380,10 @@ _KEYWORD_CATEGORY_MAP = [
 def _resolve_category(category_path, title, cache):
     title_lower = (title or '').lower()
 
-
     if category_path:
         parts = [p.strip() for p in category_path.split('>')]
         for part in parts:
-            slug_key  = slugify(part)
+            slug_key = slugify(part)
             lower_key = part.lower()
             if slug_key in cache['by_slug']:
                 return cache['by_slug'][slug_key]
@@ -431,36 +430,38 @@ def _find_matching_product(title, brand, gtin, asin):
 
     if gtin:
         product = Product.objects.filter(gtin=gtin).first()
-        if product: return product
+        if product:
+            return product
 
     if asin:
         product = Product.objects.filter(asin=asin).first()
-        if product: return product
-
+        if product:
+            return product
 
     if title:
 
         brand_query = Q()
         if brand:
             brand_query = Q(brand__icontains=brand.split()[0])
-        
+
         # Search the database using the first 2 words of the title.
         search_words = title.split()[:2]
         title_q = Q()
         for word in search_words:
-            if len(word) > 2: title_q |= Q(title__icontains=word)
+            if len(word) > 2:
+                title_q |= Q(title__icontains=word)
 
-        candidates = Product.objects.filter(brand_query | title_q).only('id', 'title')
+        candidates = Product.objects.filter(
+            brand_query | title_q).only('id', 'title')
 
         best_match = None
         best_score = 0
-        
 
-        REQUIRED_THRESHOLD = 85  
+        REQUIRED_THRESHOLD = 85
 
         for cand in candidates:
             score = calculate_match_score(title, cand.title)
-            
+
             if score >= REQUIRED_THRESHOLD and score > best_score:
                 best_score = score
                 best_match = cand
@@ -483,7 +484,7 @@ _NON_USD_INDICATORS = [
     'CZK', 'HKD', 'SGD', 'NZD', 'ZAR', 'TRY', 'RUB', 'THB',
 ]
 
-MAX_REASONABLE_PRICE = 5000.0  
+MAX_REASONABLE_PRICE = 5000.0
 
 
 def is_valid_usd_price(price_raw_str, price_float):
@@ -496,7 +497,8 @@ def is_valid_usd_price(price_raw_str, price_float):
         if code in raw:
             return False
     if price_float > MAX_REASONABLE_PRICE:
-        logger.warning(f"Price anomaly detected: {price_float} — skipping listing")
+        logger.warning(
+            f"Price anomaly detected: {price_float} — skipping listing")
         return False
     return True
 
@@ -518,19 +520,19 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
     external_url = product_data.get('external_url', '').strip()
     external_id = product_data.get('external_id')
 
-
     if not title or title == 'Unknown Product':
         logger.warning(f"Skipped: Missing Title")
         return None, None, False
-    
+
     if price_val <= 0:
-        logger.warning(f"Skipped: Invalid Price ({price_val}) for {title[:30]}")
+        logger.warning(
+            f"Skipped: Invalid Price ({price_val}) for {title[:30]}")
         return None, None, False
-    
-    if not image_url or len(image_url) < 10: 
+
+    if not image_url or len(image_url) < 10:
         logger.warning(f"Skipped: Missing Image for {title[:30]}")
         return None, None, False
-        
+
     if not external_url or not external_id:
         logger.warning(f"Skipped: Missing URL/External ID for {title[:30]}")
         return None, None, False
@@ -546,10 +548,9 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
     if not is_valid_usd_price(product_data.get('_price_raw', ''), price_val):
         return None, None, False
 
-
     brand = (product_data.get('brand') or '').strip()
-    gtin  = (product_data.get('gtin') or '').strip() or None
-    asin  = (product_data.get('asin') or '').strip() or None
+    gtin = (product_data.get('gtin') or '').strip() or None
+    asin = (product_data.get('asin') or '').strip() or None
 
     if not brand and title:
         brand = ' '.join(title.split()[:2])
@@ -558,7 +559,8 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         all_categories = list(Category.objects.all())
 
     if category_slug:
-        category = next((c for c in all_categories if c.slug == category_slug), None)
+        category = next(
+            (c for c in all_categories if c.slug == category_slug), None)
     else:
         category = _resolve_category(
             product_data.get('category_path'), title, _get_category_cache()
@@ -569,7 +571,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         product = _find_matching_product(title, brand, gtin, asin)
 
         if product:
-            created        = False
+            created = False
             updated_fields = []
             if gtin and not product.gtin:
                 product.gtin = gtin
@@ -586,7 +588,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             if updated_fields:
                 product.save(update_fields=updated_fields)
         else:
-            created   = True
+            created = True
             base_slug = slugify(title)[:490]
             slug = (
                 f"{base_slug}-{str(external_id)[:8]}"
@@ -594,21 +596,21 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                 else base_slug
             )
             product = Product.objects.create(
-                title        = title,
-                slug         = slug,
-                brand        = brand,
-                model_number = product_data.get('model_number') or external_id,
-                main_image   = product_data.get('main_image', ''),
-                category     = category,
-                gtin         = gtin,
-                asin         = asin,
+                title=title,
+                slug=slug,
+                brand=brand,
+                model_number=product_data.get('model_number') or external_id,
+                main_image=product_data.get('main_image', ''),
+                category=category,
+                gtin=gtin,
+                asin=asin,
             )
 
         shipping = product_data.get('shipping_info', {})
         listing, listing_created = ProductListing.objects.update_or_create(
-            platform    = platform,
-            external_id = external_id,
-            defaults    = {
+            platform=platform,
+            external_id=external_id,
+            defaults={
                 'product':           product,
                 'external_url':      product_data.get('external_url', ''),
                 'price':             price_val,
@@ -629,6 +631,10 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                 'returns_accepted':  product_data.get('returns_accepted', False),
                 'return_period_days': product_data.get('return_period_days'),
                 'is_available':      bool(product_data.get('is_available', True)),
+                'has_coupon':     product_data.get('has_coupon', False),
+                'coupon_text':    product_data.get('coupon_text', ''),
+                'deal_badge':     product_data.get('deal_badge', ''),
+                'is_best_seller': product_data.get('is_best_seller', False),
             }
         )
 

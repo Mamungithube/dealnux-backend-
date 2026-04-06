@@ -9,7 +9,7 @@ class WalmartService:
 
     def __init__(self):
         self.api_key = settings.RAPIDAPI_KEY
-        self.host    = 'realtime-walmart-data.p.rapidapi.com'
+        self.host = 'realtime-walmart-data.p.rapidapi.com'
         self.headers = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
@@ -17,10 +17,11 @@ class WalmartService:
         }
 
     def search_products(self, query, limit=10, page=1):
-        url    = f"https://{self.host}/search"
+        url = f"https://{self.host}/search"
         params = {"keyword": query, "page": str(page), "sortBy": "best_match"}
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20)
             if response.status_code == 200:
                 return response.json().get('results', [])[:limit]
             logger.error(f"Walmart search error {response.status_code}")
@@ -143,6 +144,10 @@ class WalmartService:
             'ships_from_country':  'US',
             'returns_accepted':    True,
             'return_period_days':  90,
+            'deal_badge':    '',
+            'has_coupon':    False,
+            'coupon_text':   '',
+            'is_best_seller': False,
             'gtin':                None,
             'asin':                None,
             'shipping_info': {

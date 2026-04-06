@@ -288,7 +288,6 @@ def sync_bestbuy_task(query, limit=10):
         logger.error(f"BestBuy sync task failed: {e}")
         return {'platform': 'bestbuy', 'error': str(e)}
 
-
 # ── Category routing ──────────────────────────────────────────────────────────
 
 SEPHORA_CATEGORIES = {
@@ -324,6 +323,18 @@ def sync_all_platforms_task(query, limit=50, category_slug=None):
     result = job.apply_async()
     return result.id
 
+@shared_task
+def fix_coupon_flags():
+    """coupon_text আছে কিন্তু has_coupon False এমন listings fix করা"""
+    from .models import ProductListing
+    updated = ProductListing.objects.exclude(
+        coupon_text=''
+    ).filter(
+        has_coupon=False
+    ).update(has_coupon=True)
+    logger.info(f"Fixed coupon flags: {updated} listings")
+    return {'fixed': updated}
+
 
 @shared_task
 def hourly_fixed_category_sync():
@@ -332,11 +343,14 @@ def hourly_fixed_category_sync():
     categories = list(
         Category.objects.filter(parent__isnull=False).only('name', 'slug')
     )
-    
+
     for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category.name, 30, category.slug], 
-            countdown=index * 30 
+            args=[category.name, 30, category.slug],
+            countdown=index * 30
         )
-    
+
+    # সব sync শেষ হওয়ার পর coupon flags fix করা
+    fix_coupon_flags.apply_async(countdown=len(categories) * 30 + 60)
+
     return f"Scheduled {len(categories)} categories for sync."

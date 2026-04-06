@@ -5,6 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class TargetService:
     """
     Target.com Shopping API via RapidAPI
@@ -14,9 +15,9 @@ class TargetService:
     """
 
     def __init__(self):
-        self.api_key  = settings.RAPIDAPI_KEY
-        self.host     = 'target-com-shopping.p.rapidapi.com'
-        self.headers  = {
+        self.api_key = settings.RAPIDAPI_KEY
+        self.host = 'target-com-shopping.p.rapidapi.com'
+        self.headers = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
         }
@@ -31,7 +32,7 @@ class TargetService:
         Keyword : Search for target product.
         Response: data['data'] — flat list of product dicts
         """
-        url    = f"https://{self.host}/search"
+        url = f"https://{self.host}/search"
         params = {
             'keyword': query,
             'count':   str(min(limit, 24)),
@@ -58,7 +59,8 @@ class TargetService:
                             .get('products', [])
                     )
 
-                logger.info(f"Target search '{query}': {len(products)} results")
+                logger.info(
+                    f"Target search '{query}': {len(products)} results")
                 return products[:limit]
 
             logger.error(
@@ -113,7 +115,7 @@ class TargetService:
         # Fallback to extract TCIN from product_url
         if not external_id:
             url_str = item.get('product_url', '')
-            match   = re.search(r'/A-(\d+)', url_str)
+            match = re.search(r'/A-(\d+)', url_str)
             if match:
                 external_id = match.group(1)
 
@@ -124,19 +126,20 @@ class TargetService:
         brand = item.get('brand') or ''
 
         # ── Price ────────────────────────────────────────────────────────────
-        price_info  = item.get('price', {}) or {}
-        price_raw   = price_info.get('current') or ''
-        price       = self._parse_price(price_raw)
-        orig_raw    = self._parse_price(price_info.get('original'))
+        price_info = item.get('price', {}) or {}
+        price_raw = price_info.get('current') or ''
+        price = self._parse_price(price_raw)
+        orig_raw = self._parse_price(price_info.get('original'))
 
         # "Price Varies" — carrier/contract phone, price unknown
-        is_price_varies = isinstance(price_raw, str) and 'varies' in price_raw.lower()
+        is_price_varies = isinstance(
+            price_raw, str) and 'varies' in price_raw.lower()
 
-        original_price      = None
+        original_price = None
         discount_percentage = None
 
         if orig_raw and price and orig_raw > price:
-            original_price      = orig_raw
+            original_price = orig_raw
             discount_percentage = round(
                 ((original_price - price) / original_price) * 100, 2
             )
@@ -154,17 +157,18 @@ class TargetService:
 
         # ── Rating & Reviews ─────────────────────────────────────────────────
         # The rating field can be a dict: {'average': 4.35, 'count': 2389}
-        rating_raw   = item.get('rating')
+        rating_raw = item.get('rating')
         review_count = item.get('reviews_count') or 0
 
         if isinstance(rating_raw, dict):
-            rating_val   = rating_raw.get('average') or rating_raw.get('rating') or 0
+            rating_val = rating_raw.get(
+                'average') or rating_raw.get('rating') or 0
             review_count = rating_raw.get('count') or review_count
         else:
             rating_val = rating_raw or 0
 
         try:
-            seller_rating = float(rating_val) * 20 if rating_val else None 
+            seller_rating = float(rating_val) * 20 if rating_val else None
         except (ValueError, TypeError):
             seller_rating = None
 
@@ -174,7 +178,7 @@ class TargetService:
             review_count = 0
 
         # ── Description — from bullet_descriptions ───────────────────────────
-        bullets     = item.get('bullet_descriptions') or []
+        bullets = item.get('bullet_descriptions') or []
         description = ' '.join(
             re.sub(r'<[^>]+>', '', b) for b in bullets[:5]
         ) if bullets else ''
@@ -226,17 +230,22 @@ class TargetService:
             'gtin': None,
             'asin': None,
 
-            'is_available': not is_price_varies, 
+            'is_available': not is_price_varies,
 
             'seller_username':       'Target',
             'seller_rating':         seller_rating,
             'seller_feedback_count': review_count,
 
+            'deal_badge':    '',
+            'has_coupon':    False,
+            'coupon_text':   '',
+            'is_best_seller': False,
+
             'item_location':      'United States',
             'ships_from_country': 'US',
 
             'returns_accepted':   True,
-            'return_period_days': 90, 
+            'return_period_days': 90,
 
             'shipping_info': {
                 'cost':           0,

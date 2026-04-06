@@ -14,7 +14,7 @@ class BestBuyService:
 
     def __init__(self):
         self.api_key = settings.RAPIDAPI_KEY
-        self.host    = 'bestbuy-usa.p.rapidapi.com'
+        self.host = 'bestbuy-usa.p.rapidapi.com'
         self.headers = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
@@ -26,7 +26,7 @@ class BestBuyService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def search_products(self, query, limit=10):
-        url    = f"https://{self.host}/search"
+        url = f"https://{self.host}/search"
         params = {'query': query}
 
         try:
@@ -36,12 +36,14 @@ class BestBuyService:
             logger.debug(f"BestBuy search '{query}': {response.status_code}")
 
             if response.status_code == 200:
-                data     = response.json()
+                data = response.json()
                 products = data.get('data', {}).get('products', [])
-                logger.info(f"BestBuy search '{query}': {len(products)} results")
+                logger.info(
+                    f"BestBuy search '{query}': {len(products)} results")
                 return products[:limit]
 
-            logger.error(f"BestBuy search error {response.status_code}: {response.text[:300]}")
+            logger.error(
+                f"BestBuy search error {response.status_code}: {response.text[:300]}")
             return []
 
         except Exception as e:
@@ -104,7 +106,7 @@ class BestBuyService:
             )
 
         # ── URL ──────────────────────────────────────────────────────────────
-        raw_url      = item.get('url') or ''
+        raw_url = item.get('url') or ''
         external_url = raw_url.replace(
             'https://www.bestbuy.comhttps://', 'https://'
         )
@@ -115,8 +117,8 @@ class BestBuyService:
         main_image = item.get('imageUrl') or ''
 
         # variations to additional images
-        variations         = item.get('variations', []) or []
-        additional_images  = []
+        variations = item.get('variations', []) or []
+        additional_images = []
         for v in variations:
             img = v.get('imageUrl') or ''
             if img and img != main_image:
@@ -124,7 +126,7 @@ class BestBuyService:
         additional_images = additional_images[:9]
 
         # ── Rating ───────────────────────────────────────────────────────────
-        ratings      = item.get('ratings', {}) or {}
+        ratings = item.get('ratings', {}) or {}
         rating_score = ratings.get('score', 0) or 0
         review_count = int(ratings.get('count', 0) or 0)
         try:
@@ -170,6 +172,10 @@ class BestBuyService:
 
             'returns_accepted':   True,
             'return_period_days': 15,
+            'deal_badge':    '',
+            'has_coupon':    False,
+            'coupon_text':   '',
+            'is_best_seller': False,
 
             'shipping_info': {
                 'cost':           0,

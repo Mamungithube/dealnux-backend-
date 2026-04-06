@@ -13,7 +13,7 @@ class SephoraService:
 
     def __init__(self):
         self.api_key = settings.RAPIDAPI_KEY
-        self.host    = 'real-time-sephora-api.p.rapidapi.com'
+        self.host = 'real-time-sephora-api.p.rapidapi.com'
         self.headers = {
             'x-rapidapi-key':  self.api_key,
             'x-rapidapi-host': self.host,
@@ -25,7 +25,7 @@ class SephoraService:
     # ─────────────────────────────────────────────────────────────────────────
 
     def search_products(self, query, limit=10, page=1):
-        url    = f"https://{self.host}/search-by-keyword"
+        url = f"https://{self.host}/search-by-keyword"
         params = {
             'keyword':     query,
             'sortBy':      'BEST_SELLING',
@@ -33,19 +33,23 @@ class SephoraService:
             'pageSize':    str(min(limit, 60)),
         }
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20)
             logger.debug(f"Sephora search '{query}': {response.status_code}")
 
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, list):
-                    logger.info(f"Sephora search '{query}': {len(data)} results")
+                    logger.info(
+                        f"Sephora search '{query}': {len(data)} results")
                     return data[:limit]
                 if isinstance(data, dict):
-                    products = data.get('products', []) or data.get('data', []) or []
+                    products = data.get('products', []) or data.get(
+                        'data', []) or []
                     return products[:limit]
 
-            logger.error(f"Sephora search error {response.status_code}: {response.text[:300]}")
+            logger.error(
+                f"Sephora search error {response.status_code}: {response.text[:300]}")
             return []
 
         except Exception as e:
@@ -60,7 +64,7 @@ class SephoraService:
         """
         Search Sephora products by categoryId.
         """
-        url    = f"https://{self.host}/search-by-category"
+        url = f"https://{self.host}/search-by-category"
         params = {
             'categoryId':  category_id,
             'sortBy':      'BEST_SELLING',
@@ -80,7 +84,8 @@ class SephoraService:
                     or []
                 )[:limit]
 
-            logger.error(f"Sephora category error {response.status_code}: {category_id}")
+            logger.error(
+                f"Sephora category error {response.status_code}: {category_id}")
             return []
 
         except Exception as e:
@@ -95,7 +100,7 @@ class SephoraService:
         """
         Search for Sephora products by brand name.
         """
-        url    = f"https://{self.host}/search-by-brand"
+        url = f"https://{self.host}/search-by-brand"
         params = {
             'brandName':   brand_name,
             'sortBy':      'BEST_SELLING',
@@ -115,7 +120,8 @@ class SephoraService:
                     or []
                 )[:limit]
 
-            logger.error(f"Sephora brand error {response.status_code}: {brand_name}")
+            logger.error(
+                f"Sephora brand error {response.status_code}: {brand_name}")
             return []
 
         except Exception as e:
@@ -130,7 +136,7 @@ class SephoraService:
         """
         Get full details with productId.
         """
-        url    = f"https://{self.host}/product-details"
+        url = f"https://{self.host}/product-details"
         params = {'productId': product_id}
 
         try:
@@ -145,7 +151,8 @@ class SephoraService:
                     or data
                     or None
                 )
-            logger.error(f"Sephora details error {response.status_code}: {product_id}")
+            logger.error(
+                f"Sephora details error {response.status_code}: {product_id}")
             return None
 
         except Exception as e:
@@ -170,11 +177,13 @@ class SephoraService:
         )
 
         # ── Price ────────────────────────────────────────────────────────────
-        sku       = item.get('currentSku', {}) or {}
-        price_raw = sku.get('listPrice') or item.get('listPrice') or item.get('price') or '0'
+        sku = item.get('currentSku', {}) or {}
+        price_raw = sku.get('listPrice') or item.get(
+            'listPrice') or item.get('price') or '0'
 
         try:
-            price_str = str(price_raw).replace('$', '').replace(',', '').strip()
+            price_str = str(price_raw).replace(
+                '$', '').replace(',', '').strip()
 
             # If the range is "$39.00 - $59.00" — take the lowest price
             if ' - ' in price_str:
@@ -200,7 +209,7 @@ class SephoraService:
                 )
                 if sale_price < price:
                     original_price = price
-                    price          = sale_price
+                    price = sale_price
             except (ValueError, TypeError):
                 pass
 
@@ -270,7 +279,7 @@ class SephoraService:
             category_path = category_path.get('displayName', 'Beauty & Makeup')
 
         # ── URL ──────────────────────────────────────────────────────────────
-        url_path   = item.get('targetUrl') or item.get('url') or ''
+        url_path = item.get('targetUrl') or item.get('url') or ''
         external_url = (
             f"https://www.sephora.com{url_path}"
             if url_path and not url_path.startswith('http')
@@ -335,6 +344,11 @@ class SephoraService:
             # ── Returns ──────────────────────────────────────────────────────
             'returns_accepted':   True,
             'return_period_days': 60,
+
+            'deal_badge':    '',
+            'has_coupon':    False,
+            'coupon_text':   '',
+            'is_best_seller': False,
 
             # ── Shipping ─────────────────────────────────────────────────────
             'shipping_info': {
