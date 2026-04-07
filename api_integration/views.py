@@ -642,28 +642,73 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def record_purchase_intent(self, request, slug=None):
-        product = self.get_object()
-        user = request.user
+        """
+        ১. ফ্রন্টএন্ড থেকে 'Best Deal' প্রোডাক্টের স্লাগ আসবে।
+        ২. আমরা ওই প্রোডাক্টের দাম বের করবো।
+        ৩. ডাটাবেজে থাকা একই ধরণের (GTIN/ASIN/Title) অন্য সব প্রোডাক্টের মধ্যে সর্বোচ্চ দামটি বের করবো।
+        ৪. সেভিংস = (মার্কেটের সর্বোচ্চ দাম - এই বেস্ট ডিলের দাম)।
+        """
+        # ১. এই প্রোডাক্টটিই হলো আমাদের 'Best Deal' (যেটির স্লাগ পাঠানো হয়েছে)
+        best_deal_product = self.get_object()
         
-        listings = product.listings.filter(is_available=True, price__gt=0)
-        
-        if listings.count() < 2:
-            return success_response({}, message="Single listing found. No savings.")
+        # এই প্রোডাক্টের সবচেয়ে সস্তা লিস্টিংয়ের দাম বের করা
+        this_deal_listing = best_deal_product.listings.filter(is_available=True, price__gt=0).order_by('price').first()
+        if not this_deal_listing:
+            return error_response("No valid price found for this deal.", code=404)
+            
+        this_price = float(this_deal_listing.get_total_price())
 
-        prices = [float(l.get_total_price()) for l in listings]
-        savings = round(max(prices) - min(prices), 2)
+        # ২. মার্কেটে একই জিনিসের (Identical Products) অন্য রেকর্ডগুলো খুঁজে বের করা
+        from django.db.models import Q, Max
+        match_query = Q()
+        if best_deal_product.gtin:
+            match_query |= Q(product__gtin=best_deal_product.gtin)
+        if best_deal_product.asin:
+            match_query |= Q(product__asin=best_deal_product.asin)
+        
+        # ৩. যদি GTIN/ASIN না থাকে, তবে সেভিংস হিসেব করা কঠিন। 
+        # সেক্ষেত্রে আমরা ওই মেইন প্রোডাক্ট রেকর্ডের লিস্টিংগুলোর সর্বোচ্চ দামটাই নেব।
+        if not match_query:
+             max_price_data = best_deal_product.listings.filter(is_available=True).aggregate(max_p=Max('price'))
+        else:
+            # অন্য সব ডুপ্লিকেট/আইডেন্টিকাল প্রোডাক্ট রেকর্ডের লিস্টিং থেকেও সর্বোচ্চ দাম নেওয়া
+            max_price_data = ProductListing.objects.filter(
+                match_query, 
+                is_available=True
+            ).aggregate(max_p=Max('price'))
+
+        highest_market_price = float(max_price_data['max_p'] or this_price)
+
+        # ৪. আসল সেভিংস ক্যালকুলেশন
+        savings = round(highest_market_price - this_price, 2)
 
         if savings > 0:
             with transaction.atomic():
+                user = request.user
+                # লাইফটাইম সেভিংস আপডেট
                 current_total = float(getattr(user, 'total_lifetime_savings', 0.0))
                 user.total_lifetime_savings = current_total + savings
                 user.save()
+
+                # সেভিংস রেকর্ড তৈরি
                 SavingsActivity.objects.create(
-                    user=user, title=product.title, saved_amount=savings
+                    user=user,
+                    title=f"Saved by choosing best deal: {best_deal_product.title}",
+                    saved_amount=savings
                 )
-            return success_response({"added": savings}, message="Savings recorded!")
-        return success_response({}, message="No savings possible.")
-    
+
+            return success_response({
+                "product": best_deal_product.title,
+                "you_paid": this_price,
+                "market_high": highest_market_price,
+                "saved_amount": savings,
+                "total_lifetime_savings": float(user.total_lifetime_savings)
+            }, message="Savings recorded successfully based on best deal comparison!")
+
+        return success_response({
+            "saved_amount": 0,
+            "message": "This is already the highest price or no comparison available."
+        })
 
 """ contains viewsets and API views for product listing, price comparison, and platform syncing. """
 """
