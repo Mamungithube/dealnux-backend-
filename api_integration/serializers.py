@@ -198,7 +198,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'coupon_text',
             'deal_badge',
             'is_best_seller',
-            'listings',
+            'listings','rating', 'review_count'
         ]
 
     def get_is_favorite(self, obj):
