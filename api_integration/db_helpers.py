@@ -504,6 +504,27 @@ def is_valid_usd_price(price_raw_str, price_float):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Rating helper — normalize to 5-star scale
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _normalize_rating(raw_rating):
+    """
+    Services store seller_rating in different scales:
+      - Amazon/Walmart: 0–5 star  → keep as-is
+      - Wayfair/Sephora/Target/BestBuy: 0–100 (multiplied by 20) → divide by 20
+    If value > 5, assume 0–100 scale and convert.
+    Returns float rounded to 1 decimal, or 0.0 on failure.
+    """
+    try:
+        r = float(raw_rating)
+        if r <= 0:
+            return 0.0
+        return round(r / 20, 1) if r > 5 else round(r, 1)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Core save helper
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -566,6 +587,14 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             product_data.get('category_path'), title, _get_category_cache()
         )
 
+    # ── Extract rating & review from product_data ─────────────────────────
+    incoming_rating = _normalize_rating(product_data.get('seller_rating'))
+    incoming_reviews = 0
+    try:
+        incoming_reviews = int(product_data.get('seller_feedback_count') or 0)
+    except (ValueError, TypeError):
+        incoming_reviews = 0
+
     with transaction.atomic():
 
         product = _find_matching_product(title, brand, gtin, asin)
@@ -585,6 +614,14 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             if not product.category and category:
                 product.category = category
                 updated_fields.append('category')
+            # ── Update rating only if we have better data ─────────────
+            if incoming_rating > 0 and (not product.rating or product.rating == 0):
+                product.rating = incoming_rating
+                updated_fields.append('rating')
+            if incoming_reviews > 0 and product.review_count == 0:
+                product.review_count = incoming_reviews
+                updated_fields.append('review_count')
+            # ─────────────────────────────────────────────────────────
             if updated_fields:
                 product.save(update_fields=updated_fields)
         else:
@@ -604,6 +641,8 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                 category=category,
                 gtin=gtin,
                 asin=asin,
+                rating=incoming_rating,
+                review_count=incoming_reviews,
             )
 
         shipping = product_data.get('shipping_info', {})

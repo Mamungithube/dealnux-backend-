@@ -286,3 +286,26 @@ class AmazonService:
                 'Store': 'Amazon',
             },
         }
+
+
+    def get_promo_code_details(self, promo_code, country='US'):
+        """
+        GET /promo-code-details — প্রোমো কোড এর details আনো।
+        Response: {promo_title, is_promo_available, discount_percentage, products[]}
+        """
+        url = f"https://{self.host}/promo-code-details"
+        params = {
+            'promo_code': promo_code,
+            'country': country,
+        }
+        try:
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20
+            )
+            if response.status_code == 200:
+                return response.json().get('data', {})
+            logger.error(f"Amazon promo error {response.status_code}: {promo_code}")
+            return None
+        except Exception as e:
+            logger.error(f"Amazon promo exception ({promo_code}): {e}")
+            return None

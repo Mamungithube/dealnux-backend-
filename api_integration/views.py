@@ -22,7 +22,7 @@ from .services.aliexpress_service import AliExpressService
 from .services.bestbuy_service import BestBuyService
 from .tasks import sync_all_platforms_task, sync_ebay_task
 from .db_helpers import save_generic_product_to_db
-from django.db.models import Q, Min, FloatField, Value
+from django.db.models import Q, Min
 from difflib import SequenceMatcher
 import re
 from .models import (
@@ -525,7 +525,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         search   = self.request.query_params.get('search', '').strip()
         sort     = self.request.query_params.get('sort', 'newest').strip()
 
-        # ── Hard validation: title, image, price সব থাকতে হবে ──
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -642,23 +641,15 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def record_purchase_intent(self, request, slug=None):
-        """
-        ১. ফ্রন্টএন্ড থেকে 'Best Deal' প্রোডাক্টের স্লাগ আসবে।
-        ২. আমরা ওই প্রোডাক্টের দাম বের করবো।
-        ৩. ডাটাবেজে থাকা একই ধরণের (GTIN/ASIN/Title) অন্য সব প্রোডাক্টের মধ্যে সর্বোচ্চ দামটি বের করবো।
-        ৪. সেভিংস = (মার্কেটের সর্বোচ্চ দাম - এই বেস্ট ডিলের দাম)।
-        """
-        # ১. এই প্রোডাক্টটিই হলো আমাদের 'Best Deal' (যেটির স্লাগ পাঠানো হয়েছে)
+
         best_deal_product = self.get_object()
         
-        # এই প্রোডাক্টের সবচেয়ে সস্তা লিস্টিংয়ের দাম বের করা
         this_deal_listing = best_deal_product.listings.filter(is_available=True, price__gt=0).order_by('price').first()
         if not this_deal_listing:
             return error_response("No valid price found for this deal.", code=404)
             
         this_price = float(this_deal_listing.get_total_price())
 
-        # ২. মার্কেটে একই জিনিসের (Identical Products) অন্য রেকর্ডগুলো খুঁজে বের করা
         from django.db.models import Q, Max
         match_query = Q()
         if best_deal_product.gtin:
@@ -666,12 +657,10 @@ class ProductViewSet(viewsets.ModelViewSet):
         if best_deal_product.asin:
             match_query |= Q(product__asin=best_deal_product.asin)
         
-        # ৩. যদি GTIN/ASIN না থাকে, তবে সেভিংস হিসেব করা কঠিন। 
-        # সেক্ষেত্রে আমরা ওই মেইন প্রোডাক্ট রেকর্ডের লিস্টিংগুলোর সর্বোচ্চ দামটাই নেব।
         if not match_query:
              max_price_data = best_deal_product.listings.filter(is_available=True).aggregate(max_p=Max('price'))
         else:
-            # অন্য সব ডুপ্লিকেট/আইডেন্টিকাল প্রোডাক্ট রেকর্ডের লিস্টিং থেকেও সর্বোচ্চ দাম নেওয়া
+
             max_price_data = ProductListing.objects.filter(
                 match_query, 
                 is_available=True
@@ -679,18 +668,16 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         highest_market_price = float(max_price_data['max_p'] or this_price)
 
-        # ৪. আসল সেভিংস ক্যালকুলেশন
         savings = round(highest_market_price - this_price, 2)
 
         if savings > 0:
             with transaction.atomic():
                 user = request.user
-                # লাইফটাইম সেভিংস আপডেট
+
                 current_total = float(getattr(user, 'total_lifetime_savings', 0.0))
                 user.total_lifetime_savings = current_total + savings
                 user.save()
 
-                # সেভিংস রেকর্ড তৈরি
                 SavingsActivity.objects.create(
                     user=user,
                     title=f"Saved by choosing best deal: {best_deal_product.title}",
@@ -2036,3 +2023,20 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             message="Added to favorites",
             code=201,
         )
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def amazon_promo_details(request):
+    promo_code = request.GET.get('promo_code', '')
+    country = request.GET.get('country', 'US')
+
+    if not promo_code:
+        return error_response('promo_code is required', code=400)
+
+    service = AmazonService()
+    data = service.get_promo_code_details(promo_code, country)
+
+    if not data:
+        return error_response('Promo code not found or expired', code=404)
+
+    return success_response(data, message="Promo code details fetched")
