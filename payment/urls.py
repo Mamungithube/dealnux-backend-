@@ -6,11 +6,13 @@ from .views import (
     SellerStripeStatusView,
     PaymentHistoryView,
     SellerPayoutHistoryView,
+    CheckoutSessionStatusView,
 )
 
 app_name = 'payment'
 
 urlpatterns = [
+    path('checkout/session-status/', CheckoutSessionStatusView.as_view()),
     path('checkout/', CreateCheckoutSessionView.as_view(), name='checkout'),
     path('history/', PaymentHistoryView.as_view(), name='payment-history'),
     path('webhook/stripe/', StripeWebhookView.as_view(), name='stripe-webhook'),

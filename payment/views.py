@@ -49,12 +49,13 @@ def _calculate_amounts(seller_product, quantity, coupon_code=''):
 
 
 # ============================================================================
-# 1. Checkout — create Stripe Session
+# 1. Checkout — Create Embedded Checkout Session (client_secret রিটার্ন করে)
 # ============================================================================
 
 class CreateCheckoutSessionView(APIView):
     """
-    When buyer POSTs here, they will get a Stripe Checkout URL.
+    Buyer এখানে POST করলে Stripe Embedded Checkout এর জন্য client_secret পাবে।
+    Frontend এই client_secret দিয়ে নিজের page-এ Stripe form দেখাবে।
 
     POST /api/v1/store/checkout/
     {
@@ -63,6 +64,15 @@ class CreateCheckoutSessionView(APIView):
         "shipping_address": "Dhaka, Bangladesh",
         "coupon_code": "SAVE50",   (optional)
         "note": "Handle carefully"  (optional)
+    }
+
+    Response:
+    {
+        "client_secret": "cs_test_xxx...",   <-- Frontend এটা দিয়ে Stripe form দেখাবে
+        "payment_id": 1,
+        "amount": 500.00,
+        "discount": 50.00,
+        "currency": "usd"
     }
     """
     permission_classes = [IsAuthenticated]
@@ -92,9 +102,6 @@ class CreateCheckoutSessionView(APIView):
         # Amounts
         amounts = _calculate_amounts(seller_product, quantity, coupon_code)
 
-        # Stripe amount (cents)
-        amount_cents = int(amounts['final_amount'] * 100)
-
         # Create payment record (PENDING)
         payment = Payment.objects.create(
             buyer               = request.user,
@@ -110,7 +117,7 @@ class CreateCheckoutSessionView(APIView):
             currency            = seller_product.currency.lower(),
         )
 
-        # Stripe Checkout Session
+        # Stripe Embedded Checkout Session তৈরি
         try:
             session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
@@ -134,31 +141,39 @@ class CreateCheckoutSessionView(APIView):
                         name        = coupon_code,
                     ).id
                 }] if amounts['discount_amount'] > 0 else [],
+
+                # ============================================================
+                # Hosted থেকে Embedded এ মূল পরিবর্তন ২টা:
+                # ১. ui_mode='embedded' — Stripe জানবে এটা embedded checkout
+                # ২. return_url — payment শেষে এই url এ যাবে (success_url না)
+                #    cancel_url লাগবে না, buyer নিজেই form বন্ধ করতে পারবে
+                # ============================================================
+                ui_mode    = 'embedded',
+                return_url = settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+
                 mode='payment',
-                success_url = settings.STRIPE_SUCCESS_URL + f'?session_id={{CHECKOUT_SESSION_ID}}',
-                cancel_url  = settings.STRIPE_CANCEL_URL,
                 metadata={
-                    'payment_id':       payment.id,
-                    'buyer_id':         request.user.id,
+                    'payment_id':        payment.id,
+                    'buyer_id':          request.user.id,
                     'seller_product_id': seller_product.id,
-                    'quantity':         quantity,
+                    'quantity':          quantity,
                 },
-                customer_email = request.user.email,
+                customer_email=request.user.email,
             )
 
-            # Save session id to payment
+            # client_secret সেভ করো (url এর বদলে)
             payment.stripe_checkout_session_id = session.id
-            payment.stripe_checkout_url        = session.url
-            payment.save(update_fields=['stripe_checkout_session_id', 'stripe_checkout_url'])
+            payment.save(update_fields=['stripe_checkout_session_id'])
 
         except stripe.error.StripeError as e:
             payment.status = 'FAILED'
             payment.save(update_fields=['status'])
             return Response({'error': str(e)}, status=500)
 
+        # client_secret রিটার্ন করো — Frontend এটা দিয়ে Stripe form দেখাবে
         return Response({
+            'client_secret':    session.client_secret,   # <-- মূল পরিবর্তন (আগে checkout_url ছিল)
             'payment_id':       payment.id,
-            'checkout_url':     session.url,
             'amount':           amounts['final_amount'],
             'discount':         amounts['discount_amount'],
             'currency':         seller_product.currency,
@@ -166,13 +181,37 @@ class CreateCheckoutSessionView(APIView):
 
 
 # ============================================================================
-# 2. Stripe Webhook — Create Order when payment succeeds
+# 2. Session Status — Frontend payment শেষে এটা call করে confirm করবে
+# ============================================================================
+
+class CheckoutSessionStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        payment_id = request.query_params.get('payment_id')  # session_id এর বদলে
+
+        if not payment_id:
+            return Response({'error': 'payment_id is required.'}, status=400)
+
+        try:
+            payment = Payment.objects.get(id=payment_id, buyer=request.user)
+        except Payment.DoesNotExist:
+            return Response({'error': 'Payment not found.'}, status=404)
+
+        return Response({
+            'payment_status': payment.status,        # PAID / PENDING / FAILED
+            'payment_id':     payment.id,
+            'order_id':       payment.order.id if payment.order else None,
+        })
+
+# ============================================================================
+# 3. Stripe Webhook — Payment হলে Order তৈরি হবে (কোনো পরিবর্তন নেই)
 # ============================================================================
 
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(APIView):
     """
-    Stripe will POST here for payment events.
+    Stripe এখানে POST করবে payment events এর জন্য।
     POST /api/v1/store/webhook/stripe/
     """
     permission_classes = [AllowAny]
@@ -215,7 +254,7 @@ class StripeWebhookView(APIView):
         if not seller_product:
             return
 
-        # Create order
+        # Order তৈরি
         order = Order.objects.create(
             buyer            = payment.buyer,
             seller           = seller_product.seller,
@@ -227,18 +266,18 @@ class StripeWebhookView(APIView):
             currency         = payment.currency,
             shipping_address = payment.shipping_address,
             note             = payment.note,
-            status           = 'CONFIRMED',  # payment done so directly set to CONFIRMED
+            status           = 'CONFIRMED',
         )
 
-        # Link order to payment
+        # Payment এ order link করো
         payment.order = order
         payment.save(update_fields=['order'])
 
-        # Reduce stock
+        # Stock কমাও
         seller_product.quantity -= payment.quantity
         seller_product.save(update_fields=['quantity'])
 
-        # Increase coupon used count
+        # Coupon ব্যবহার count বাড়াও
         if payment.coupon_code:
             Coupon.objects.filter(code=payment.coupon_code.upper()).update(
                 used_count=F('used_count') + 1
@@ -250,7 +289,7 @@ class StripeWebhookView(APIView):
         seller.total_earnings += payment.final_amount
         seller.save(update_fields=['total_orders', 'total_earnings'])
 
-        # Create seller payout
+        # Seller payout তৈরি
         fee_amount    = payment.final_amount * PLATFORM_FEE_PERCENT / 100
         seller_amount = payment.final_amount - fee_amount
 
@@ -265,13 +304,13 @@ class StripeWebhookView(APIView):
             stripe_account_id    = seller.stripe_account_id,
         )
 
-        # Stripe Connect Transfer — send to seller's stripe account
+        # Seller এর Stripe account এ টাকা transfer করো
         if seller.stripe_account_id and seller.stripe_account_verified:
             try:
                 transfer = stripe.Transfer.create(
-                    amount      = int(seller_amount * 100),
-                    currency    = payment.currency,
-                    destination = seller.stripe_account_id,
+                    amount         = int(seller_amount * 100),
+                    currency       = payment.currency,
+                    destination    = seller.stripe_account_id,
                     transfer_group = f'ORDER_{order.id}',
                     metadata={
                         'order_id':   order.id,
@@ -294,12 +333,12 @@ class StripeWebhookView(APIView):
 
 
 # ============================================================================
-# 3. Stripe Connect — Create seller's Stripe account
+# 4. Stripe Connect — Seller এর Stripe account তৈরি (কোনো পরিবর্তন নেই)
 # ============================================================================
 
 class SellerStripeConnectView(APIView):
     """
-    Will give seller's Stripe Connect onboarding URL.
+    Seller এর Stripe Connect onboarding URL দেবে।
     POST /api/v1/store/seller/stripe-connect/
     """
     permission_classes = [IsAuthenticated]
@@ -313,7 +352,6 @@ class SellerStripeConnectView(APIView):
         if not seller.is_active:
             return Response({'error': 'Your seller account is inactive.'}, status=403)
 
-        # Create Stripe Connect account or use existing account
         if not seller.stripe_account_id:
             account = stripe.Account.create(
                 type    = 'express',
@@ -325,8 +363,7 @@ class SellerStripeConnectView(APIView):
             )
             seller.stripe_account_id = account.id
             seller.save(update_fields=['stripe_account_id'])
-        
-        # Create onboarding link
+
         account_link = stripe.AccountLink.create(
             account     = seller.stripe_account_id,
             refresh_url = settings.STRIPE_CONNECT_REFRESH_URL,
@@ -335,14 +372,14 @@ class SellerStripeConnectView(APIView):
         )
 
         return Response({
-            'onboarding_url':   account_link.url,
+            'onboarding_url':    account_link.url,
             'stripe_account_id': seller.stripe_account_id,
         })
 
 
 class SellerStripeStatusView(APIView):
     """
-    Will check seller's Stripe account status.
+    Seller এর Stripe account status চেক করবে।
     GET /api/v1/store/seller/stripe-status/
     """
     permission_classes = [IsAuthenticated]
@@ -355,14 +392,13 @@ class SellerStripeStatusView(APIView):
 
         if not seller.stripe_account_id:
             return Response({
-                'connected':    False,
-                'verified':     False,
-                'message':      'No Stripe account connected. POST /store/seller/stripe-connect/ to connect.',
+                'connected': False,
+                'verified':  False,
+                'message':   'No Stripe account connected. POST /store/seller/stripe-connect/ to connect.',
             })
 
-        # Get account details from Stripe
         try:
-            account = stripe.Account.retrieve(seller.stripe_account_id)
+            account  = stripe.Account.retrieve(seller.stripe_account_id)
             verified = account.get('charges_enabled', False) and account.get('payouts_enabled', False)
 
             if verified and not seller.stripe_account_verified:
@@ -370,23 +406,23 @@ class SellerStripeStatusView(APIView):
                 seller.save(update_fields=['stripe_account_verified'])
 
             return Response({
-                'connected':            True,
-                'verified':             verified,
-                'charges_enabled':      account.get('charges_enabled'),
-                'payouts_enabled':      account.get('payouts_enabled'),
-                'stripe_account_id':    seller.stripe_account_id,
+                'connected':         True,
+                'verified':          verified,
+                'charges_enabled':   account.get('charges_enabled'),
+                'payouts_enabled':   account.get('payouts_enabled'),
+                'stripe_account_id': seller.stripe_account_id,
             })
         except stripe.error.StripeError as e:
             return Response({'error': str(e)}, status=500)
 
 
 # ============================================================================
-# 4. Payment History
+# 5. Payment History (কোনো পরিবর্তন নেই)
 # ============================================================================
 
 class PaymentHistoryView(APIView):
     """
-    Buyer's own payment history.
+    Buyer এর নিজের payment history।
     GET /api/v1/store/payments/
     """
     permission_classes = [IsAuthenticated]
@@ -398,24 +434,23 @@ class PaymentHistoryView(APIView):
         data = []
         for p in payments:
             data.append({
-                'id':               p.id,
-                'product':          p.seller_product.title if p.seller_product else None,
-                'quantity':         p.quantity,
-                'final_amount':     p.final_amount,
-                'discount_amount':  p.discount_amount,
-                'currency':         p.currency,
-                'status':           p.status,
-                'order_id':         p.order.id if p.order else None,
-                'order_status':     p.order.status if p.order else None,
-                'checkout_url':     p.stripe_checkout_url if p.status == 'PENDING' else None,
-                'created_at':       p.created_at,
+                'id':              p.id,
+                'product':         p.seller_product.title if p.seller_product else None,
+                'quantity':        p.quantity,
+                'final_amount':    p.final_amount,
+                'discount_amount': p.discount_amount,
+                'currency':        p.currency,
+                'status':          p.status,
+                'order_id':        p.order.id if p.order else None,
+                'order_status':    p.order.status if p.order else None,
+                'created_at':      p.created_at,
             })
         return Response(data)
 
 
 class SellerPayoutHistoryView(APIView):
     """
-    Seller's payout history.
+    Seller এর payout history।
     GET /api/v1/store/seller/payouts/
     """
     permission_classes = [IsAuthenticated]
@@ -430,15 +465,15 @@ class SellerPayoutHistoryView(APIView):
         data = []
         for p in payouts:
             data.append({
-                'id':                   p.id,
-                'order_id':             p.order.id if p.order else None,
-                'gross_amount':         p.gross_amount,
-                'platform_fee':         p.platform_fee_amount,
-                'seller_amount':        p.seller_amount,
-                'currency':             p.payment.currency,
-                'status':               p.status,
-                'stripe_transfer_id':   p.stripe_transfer_id,
-                'failure_reason':       p.failure_reason,
-                'created_at':           p.created_at,
+                'id':                 p.id,
+                'order_id':           p.order.id if p.order else None,
+                'gross_amount':       p.gross_amount,
+                'platform_fee':       p.platform_fee_amount,
+                'seller_amount':      p.seller_amount,
+                'currency':           p.payment.currency,
+                'status':             p.status,
+                'stripe_transfer_id': p.stripe_transfer_id,
+                'failure_reason':     p.failure_reason,
+                'created_at':         p.created_at,
             })
         return Response(data)
