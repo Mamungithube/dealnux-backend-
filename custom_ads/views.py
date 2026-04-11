@@ -22,7 +22,6 @@ from django.utils import timezone
 from django.core.cache import cache
 from decimal import Decimal
 
-
 # ১. Advertiser Request Apply
 class ApplyForAdvertiserView(generics.CreateAPIView):
     """
@@ -262,100 +261,107 @@ class AdListView(generics.ListAPIView):
 """--------------------Ad Click Tracker-----------------------"""
 
 
-def post(self, request, ad_id):
-    try:
-        with transaction.atomic():
-            # ১. Lock করে আনো
-            ad = CustomAd.objects.select_for_update().get(id=ad_id)
+class AdClickTrackerView(APIView):
+    """
+    Track ad clicks and update budget with dynamic CPC
+    """
+    permission_classes = [permissions.AllowAny]
 
-            # ২. CPC রেট আনো
-            setting = AdSetting.objects.first()
-            cpc = setting.cpc_amount if setting else Decimal('0.01')
+    def post(self, request, ad_id):
+        try:
+            with transaction.atomic():
+                # ১. Lock করে আনো
+                ad = CustomAd.objects.select_for_update().get(id=ad_id)
 
-            # ৩. বাজেট চেক — এখানে spent_amount নিশ্চিতভাবে Decimal
-            if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
-                return Response(
-                    {
-                        "success": False,
-                        "code": status.HTTP_400_BAD_REQUEST,
-                        "message": "Ad budget already exhausted.",
-                        "timestamp": int(time.time()),
-                        "data": {}
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
+                # ২. CPC রেট আনো
+                setting = AdSetting.objects.first()
+                cpc = setting.cpc_amount if setting else Decimal('0.50')
+
+                # ৩. বাজেট চেক — এখানে spent_amount নিশ্চিতভাবে Decimal
+                if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
+                    return Response(
+                        {
+                            "success": False,
+                            "code": status.HTTP_400_BAD_REQUEST,
+                            "message": "Ad budget already exhausted.",
+                            "timestamp": int(time.time()),
+                            "data": {}
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # ৪. F() ব্যবহার না করে সরাসরি Python-এ calculate করো
+                new_clicks = ad.clicks + 1
+                new_spent = ad.spent_amount + cpc
+
+                # ৫. Database update করো
+                CustomAd.objects.filter(id=ad_id).update(
+                    clicks=new_clicks,
+                    spent_amount=new_spent
                 )
 
-            # ৪. F() ব্যবহার না করে সরাসরি Python-এ calculate করো
-            new_clicks = ad.clicks + 1
-            new_spent = ad.spent_amount + cpc
+                # ৬. Daily stat update
+                today = timezone.now().date()
+                daily_stat, _ = AdDailyPerformance.objects.get_or_create(
+                    ad=ad,
+                    date=today,
+                    defaults={'impressions': 0, 'clicks': 0}
+                )
+                AdDailyPerformance.objects.filter(id=daily_stat.id).update(
+                    clicks=F('clicks') + 1
+                )
 
-            # ৫. Database update করো
-            CustomAd.objects.filter(id=ad_id).update(
-                clicks=new_clicks,
-                spent_amount=new_spent
-            )
+                # ৭. Remaining budget calculate করো
+                remaining = float(ad.total_budget - new_spent)
 
-            # ৬. Daily stat update
-            today = timezone.now().date()
-            daily_stat, _ = AdDailyPerformance.objects.get_or_create(
-                ad=ad,
-                date=today,
-                defaults={'impressions': 0, 'clicks': 0}
-            )
-            AdDailyPerformance.objects.filter(id=daily_stat.id).update(
-                clicks=F('clicks') + 1
-            )
+                # ৮. Budget শেষ হলে expired করো
+                if remaining <= 0:
+                    CustomAd.objects.filter(id=ad_id).update(status='expired')
+                    remaining = 0
+                    current_status = 'expired'
+                else:
+                    current_status = ad.status
 
-            # ৭. Remaining budget calculate করো
-            remaining = float(ad.total_budget - new_spent)
+                return Response(
+                    {
+                        "success": True,
+                        "code": status.HTTP_200_OK,
+                        "message": "Click tracked successfully.",
+                        "timestamp": int(time.time()),
+                        "data": {
+                            "clicks": new_clicks,
+                            "spent_now": float(cpc),
+                            "total_spent": float(new_spent),
+                            "remaining": remaining,
+                            "status": current_status
+                        }
+                    },
+                    status=status.HTTP_200_OK
+                )
 
-            # ৮. Budget শেষ হলে expired করো
-            if remaining <= 0:
-                CustomAd.objects.filter(id=ad_id).update(status='expired')
-                remaining = 0
-                current_status = 'expired'
-            else:
-                current_status = ad.status
-
+        except CustomAd.DoesNotExist:
             return Response(
                 {
-                    "success": True,
-                    "code": status.HTTP_200_OK,
-                    "message": "Click tracked successfully.",
+                    "success": False,
+                    "code": status.HTTP_404_NOT_FOUND,
+                    "message": "Ad not found.",
                     "timestamp": int(time.time()),
-                    "data": {
-                        "clicks": new_clicks,
-                        "spent_now": float(cpc),
-                        "total_spent": float(new_spent),
-                        "remaining": remaining,
-                        "status": current_status
-                    }
+                    "data": {}
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    "message": "Failed to track click.",
+                    "timestamp": int(time.time()),
+                    "data": {"detail": [str(e)]}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    except CustomAd.DoesNotExist:
-        return Response(
-            {
-                "success": False,
-                "code": status.HTTP_404_NOT_FOUND,
-                "message": "Ad not found.",
-                "timestamp": int(time.time()),
-                "data": {}
-            },
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        return Response(
-            {
-                "success": False,
-                "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "Failed to track click.",
-                "timestamp": int(time.time()),
-                "data": {"detail": [str(e)]}
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 """----------------------Advertiser Dashboard (Own Ads)-----------------------"""
 
