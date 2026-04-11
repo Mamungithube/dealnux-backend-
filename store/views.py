@@ -359,7 +359,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         end = start + page_size
         results = qs[start:end]
 
-        serializer = SellerProductSerializer(results, many=True)
+        serializer = SellerProductSerializer(results, many=True, context={'request': request})
 
         return success_response({
             'products': serializer.data,

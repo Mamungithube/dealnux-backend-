@@ -88,11 +88,11 @@ def token_similarity(title1, title2):
     return round(SequenceMatcher(None, t1, t2).ratio() * 100, 2)
 
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def product_detail(request, pk):
     product = None
+    seller_product_data = None  # ✅ নতুন
 
     try:
         from store.models import SellerProduct
@@ -100,8 +100,17 @@ def product_detail(request, pk):
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
+                # ✅ SellerProduct থেকে price info রেখে দাও
+                seller_product_data = {
+                    'price': str(seller_product.price),
+                    'original_price': str(seller_product.original_price) if seller_product.original_price else None,
+                    'currency': seller_product.currency,
+                    'condition': seller_product.condition,
+                    'seller_shop': seller_product.seller.shop_name,
+                    'seller_logo': None,
+                }
             else:
-                return success_response(SellerProductSerializer(seller_product).data) 
+                return success_response(SellerProductSerializer(seller_product).data)
     except ImportError:
         pass
 
@@ -125,6 +134,10 @@ def product_detail(request, pk):
 
     serializer = ProductDetailSerializer(product, context=context)
     data = serializer.data
+
+    # ✅ SellerProduct হলে price inject করো, নাহলে data যেমন আছে তেমনই থাকবে
+    if seller_product_data:
+        data.update(seller_product_data)
 
     data['related_products'] = ProductSerializer(related_products, many=True, context=context).data
 
