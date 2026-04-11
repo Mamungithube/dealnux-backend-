@@ -309,3 +309,23 @@ class AmazonService:
         except Exception as e:
             logger.error(f"Amazon promo exception ({promo_code}): {e}")
             return None
+    def get_deals(self, limit=20, country='US'):
+        """
+        GET /deals — Amazon deals with coupon/discount info
+        """
+        url = f"https://{self.host}/deals-and-offers"
+        params = {
+            'limit': str(limit),
+            'country': country,
+            'deal_type': 'COUPON',
+        }
+        try:
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20)
+            if response.status_code == 200:
+                return response.json().get('data', {}).get('deals', [])
+            logger.error(f"Amazon deals error {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Amazon deals exception: {e}")
+            return []
