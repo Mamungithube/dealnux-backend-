@@ -127,10 +127,11 @@ class CreateAdView(generics.CreateAPIView):
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         # ১. বিজ্ঞাপনটি 'pending' হিসেবে সেভ করা (পেমেন্ট না হওয়া পর্যন্ত এটি লাইভ হবে না)
-        ad = serializer.save(advertiser=request.user, is_approved=False, status='pending')
-        
+        ad = serializer.save(advertiser=request.user,
+                             is_approved=False, status='pending')
+
         # ২. পেমেন্ট রেকর্ড তৈরি করা
         payment = Payment.objects.create(
             buyer=request.user,
@@ -139,7 +140,7 @@ class CreateAdView(generics.CreateAPIView):
             unit_price=ad.total_budget,
             total_amount=ad.total_budget,
             final_amount=ad.total_budget,
-            currency='usd', # বা আপনার কারেন্সি
+            currency='usd',  # বা আপনার কারেন্সি
             status='PENDING'
         )
 
@@ -150,7 +151,8 @@ class CreateAdView(generics.CreateAPIView):
                 line_items=[{
                     'price_data': {
                         'currency': 'usd',
-                        'unit_amount': int(ad.total_budget * 100), # Cents এ রূপান্তর
+                        # Cents এ রূপান্তর
+                        'unit_amount': int(ad.total_budget * 100),
                         'product_data': {
                             'name': f"Ad Campaign: {ad.title}",
                             'description': f"Budget for {ad.target_section} section",
@@ -159,7 +161,8 @@ class CreateAdView(generics.CreateAPIView):
                     'quantity': 1,
                 }],
                 mode='payment',
-                success_url=settings.STRIPE_SUCCESS_URL + "?session_id={CHECKOUT_SESSION_ID}",
+                success_url=settings.STRIPE_SUCCESS_URL +
+                    "?session_id={CHECKOUT_SESSION_ID}",
                 cancel_url=settings.STRIPE_CANCEL_URL,
                 metadata={
                     'payment_id': payment.id,
@@ -232,8 +235,8 @@ class AdListView(generics.ListAPIView):
                 "code":      status.HTTP_200_OK,
                 "message":   "Ads retrieved successfully.",
                 "timestamp": int(time.time()),
-                "data": results,    
-                "pagination": {       
+                "data": results,
+                "pagination": {
                     "total_count":  total_count,
                     "total_pages":  total_pages,
                     "current_page": page,
@@ -258,15 +261,6 @@ class AdListView(generics.ListAPIView):
 """--------------------Ad Click Tracker-----------------------"""
 
 
-import time
-from django.db import transaction
-from django.db.models import F
-from django.utils import timezone
-from rest_framework import status, permissions
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from .models import CustomAd, AdSetting, AdDailyPerformance
-
 class AdClickTrackerView(APIView):
     """
     Track ad clicks and update budget with dynamic CPC
@@ -276,32 +270,15 @@ class AdClickTrackerView(APIView):
     def post(self, request, ad_id):
         try:
             with transaction.atomic():
-                # ১. ডাটাবেজ থেকে অ্যাডটি লক করে রিট্রিভ করা
-                try:
-                    ad = CustomAd.objects.select_for_update().get(id=ad_id)
-                except CustomAd.DoesNotExist:
-                    return Response(
-                        {
-                            "success": False,
-                            "code": status.HTTP_404_NOT_FOUND,
-                            "message": "Ad not found.",
-                            "timestamp": int(time.time()),
-                            "data": {}
-                        },
-                        status=status.HTTP_404_NOT_FOUND
-                    )
+                # ১. Retrieve the add from the database by locking it.
+                ad = CustomAd.objects.select_for_update().get(id=ad_id)
 
-                # ২. বর্তমান CPC রেট সংগ্রহ করা
+                # ২. Retrieve current CPC rate from admin settings
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else 0.50
 
-                # ৩. প্রাথমিক চেক: বাজেট আগেই শেষ হয়ে গেছে কিনা
+                # ৩. Checking whether the budget is already finished or not
                 if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
-                    # যদি বাজেট আগেই শেষ থাকে তবে স্ট্যাটাস নিশ্চিত করে রিটার্ন করা
-                    if ad.status != 'expired':
-                        ad.status = 'expired'
-                        ad.save()
-                    
                     return Response(
                         {
                             "success": False,
@@ -313,16 +290,15 @@ class AdClickTrackerView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # ৪. ক্লিিক এবং খরচ আপডেট করা (F expression ব্যবহার করে)
+                # ৪. Updating clicks and costs
                 ad.clicks = F('clicks') + 1
+
                 ad.spent_amount = F('spent_amount') + cpc
                 ad.save()
 
-                # ৫. গুরুত্বপূর্ণ: ডাটাবেজ থেকে আপডেট হওয়া মানগুলো রিফ্রেশ করা
-                # এটি না করলে 'spent_amount' একটি 'CombinedExpression' হয়ে থাকবে এবং এরর দিবে
+                # ৫. Retrieving new values ​​by refreshing from the database
                 ad.refresh_from_db()
 
-                # ৬. ডেইলি স্ট্যাটিস্টিকস আপডেট করা
                 today = timezone.now().date()
                 daily_stat, _ = AdDailyPerformance.objects.get_or_create(
                     ad=ad,
@@ -333,9 +309,10 @@ class AdClickTrackerView(APIView):
                     clicks=F('clicks') + 1
                 )
 
-                # ৭. নতুন ক্লিকের পর বাজেট চেক করা
-                remaining = float(ad.total_budget - ad.spent_amount)
-                
+                # ৬. After clicking this, check whether the budget is finished or not.
+                remaining = float(ad.total_budget) - float(ad.spent_amount)
+
+
                 if remaining <= 0:
                     ad.status = 'expired'
                     ad.save()
@@ -358,6 +335,17 @@ class AdClickTrackerView(APIView):
                     status=status.HTTP_200_OK
                 )
 
+        except CustomAd.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_404_NOT_FOUND,
+                    "message": "Ad not found.",
+                    "timestamp": int(time.time()),
+                    "data": {}
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
             return Response(
                 {
@@ -369,6 +357,7 @@ class AdClickTrackerView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 
 """----------------------Advertiser Dashboard (Own Ads)-----------------------"""
 
