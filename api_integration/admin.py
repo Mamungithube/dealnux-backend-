@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from django.utils.html import format_html
 from django.urls import reverse
-from django.utils.safestring import mark_safe
+from django.db.models import Q
 from .models import (
     Platform, Category, Product, ProductListing,
     ProductImage, ProductSpecification, PriceHistory , Favorite
@@ -110,6 +110,15 @@ class ProductAdmin(ModelAdmin):
     inlines = [ProductListingInline,
                ProductImageInline, ProductSpecificationInline]
 
+    def get_queryset(self, request):
+        from django.db.models import Count, Min
+        return super().get_queryset(request).select_related(
+            'category',
+        ).annotate(
+            _listings_count=Count('listings', filter=Q(listings__is_available=True)),
+            _lowest_price=Min('listings__price'),
+        )
+
     fieldsets = (
         ('Basic Information', {
             'fields': ('title', 'slug', 'description', 'category')
@@ -146,7 +155,7 @@ class ProductAdmin(ModelAdmin):
 
     @display(description='Listings')
     def listings_count(self, obj):
-        count = obj.listings.filter(is_available=True).count()
+        count = obj._listings_count
         if count > 0:
             return format_html('<span style="background: #4CAF50; color: white; padding: 3px 8px; border-radius: 12px;">{}</span>', count)
         return format_html('<span style="color: gray;">0</span>')
