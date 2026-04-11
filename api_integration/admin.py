@@ -220,6 +220,13 @@ class ProductListingAdmin(ModelAdmin):
             'fields': ('is_available', 'last_checked', 'created_at', 'updated_at')
         }),
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'product',
+            'platform',
+        )
+    
     @display(description='External URL')
     def external_url_link(self, obj):
         if obj.external_url:
@@ -332,7 +339,12 @@ class PriceHistoryAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'listing__product',
+            'listing__platform',
+        )
 
 @admin.register(Favorite)
 class FavoriteAdmin(ModelAdmin):
@@ -341,6 +353,12 @@ class FavoriteAdmin(ModelAdmin):
     search_fields = ['user__email', 'product__title']
     readonly_fields = ['user', 'product', 'created_at', 'product_preview']
     date_hierarchy = 'created_at'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'user',
+            'product',
+        )
 
     fieldsets = (
         ('User Info', {

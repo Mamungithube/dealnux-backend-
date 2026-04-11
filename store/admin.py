@@ -270,6 +270,13 @@ class SellerProductAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
 
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'seller',      # display_seller এর জন্য
+            'category',    # list_filter এর জন্য
+        )
+
     list_display = [
         'display_seller',
         'display_product',
