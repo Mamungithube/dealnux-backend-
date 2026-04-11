@@ -258,6 +258,15 @@ class AdListView(generics.ListAPIView):
 """--------------------Ad Click Tracker-----------------------"""
 
 
+import time
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
+from rest_framework import status, permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import CustomAd, AdSetting, AdDailyPerformance
+
 class AdClickTrackerView(APIView):
     """
     Track ad clicks and update budget with dynamic CPC
@@ -267,15 +276,32 @@ class AdClickTrackerView(APIView):
     def post(self, request, ad_id):
         try:
             with transaction.atomic():
-                # ১. Retrieve the add from the database by locking it.
-                ad = CustomAd.objects.select_for_update().get(id=ad_id)
+                # ১. ডাটাবেজ থেকে অ্যাডটি লক করে রিট্রিভ করা
+                try:
+                    ad = CustomAd.objects.select_for_update().get(id=ad_id)
+                except CustomAd.DoesNotExist:
+                    return Response(
+                        {
+                            "success": False,
+                            "code": status.HTTP_404_NOT_FOUND,
+                            "message": "Ad not found.",
+                            "timestamp": int(time.time()),
+                            "data": {}
+                        },
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-                # ২. Retrieve current CPC rate from admin settings
+                # ২. বর্তমান CPC রেট সংগ্রহ করা
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else 0.50
 
-                # ৩. Checking whether the budget is already finished or not
+                # ৩. প্রাথমিক চেক: বাজেট আগেই শেষ হয়ে গেছে কিনা
                 if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
+                    # যদি বাজেট আগেই শেষ থাকে তবে স্ট্যাটাস নিশ্চিত করে রিটার্ন করা
+                    if ad.status != 'expired':
+                        ad.status = 'expired'
+                        ad.save()
+                    
                     return Response(
                         {
                             "success": False,
@@ -287,14 +313,16 @@ class AdClickTrackerView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # ৪. Updating clicks and costs
+                # ৪. ক্লিিক এবং খরচ আপডেট করা (F expression ব্যবহার করে)
                 ad.clicks = F('clicks') + 1
                 ad.spent_amount = F('spent_amount') + cpc
                 ad.save()
 
-                # ৫. Retrieving new values ​​by refreshing from the database
+                # ৫. গুরুত্বপূর্ণ: ডাটাবেজ থেকে আপডেট হওয়া মানগুলো রিফ্রেশ করা
+                # এটি না করলে 'spent_amount' একটি 'CombinedExpression' হয়ে থাকবে এবং এরর দিবে
                 ad.refresh_from_db()
 
+                # ৬. ডেইলি স্ট্যাটিস্টিকস আপডেট করা
                 today = timezone.now().date()
                 daily_stat, _ = AdDailyPerformance.objects.get_or_create(
                     ad=ad,
@@ -305,8 +333,9 @@ class AdClickTrackerView(APIView):
                     clicks=F('clicks') + 1
                 )
 
-                # ৬. After clicking this, check whether the budget is finished or not.
+                # ৭. নতুন ক্লিকের পর বাজেট চেক করা
                 remaining = float(ad.total_budget - ad.spent_amount)
+                
                 if remaining <= 0:
                     ad.status = 'expired'
                     ad.save()
@@ -329,17 +358,6 @@ class AdClickTrackerView(APIView):
                     status=status.HTTP_200_OK
                 )
 
-        except CustomAd.DoesNotExist:
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_404_NOT_FOUND,
-                    "message": "Ad not found.",
-                    "timestamp": int(time.time()),
-                    "data": {}
-                },
-                status=status.HTTP_404_NOT_FOUND
-            )
         except Exception as e:
             return Response(
                 {
@@ -351,7 +369,6 @@ class AdClickTrackerView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
 """----------------------Advertiser Dashboard (Own Ads)-----------------------"""
 
