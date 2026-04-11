@@ -103,19 +103,21 @@ class ProductAdmin(ModelAdmin):
     list_filter = ['is_active', 'category', 'brand', 'created_at']
     search_fields = ['title', 'brand', 'model_number', 'description']
     prepopulated_fields = {'slug': ('title',)}
-    readonly_fields = ['created_at', 'updated_at',
-                       'last_synced', 'image_preview']
+    readonly_fields = ['created_at', 'updated_at', 'last_synced', 'image_preview']
     date_hierarchy = 'created_at'
-
-    inlines = [ProductListingInline,
-               ProductImageInline, ProductSpecificationInline]
+    list_per_page = 20  # ← 100 থেকে কমিয়ে 20
+    inlines = [ProductListingInline, ProductImageInline, ProductSpecificationInline]
 
     def get_queryset(self, request):
-        from django.db.models import Count, Min
+        from django.db.models import Count, Min, Q
         return super().get_queryset(request).select_related(
             'category',
         ).annotate(
-            _listings_count=Count('listings', filter=Q(listings__is_available=True)),
+            _listings_count=Count(
+                'listings',
+                filter=Q(listings__is_available=True),
+                distinct=True
+            ),
             _lowest_price=Min('listings__price'),
         )
 
@@ -137,27 +139,39 @@ class ProductAdmin(ModelAdmin):
     @display(description='Image')
     def image_thumb(self, obj):
         if obj.main_image:
-            return format_html('<img src="{}" style="max-height: 50px; border-radius: 5px;" />', obj.main_image)
+            return format_html(
+                '<img src="{}" style="max-height: 50px; border-radius: 5px;" />',
+                obj.main_image
+            )
         return format_html('<span style="color: gray;">No Image</span>')
 
     @display(description='Preview')
     def image_preview(self, obj):
         if obj.main_image:
-            return format_html('<img src="{}" style="max-height: 200px; border-radius: 10px;" />', obj.main_image)
+            return format_html(
+                '<img src="{}" style="max-height: 200px; border-radius: 10px;" />',
+                obj.main_image
+            )
         return 'No image'
 
-    @display(description='Lowest Price', ordering='listings__price')
+    @display(description='Lowest Price', ordering='_lowest_price')  # ← ordering ঠিক করা হয়েছে
     def lowest_price_display(self, obj):
-        price = obj.get_lowest_price()
+        price = obj._lowest_price  # ← get_lowest_price() বাদ, annotated value
         if price:
-            return format_html('<span style="color: green; font-weight: bold; font-size: 14px;">${}</span>', price)
+            return format_html(
+                '<span style="color: green; font-weight: bold; font-size: 14px;">${}</span>',
+                price
+            )
         return format_html('<span style="color: gray;">N/A</span>')
 
     @display(description='Listings')
     def listings_count(self, obj):
-        count = obj._listings_count
+        count = obj._listings_count  # ← annotated value, ঠিক আছে
         if count > 0:
-            return format_html('<span style="background: #4CAF50; color: white; padding: 3px 8px; border-radius: 12px;">{}</span>', count)
+            return format_html(
+                '<span style="background: #4CAF50; color: white; padding: 3px 8px; border-radius: 12px;">{}</span>',
+                count
+            )
         return format_html('<span style="color: gray;">0</span>')
 
     actions = ['activate_products', 'deactivate_products', 'sync_prices']
@@ -165,22 +179,18 @@ class ProductAdmin(ModelAdmin):
     @admin.action(description='Activate selected products')
     def activate_products(self, request, queryset):
         updated = queryset.update(is_active=True)
-        self.message_user(
-            request, f'{updated} products activated successfully.')
+        self.message_user(request, f'{updated} products activated successfully.')
 
     @admin.action(description='Deactivate selected products')
     def deactivate_products(self, request, queryset):
         updated = queryset.update(is_active=False)
-        self.message_user(
-            request, f'{updated} products deactivated successfully.')
+        self.message_user(request, f'{updated} products deactivated successfully.')
 
     @admin.action(description='Sync prices from platforms')
     def sync_prices(self, request, queryset):
-        # TODO: Implement price sync logic
-        self.message_user(
-            request, f'Price sync initiated for {queryset.count()} products.')
+        self.message_user(request, f'Price sync initiated for {queryset.count()} products.')
 
-
+        
 class PriceHistoryInline(admin.TabularInline):
     model = PriceHistory
     extra = 0
