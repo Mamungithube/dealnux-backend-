@@ -513,7 +513,9 @@ STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
 STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
 STRIPE_RETURN_URL = 'https://yoursite.com/checkout/complete'
 
-
+# HTTPS Fix for Nginx Reverse Proxy
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # eBay API Configuration
 # EBAY_ENV = config('EBAY_ENV', default='SANDBOX')      

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -111,7 +113,7 @@ class AdSetting(models.Model):
     cpc_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=0.50,
+        default=Decimal('0.01'),
         help_text="per click amount to charge advertisers"
     )
     updated_at = models.DateTimeField(auto_now=True)
