@@ -8,6 +8,7 @@ router.register(r'seller-profiles', views.SellerProfileViewSet,  basename='selle
 router.register(r'seller-products', views.SellerProductViewSet,  basename='seller-product')
 router.register(r'orders',          views.OrderViewSet,          basename='order')
 router.register(r'coupons',         views.CouponViewSet,         basename='coupon')
+router.register(r'reviews',         views.ProductReviewViewSet, basename='review')
 
 app_name = 'store'
 

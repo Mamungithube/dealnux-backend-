@@ -2,19 +2,20 @@ from rest_framework.views import APIView
 import math
 import time
 import logging
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
+from stripe.climate import Product
 
 from .models import (
-    SellerRequest, SellerProfile,
+    ProductReview, SellerRequest, SellerProfile,
     SellerProduct, Order, Coupon,
 )
 from .serializers import (
-    SellerRequestSerializer, AdminSellerRequestSerializer,
+    SellerProductReviewSerializer, SellerRequestSerializer, AdminSellerRequestSerializer,
     SellerProfileSerializer,
     SellerProductSerializer, SellerProductPublicSerializer, AdminSellerProductSerializer,
     SellerProductImageSerializer,
@@ -494,6 +495,83 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = OrderSerializer(qs, many=True)
         return success_response(serializer.data, message="Shop orders fetched")
 
+
+# ============================================================================
+# Product Review ViewSet
+# ============================================================================
+
+
+class ProductReviewViewSet(viewsets.ModelViewSet):
+    """
+    GET    /api/v1/reviews/?product_id=
+    POST   /api/v1/reviews/     
+    PATCH  /api/v1/reviews/<id>/     
+    DELETE /api/v1/reviews/<id>/  
+    """
+    serializer_class = SellerProductReviewSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        product_id = self.request.query_params.get('product_id')
+        qs = ProductReview.objects.select_related('user', 'product')
+        if product_id:
+            qs = qs.filter(product_id=product_id)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        product_id = request.data.get('product_id')
+        if not product_id:
+            return error_response("product_id is required", code=400)
+
+        # ✅ শুধু SellerProduct চেক করো
+        from store.models import SellerProduct
+        product = SellerProduct.objects.filter(id=product_id, status='APPROVED').first()
+        if not product:
+            return error_response("Product not found", code=404)
+
+        if ProductReview.objects.filter(product=product, user=request.user).exists():
+            return error_response("You have already reviewed this product.", code=400)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user, product=product)
+        return success_response(serializer.data, message="Review submitted successfully.", code=201)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.user != request.user:
+            return error_response("Permission denied.", code=403)
+        partial = kwargs.pop('partial', False)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return success_response(serializer.data, message="Review updated.")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.user != request.user and not request.user.is_staff:
+            return error_response("Permission denied.", code=403)
+        instance.delete()
+        return success_response({}, message="Review deleted.")
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+
+        # Summary stats
+        from django.db.models import Avg, Count
+        stats = qs.aggregate(avg_rating=Avg('rating'), total=Count('id'))
+
+        serializer = self.get_serializer(qs, many=True)
+        return success_response({
+            "average_rating": round(stats['avg_rating'] or 0, 1),
+            "total_reviews":  stats['total'],
+            "reviews":        serializer.data
+        }, message="Reviews fetched.")
+    
 
 # ============================================================================
 # Coupon ViewSet

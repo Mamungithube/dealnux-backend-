@@ -1,7 +1,6 @@
 from rest_framework import serializers
-from django.utils import timezone
 from .models import (
-    SellerRequest, SellerProfile,
+    ProductReview, SellerRequest, SellerProfile,
     SellerProduct, SellerProductImage,
     Order, Coupon,
 )
@@ -97,6 +96,8 @@ class SellerProductSerializer(serializers.ModelSerializer):
     discount_percentage = serializers.SerializerMethodField()
     images              = SellerProductImageSerializer(many=True, read_only=True)
     category_name       = serializers.CharField(source='category.name', read_only=True, allow_null=True)
+    rating       = serializers.SerializerMethodField() 
+    review_count = serializers.SerializerMethodField() 
 
     # category: pk ("3") or name ("food") will both work
     category = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -112,7 +113,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
             'free_shipping', 'shipping_cost', 'estimated_delivery_days',
             'returns_accepted', 'return_period_days',
             'status', 'status_display', 'admin_note',
-            'discount_percentage',
+            'discount_percentage', 'rating', 'review_count',
             'linked_product', 'linked_listing',
             'created_at', 'updated_at',
 
@@ -122,6 +123,15 @@ class SellerProductSerializer(serializers.ModelSerializer):
             'linked_product', 'linked_listing',
             'created_at', 'updated_at',
         ]
+
+
+    def get_rating(self, obj):
+        from django.db.models import Avg
+        result = obj.reviews.aggregate(avg=Avg('rating'))
+        return round(result['avg'] or 0, 1)
+
+    def get_review_count(self, obj):
+        return obj.reviews.count()
 
     def get_discount_percentage(self, obj):
         return obj.discount_percentage
@@ -198,6 +208,8 @@ class SellerProductPublicSerializer(serializers.ModelSerializer):
     images       = SellerProductImageSerializer(many=True, read_only=True)
     listing_details = ProductListingSerializer(source='linked_listing', read_only=True)
     discount_percentage = serializers.SerializerMethodField()
+    rating       = serializers.SerializerMethodField()  # ✅
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = SellerProduct
@@ -208,17 +220,33 @@ class SellerProductPublicSerializer(serializers.ModelSerializer):
             'main_image', 'images',
             'free_shipping', 'shipping_cost', 'estimated_delivery_days',
             'returns_accepted', 'return_period_days',
-            'discount_percentage', 'listing_details',
+            'discount_percentage', 'listing_details','rating', 'review_count', 
             'created_at',
         ]
 
     def get_discount_percentage(self, obj):
         return obj.discount_percentage
+    
+    def get_rating(self, obj):
+        from django.db.models import Avg
+        result = obj.reviews.aggregate(avg=Avg('rating'))
+        return round(result['avg'] or 0, 1)
 
+    def get_review_count(self, obj):
+        return obj.reviews.count()
 
 # ============================================================================
 # Admin Product Review
 # ============================================================================
+
+class SellerProductReviewSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.Fullname', read_only=True)
+
+    class Meta:
+        model = ProductReview
+        fields = ['id', 'user_name', 'rating', 'comment', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
 
 class AdminSellerProductSerializer(serializers.ModelSerializer):
     seller_shop  = serializers.CharField(source='seller.shop_name', read_only=True)
@@ -238,25 +266,28 @@ class AdminSellerProductSerializer(serializers.ModelSerializer):
 # ============================================================================
 # Order
 # ============================================================================
-
 class OrderSerializer(serializers.ModelSerializer):
-    buyer_email  = serializers.CharField(source='buyer.email',  read_only=True)
-    seller_shop  = serializers.CharField(source='seller.shop_name', read_only=True)
+    buyer_email    = serializers.CharField(source='buyer.email', read_only=True)
+    seller_shop    = serializers.CharField(source='seller.shop_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     seller_product = SellerProductPublicSerializer(read_only=True)
+    coupon_code    = serializers.CharField(source='coupon.code', read_only=True, allow_null=True)  # ✅ নতুন
 
     class Meta:
         model = Order
         fields = [
             'id', 'buyer_email', 'seller_shop',
             'seller_product', 'listing',
-            'quantity', 'unit_price', 'total_price', 'currency',
+            'quantity', 'unit_price', 'total_price',
+            'coupon_code', 'discount_amount', 'final_price',  # ✅ নতুন যোগ
+            'currency',
             'shipping_address', 'status', 'status_display',
             'tracking_number', 'note',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'buyer_email', 'seller_shop', 'unit_price', 'total_price',
+            'discount_amount', 'final_price',  # ✅ নতুন
             'status', 'tracking_number', 'created_at', 'updated_at',
         ]
 
@@ -275,17 +306,17 @@ class OrderSerializer(serializers.ModelSerializer):
                 })
         return attrs
 
-
 class OrderCreateSerializer(serializers.ModelSerializer):
-    """For buyer to place an order"""
+    coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
     class Meta:
         model = Order
-        fields = ['seller_product', 'quantity', 'shipping_address', 'note']
+        fields = ['seller_product', 'quantity', 'shipping_address', 'note', 'coupon_code']
 
     def validate(self, attrs):
         seller_product = attrs.get('seller_product')
         quantity       = attrs.get('quantity', 1)
+        coupon_code    = attrs.pop('coupon_code', None)
 
         if seller_product.status != 'APPROVED':
             raise serializers.ValidationError({
@@ -295,37 +326,80 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "quantity": [f"Only {seller_product.quantity} items available."]
             })
+
+        # Coupon validate
+        if coupon_code:
+            try:
+                coupon = Coupon.objects.get(code=coupon_code.upper().strip())
+            except Coupon.DoesNotExist:
+                raise serializers.ValidationError({"coupon_code": ["Invalid coupon code."]})
+
+            if not coupon.is_valid:
+                raise serializers.ValidationError({"coupon_code": ["This coupon is expired or inactive."]})
+
+            total = seller_product.price * quantity
+            if total < coupon.min_order_amount:
+                raise serializers.ValidationError({
+                    "coupon_code": [f"Minimum order amount is {coupon.min_order_amount} USD."]
+                })
+
+            attrs['coupon'] = coupon
+        else:
+            attrs['coupon'] = None
+
         return attrs
 
     def create(self, validated_data):
         seller_product = validated_data['seller_product']
         request        = self.context['request']
+        quantity       = validated_data.get('quantity', 1)
+        coupon         = validated_data.pop('coupon', None)
+
+        total_price     = seller_product.price * quantity
+        discount_amount = 0
+
+        # Discount calculate
+        if coupon:
+            if coupon.discount_type == 'PERCENTAGE':
+                discount_amount = (total_price * coupon.discount_value) / 100
+            else:  # FIXED
+                discount_amount = min(coupon.discount_value, total_price)
+
+            final_price = total_price - discount_amount
+
+            # Coupon used_count বাড়াও
+            coupon.used_count += 1
+            coupon.save(update_fields=['used_count'])
+        else:
+            final_price = total_price
 
         order = Order.objects.create(
-            buyer           = request.user,
-            seller          = seller_product.seller,
-            seller_product  = seller_product,
-            listing         = seller_product.linked_listing,
-            quantity        = validated_data.get('quantity', 1),
-            unit_price      = seller_product.price,
-            total_price     = seller_product.price * validated_data.get('quantity', 1),
-            currency        = seller_product.currency,
+            buyer            = request.user,
+            seller           = seller_product.seller,
+            seller_product   = seller_product,
+            listing          = seller_product.linked_listing,
+            quantity         = quantity,
+            unit_price       = seller_product.price,
+            total_price      = total_price,
+            discount_amount  = discount_amount,
+            final_price      = final_price,
+            coupon           = coupon,
+            currency         = seller_product.currency,
             shipping_address = validated_data.get('shipping_address', ''),
-            note            = validated_data.get('note', ''),
+            note             = validated_data.get('note', ''),
         )
 
-        # Reduce stock
-        seller_product.quantity -= order.quantity
+        # Stock কমাও
+        seller_product.quantity -= quantity
         seller_product.save(update_fields=['quantity'])
 
         # Seller stats
         seller = seller_product.seller
-        seller.total_orders += 1
-        seller.total_earnings += order.total_price
+        seller.total_orders   += 1
+        seller.total_earnings += final_price  # discount-এর পরের amount
         seller.save(update_fields=['total_orders', 'total_earnings'])
 
         return order
-
 
 # ============================================================================
 # Coupon

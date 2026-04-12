@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from account.models import User
 from api_integration.models import Product, ProductListing, Platform, Category
+from dealnux import settings
 
 # ============================================================================
 # Seller Request — You can become a Seller if the Admin approves.
@@ -278,6 +279,28 @@ class SellerProduct(models.Model):
 
 
 # ============================================================================
+# Product Review — Buyer can review the product after purchase
+# ============================================================================
+
+class ProductReview(models.Model):
+    RATING_CHOICES = [(i, i) for i in range(1, 6)]
+
+    product    = models.ForeignKey(SellerProduct, on_delete=models.CASCADE, related_name='reviews')
+    user        = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_product_reviews')
+    rating      = models.PositiveSmallIntegerField(choices=RATING_CHOICES)
+    comment     = models.TextField(blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('product', 'user') 
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} → {self.product.title} ({self.rating}★)"
+    
+    
+# ============================================================================
 # Seller Product Image — Multiple images
 # ============================================================================
 
@@ -324,6 +347,10 @@ class Order(models.Model):
 
     # Shipping address snapshot
     shipping_address = models.TextField()
+
+    coupon          = models.ForeignKey('Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    final_price     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     tracking_number = models.CharField(max_length=200, blank=True)
