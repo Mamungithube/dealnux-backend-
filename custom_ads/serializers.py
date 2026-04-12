@@ -126,13 +126,13 @@ class AdSerializer(serializers.ModelSerializer):
 
 class AdPublicSerializer(serializers.ModelSerializer):
     """Public facing serializer with performance chart data"""
-    # performance = serializers.SerializerMethodField()
-    # reviews = AdReviewSerializer(many=True, read_only=True)
+    performance = serializers.SerializerMethodField()
+    reviews = AdReviewSerializer(many=True, read_only=True)
 
     class Meta:
         model = CustomAd
         fields = [
-            'id', 'title', 'description', 'image', 'target_url',
+            'id', 'title', 'description', 'image', 'target_url','performance', 'reviews',
             'target_section',
         ]
 
