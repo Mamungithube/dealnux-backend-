@@ -56,6 +56,7 @@ class AdSerializer(serializers.ModelSerializer):
     ctr = serializers.FloatField(read_only=True)
     budget_remaining = serializers.FloatField(read_only=True)
     reviews = AdReviewSerializer(many=True, read_only=True)
+    target_url = serializers.URLField(max_length=500)
 
     class Meta:
         model = CustomAd
