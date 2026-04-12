@@ -69,9 +69,9 @@ class CustomAd(models.Model):
 
         # ২. image validation (YouTube Thumbnail Size & Security)
         if self.image:
-            # File size check (2 MB = 2 * 1024 * 1024 bytes)
-            if self.image.size > 2 * 1024 * 1024:
-                raise ValidationError("Image size must be less than 2MB.")
+            # File size check (10 MB = 10 * 1024 * 1024 bytes)
+            if self.image.size > 10 * 1024 * 1024:
+                raise ValidationError("Image size must be less than 10MB.")
 
             # ডাইমেনশন চেক (Width & Height)
             width, height = get_image_dimensions(self.image)
