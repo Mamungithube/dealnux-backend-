@@ -216,7 +216,7 @@ class SellerProductPublicSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'seller_shop', 'seller_logo', 'category', 'category_name',
             'title', 'description', 'brand', 'model_number',
-            'price', 'original_price', 'currency', 'quantity', 'condition',
+              'price',  'original_price', 'currency', 'quantity', 'condition',
             'main_image', 'images',
             'free_shipping', 'shipping_cost', 'estimated_delivery_days',
             'returns_accepted', 'return_period_days',
@@ -271,7 +271,7 @@ class OrderSerializer(serializers.ModelSerializer):
     seller_shop    = serializers.CharField(source='seller.shop_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     seller_product = SellerProductPublicSerializer(read_only=True)
-    coupon_code    = serializers.CharField(source='coupon.code', read_only=True, allow_null=True)  # ✅ নতুন
+    coupon_code    = serializers.CharField(source='coupon.code', read_only=True, allow_null=True) 
 
     class Meta:
         model = Order
@@ -279,7 +279,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'id', 'buyer_email', 'seller_shop',
             'seller_product', 'listing',
             'quantity', 'unit_price', 'total_price',
-            'coupon_code', 'discount_amount', 'final_price',  # ✅ নতুন যোগ
+            'coupon_code', 'discount_amount', 'final_price', 
             'currency',
             'shipping_address', 'status', 'status_display',
             'tracking_number', 'note',
@@ -287,7 +287,7 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'buyer_email', 'seller_shop', 'unit_price', 'total_price',
-            'discount_amount', 'final_price',  # ✅ নতুন
+            'discount_amount', 'final_price', 
             'status', 'tracking_number', 'created_at', 'updated_at',
         ]
 

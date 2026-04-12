@@ -142,7 +142,7 @@ class ProductListing(models.Model):
         Platform, on_delete=models.CASCADE, related_name='listings')
 
     # Platform-specific ID
-    external_id = models.CharField(max_length=200)  # Item ID from platform
+    external_id = models.CharField(max_length=200)
     # Link to product on platform
     external_url = models.URLField(max_length=1000)
 
