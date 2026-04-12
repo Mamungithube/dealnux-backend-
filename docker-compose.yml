@@ -39,7 +39,7 @@ services:
     build: .
     container_name: dealnux_celery_worker
     restart: always
-    command: celery -A dealnux worker -l info --concurrency=4
+    command: celery -A dealnux worker -l info --concurrency=2
     volumes:
       - .:/app
     env_file:
