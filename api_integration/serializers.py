@@ -185,6 +185,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     coupon_text = serializers.SerializerMethodField()
     deal_badge = serializers.SerializerMethodField()
     is_best_seller = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()  
     # listing = serializers.SerializerMethodField()
     # price_analysis = serializers.SerializerMethodField()
 
@@ -193,7 +194,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'slug', 'description',
             'category', 'category_name',
-            'brand', 'main_image', 'images',
+            'brand', 'main_image', 'images', 'price',
             'lowest_price', 'shipping_cost',
             'platform_name', 'external_url', 'is_available',
             'is_active', 'created_at',
@@ -213,6 +214,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     def get_is_cart(self, obj):
         cart_product_ids = self.context.get('cart_product_ids', set())
         return obj.id in cart_product_ids
+    
+    def get_price(self, obj):                      
+        best = obj.listings.filter(is_available=True).order_by('price').first()
+        return float(best.price) if best else None
 
     def get_lowest_price(self, obj):
         price = obj.get_lowest_price()
