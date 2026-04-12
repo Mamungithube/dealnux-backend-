@@ -20,7 +20,7 @@ class CustomAd(models.Model):
     description     = models.TextField(blank=True, default="")
     image           = models.ImageField(
         upload_to='ads/', 
-        help_text="Ideal size: 1280x720px (16:9), Max 2MB. Formats: JPG, PNG, GIF"
+        help_text="Ideal size: 1280x720px (16:9), Max 10MB. Formats: JPG, PNG, GIF"
     )
     target_url      = models.URLField(help_text="Valid URL required")
     target_section  = models.CharField(max_length=100, blank=True, null=True)
