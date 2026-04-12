@@ -314,12 +314,12 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = ['id', 'product', 'product_title',
-                  'product_image', 'quantity', 'listings']
+                  'product_image', 'quantity', ] #'listings'
 
-    def get_listings(self, obj):
-        listings = obj.product.listings.filter(
-            is_available=True).select_related('platform')
-        return ProductListingSerializer(listings, many=True).data
+    # def get_listings(self, obj):
+    #     listings = obj.product.listings.filter(
+    #         is_available=True).select_related('platform')
+    #     return ProductListingSerializer(listings, many=True).data
 
     def validate(self, attrs):
         request = self.context.get('request')
