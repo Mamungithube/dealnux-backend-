@@ -1,10 +1,12 @@
 from rest_framework import generics, permissions, status
-from rest_framework.views import APIView
+from rest_framework.views import APIView, settings
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, NotFound
 from django.db.models import F
 from django.db import IntegrityError, transaction
+import stripe
 from .models import AdDailyPerformance, AdReview, AdvertiserRequest, CustomAd, AdSetting
+from payment.models import Payment 
 from .serializers import (
     AdvertiserRequestSerializer,
     AdSerializer,
@@ -21,6 +23,8 @@ from django.http import Http404
 from django.utils import timezone
 from django.core.cache import cache
 from decimal import Decimal
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 # ১. Advertiser Request Apply
 class ApplyForAdvertiserView(generics.CreateAPIView):
