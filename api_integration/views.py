@@ -1551,29 +1551,28 @@ class CartViewSet(viewsets.ModelViewSet):
         total_price = 0.0
 
         for item in serializer.data:
-            listings = item.get('listings', [])
+            listing = item.get('listing')  # ✅ listings নয়, listing
+            if not listing:
+                continue
 
-            for listing in listings:
-                platform = listing.get('platform_name', 'Unknown')
+            platform = listing.get('platform_name', 'Unknown')
 
-                # Merge product info with listing
-                entry = {
-                    "id":            item['id'],
-                    "product":       item['product'],
-                    "product_title": item['product_title'],
-                    "product_image": item['product_image'],
-                    "quantity":      item['quantity'],
-                    "listing":       listing,  
-                }
+            entry = {
+                "id":            item['id'],
+                "product":       item['product'],
+                "product_title": item['product_title'],
+                "product_image": item['product_image'],
+                "quantity":      item['quantity'],
+                "listing":       listing,
+            }
 
-                if platform not in grouped:
-                    grouped[platform] = []
+            if platform not in grouped:
+                grouped[platform] = []
 
-                grouped[platform].append(entry)
+            grouped[platform].append(entry)
 
-                # Summary calculation
-                total_items += item['quantity']
-                total_price += listing.get('total_price', 0.0) * item['quantity']
+            total_items += item['quantity']
+            total_price += listing.get('total_price', 0.0) * item['quantity']
 
         summary = {
             "total_platforms": len(grouped),

@@ -185,7 +185,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     coupon_text = serializers.SerializerMethodField()
     deal_badge = serializers.SerializerMethodField()
     is_best_seller = serializers.SerializerMethodField()
-    listings = serializers.SerializerMethodField()
+    listing = serializers.SerializerMethodField()
     # price_analysis = serializers.SerializerMethodField()
 
     class Meta:
@@ -309,17 +309,18 @@ class CartItemSerializer(serializers.ModelSerializer):
         source='product.title', read_only=True)
     product_image = serializers.URLField(
         source='product.main_image', read_only=True)
-    listings = serializers.SerializerMethodField()
+    listing = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
         fields = ['id', 'product', 'product_title',
-                  'product_image', 'quantity', ] #'listings'
+                  'product_image', 'quantity', 'listing'] 
 
-    # def get_listings(self, obj):
-    #     listings = obj.product.listings.filter(
-    #         is_available=True).select_related('platform')
-    #     return ProductListingSerializer(listings, many=True).data
+    def get_listing(self, obj):
+        best = obj.product.listings.filter(
+            is_available=True
+        ).order_by('price').first()
+        return ProductListingSerializer(best).data if best else None
 
     def validate(self, attrs):
         request = self.context.get('request')
