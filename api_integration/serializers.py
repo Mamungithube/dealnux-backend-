@@ -173,7 +173,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(
         source='category.name', read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    # listings      = serializers.SerializerMethodField()
+    listings      = serializers.SerializerMethodField()
     lowest_price = serializers.SerializerMethodField()
     is_favorite = serializers.SerializerMethodField()
     is_cart = serializers.SerializerMethodField()

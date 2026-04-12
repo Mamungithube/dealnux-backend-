@@ -100,7 +100,7 @@ def product_detail(request, pk):
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
-                # ✅ SellerProduct থেকে price info রেখে দাও
+
                 seller_product_data = {
                     'price': str(seller_product.price),
                     'original_price': str(seller_product.original_price) if seller_product.original_price else None,
