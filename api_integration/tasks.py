@@ -340,16 +340,17 @@ def fix_coupon_flags():
 def hourly_fixed_category_sync():
     from api_integration.models import Category
 
+    # শুধু parent category নিন — child নয়
     categories = list(
-        Category.objects.filter(parent__isnull=False).only('name', 'slug')
+        Category.objects.filter(parent__isnull=True).only('name', 'slug')
     )
 
     for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category.name, 10, category.slug],  
-            countdown=index * 120  # ✅ 30s → 120s gap 
+            args=[category.name, 10, category.slug],
+            countdown=index * 300  # ✅ 5 মিনিট পরপর একটা
         )
 
-    fix_coupon_flags.apply_async(countdown=len(categories) * 120 + 60)
+    fix_coupon_flags.apply_async(countdown=len(categories) * 300 + 60)
 
     return f"Scheduled {len(categories)} categories for sync."
