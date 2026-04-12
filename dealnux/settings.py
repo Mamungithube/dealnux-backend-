@@ -446,9 +446,9 @@ CHANNEL_LAYERS = {
 }
 
 CELERY_BEAT_SCHEDULE = {
-    'hourly-category-sync': {
+    'daily-category-sync': {
         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-        'schedule': crontab(hour=2, minute=0), 
+        'schedule': crontab(hour=2, minute=0),  # ✅ প্রতিদিন রাত ২টায় একবার
     },
 }
 

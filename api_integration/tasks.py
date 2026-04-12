@@ -346,11 +346,10 @@ def hourly_fixed_category_sync():
 
     for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category.name, 30, category.slug],
-            countdown=index * 30
+            args=[category.name, 10, category.slug],  
+            countdown=index * 120  # ✅ 30s → 120s gap 
         )
 
-    # সব sync শেষ হওয়ার পর coupon flags fix করা
-    fix_coupon_flags.apply_async(countdown=len(categories) * 30 + 60)
+    fix_coupon_flags.apply_async(countdown=len(categories) * 120 + 60)
 
     return f"Scheduled {len(categories)} categories for sync."
