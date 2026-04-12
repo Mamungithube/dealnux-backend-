@@ -185,7 +185,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     coupon_text = serializers.SerializerMethodField()
     deal_badge = serializers.SerializerMethodField()
     is_best_seller = serializers.SerializerMethodField()
-    listing = serializers.SerializerMethodField()
+    # listing = serializers.SerializerMethodField()
     # price_analysis = serializers.SerializerMethodField()
 
     class Meta:
