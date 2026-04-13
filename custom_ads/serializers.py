@@ -126,20 +126,26 @@ class AdSerializer(serializers.ModelSerializer):
 
 class AdPublicSerializer(serializers.ModelSerializer):
     """Public facing serializer with performance chart data"""
-    performance = serializers.SerializerMethodField()
+    advertiser_name = serializers.CharField(source='advertiser.Fullname', read_only=True)
+    ctr = serializers.FloatField(read_only=True)
+    budget_remaining = serializers.FloatField(read_only=True)
     reviews = AdReviewSerializer(many=True, read_only=True)
+    target_url = serializers.URLField(max_length=500)
+    performance = serializers.SerializerMethodField() 
 
     class Meta:
         model = CustomAd
         fields = [
-            'id', 'title', 'description', 'image', 'target_url','performance', 'reviews',
-            'target_section',
+            'id', 'title', 'description', 'image', 'target_url',
+            'target_section', 'total_budget', 'spent_amount', 
+            'priority_weight', 'is_premium', 'clicks', 'impressions', 
+            'ctr', 'start_date', 'end_date', 'is_approved', 'status',
+            'cta_text', 'advertiser_name', 'budget_remaining',
+            'created_at', 'updated_at', 'reviews', 'performance'
         ]
 
     def get_performance(self, obj):
         from datetime import timedelta
-
-        # From Ad's start_date to today
         start = obj.start_date.date()
         today = timezone.now().date()
         end = min(obj.end_date.date(), today)
@@ -150,10 +156,8 @@ class AdPublicSerializer(serializers.ModelSerializer):
             date__lte=today
         ).order_by('date')
 
-        # Ensure data for all days (missing days = 0)
         data_map = {d.date: d for d in daily_data}
         result = []
-
         current = start
         while current <= end:
             if current in data_map:
@@ -169,10 +173,7 @@ class AdPublicSerializer(serializers.ModelSerializer):
                     'clicks': 0,
                 })
             current += timedelta(days=1)
-
         return result
-
-
 
 class AdDailyPerformanceSerializer(serializers.ModelSerializer):
     day = serializers.SerializerMethodField()

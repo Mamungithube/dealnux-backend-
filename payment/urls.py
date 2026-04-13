@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    CheckSessionStatusView,
     CreateCheckoutSessionView,
     StripeWebhookView,
     SellerStripeConnectView,
@@ -19,4 +20,5 @@ urlpatterns = [
     path('seller/connect/',       SellerStripeConnectView.as_view(),  name='seller-connect'),
     path('seller/connect/status/',SellerStripeStatusView.as_view(),   name='seller-connect-status'),
     path('seller/payouts/',       SellerPayoutHistoryView.as_view(),  name='seller-payouts'),
+    path('session-status/', CheckSessionStatusView.as_view(), name='session-status'),
 ]

@@ -477,3 +477,37 @@ class SellerPayoutHistoryView(APIView):
                 'created_at':         p.created_at,
             })
         return Response(data)
+    
+class CheckSessionStatusView(APIView):
+    """ইউজার পেমেন্ট শেষে যখন return_url এ আসবে, ফ্রন্টএন্ড এটি কল করবে"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        session_id = request.query_params.get('session_id')
+        
+        if not session_id:
+            return Response({"error": "session_id is required"}, status=400)
+
+        try:
+            # স্ট্রাইপ থেকে সেশন ডাটা নিয়ে আসা
+            session = stripe.checkout.Session.retrieve(session_id)
+            
+            # নিরাপদভাবে ইমেইল এবং পেমেন্ট ডিটেইলস চেক করা
+            customer_email = None
+            if session.customer_details:
+                customer_email = session.customer_details.get('email')
+            elif session.customer_email:
+                customer_email = session.customer_email
+
+            return Response({
+                "success": True,
+                "status": session.status,                # 'complete', 'open', or 'expired'
+                "payment_status": session.payment_status, # 'paid', 'unpaid', or 'no_payment_required'
+                "customer_email": customer_email,
+                "message": "Payment verified" if session.payment_status == 'paid' else "Payment process incomplete"
+            }, status=200)
+
+        except stripe.error.StripeError as e:
+            return Response({"success": False, "error": str(e)}, status=400)
+        except Exception as e:
+            return Response({"success": False, "error": "An unexpected error occurred."}, status=500)

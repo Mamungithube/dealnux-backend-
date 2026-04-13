@@ -16,7 +16,6 @@ import math
 from .utils import get_weighted_ads
 from account.models import User
 from django.db.models import Sum
-from rest_framework.decorators import action
 from .permissions import IsAdminUser
 import time
 from django.http import Http404
@@ -132,11 +131,9 @@ class CreateAdView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # ১. বিজ্ঞাপনটি 'pending' হিসেবে সেভ করা (পেমেন্ট না হওয়া পর্যন্ত এটি লাইভ হবে না)
         ad = serializer.save(advertiser=request.user,
                              is_approved=False, status='pending')
 
-        # ২. পেমেন্ট রেকর্ড তৈরি করা
         payment = Payment.objects.create(
             buyer=request.user,
             ad=ad,
@@ -144,30 +141,26 @@ class CreateAdView(generics.CreateAPIView):
             unit_price=ad.total_budget,
             total_amount=ad.total_budget,
             final_amount=ad.total_budget,
-            currency='usd',  # বা আপনার কারেন্সি
+            currency='usd',
             status='PENDING'
         )
 
-        # ৩. Stripe Checkout Session তৈরি করা
         try:
             session = stripe.checkout.Session.create(
+                ui_mode='embedded',
                 payment_method_types=['card'],
                 line_items=[{
                     'price_data': {
                         'currency': 'usd',
-                        # Cents এ রূপান্তর
                         'unit_amount': int(ad.total_budget * 100),
                         'product_data': {
                             'name': f"Ad Campaign: {ad.title}",
-                            'description': f"Budget for {ad.target_section} section",
                         },
                     },
                     'quantity': 1,
                 }],
                 mode='payment',
-                success_url=settings.STRIPE_SUCCESS_URL +
-                    "?session_id={CHECKOUT_SESSION_ID}",
-                cancel_url=settings.STRIPE_CANCEL_URL,
+                return_url=settings.STRIPE_RETURN_URL + "?session_id={CHECKOUT_SESSION_ID}",
                 metadata={
                     'payment_id': payment.id,
                     'ad_id': ad.id,
@@ -176,18 +169,17 @@ class CreateAdView(generics.CreateAPIView):
             )
 
             payment.stripe_checkout_session_id = session.id
-            payment.stripe_checkout_url = session.url
             payment.save()
 
             return Response({
-                "message": "Ad submitted. Please complete payment to proceed to admin review.",
-                "checkout_url": session.url,
-                "ad_id": ad.id
+                "message": "Embedded Checkout Session Created.",
+                "client_secret": session.client_secret,
+                "session_id": session.id,
+                "payment_id": payment.id
             }, status=201)
 
-        except Exception as e:
-            transaction.set_rollback(True)
-            return Response({"error": str(e)}, status=500)
+        except stripe.error.StripeError as e:
+            return Response({'error': str(e)}, status=500)
 
 
 """--------------------Public Ad List (Weighted Algorithm)-----------------------"""
