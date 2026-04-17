@@ -92,11 +92,13 @@ def token_similarity(title1, title2):
 @permission_classes([AllowAny])
 def product_detail(request, pk):
     product = None
-    seller_product_data = None  # ✅ নতুন
+    seller_product_data = None  
+
+    product = Product.objects.filter(id=pk, is_active=True).first()
 
     try:
         from store.models import SellerProduct
-        seller_product = None
+        seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
