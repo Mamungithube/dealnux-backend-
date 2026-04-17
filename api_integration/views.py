@@ -96,7 +96,7 @@ def product_detail(request, pk):
 
     try:
         from store.models import SellerProduct
-        seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
+        seller_product = None
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
