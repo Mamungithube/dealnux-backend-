@@ -104,6 +104,7 @@ def product_detail(request, pk):
                 product = seller_product.linked_product
 
                 seller_product_data = {
+                    'id': seller_product.id,
                     'price': str(seller_product.price),
                     'original_price': str(seller_product.original_price) if seller_product.original_price else None,
                     'currency': seller_product.currency,
