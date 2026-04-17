@@ -92,20 +92,19 @@ def token_similarity(title1, title2):
 @permission_classes([AllowAny])
 def product_detail(request, pk):
     product = None
-    seller_product_data = None  
+    seller_product_data = None
 
-    product = Product.objects.filter(id=pk, is_active=True).first()
-
+    # ✅ আগে SellerProduct এ খোঁজো
     try:
         from store.models import SellerProduct
         seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
-
                 seller_product_data = {
                     'id': seller_product.id,
                     'price': str(seller_product.price),
+                    'main_image': request.build_absolute_uri(seller_product.main_image.url) if seller_product.main_image else None,
                     'original_price': str(seller_product.original_price) if seller_product.original_price else None,
                     'currency': seller_product.currency,
                     'condition': seller_product.condition,
@@ -113,10 +112,11 @@ def product_detail(request, pk):
                     'seller_logo': None,
                 }
             else:
-                return success_response(SellerProductSerializer(seller_product, context=context).data, message="Product details fetched successfully")
+                return success_response(SellerProductSerializer(seller_product).data)
     except ImportError:
         pass
 
+    # ✅ SellerProduct এ না পেলে Product table এ খোঁজো
     if not product:
         product = Product.objects.filter(id=pk, is_active=True).first()
 
@@ -138,7 +138,7 @@ def product_detail(request, pk):
     serializer = ProductDetailSerializer(product, context=context)
     data = serializer.data
 
-    # ✅ SellerProduct হলে price inject করো, নাহলে data যেমন আছে তেমনই থাকবে
+    # ✅ SellerProduct এর data দিয়ে override করো
     if seller_product_data:
         data.update(seller_product_data)
 
