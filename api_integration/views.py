@@ -113,7 +113,7 @@ def product_detail(request, pk):
                     'seller_logo': None,
                 }
             else:
-                return success_response(SellerProductSerializer(seller_product).data)
+                return success_response(SellerProductSerializer(seller_product, context=context).data, message="Product details fetched successfully")
     except ImportError:
         pass
 
