@@ -211,6 +211,9 @@ class SellerProductPublicSerializer(serializers.ModelSerializer):
     rating       = serializers.SerializerMethodField()  # ✅
     review_count = serializers.SerializerMethodField()
 
+    is_favorited = serializers.SerializerMethodField()
+    is_in_cart   = serializers.SerializerMethodField()
+
     class Meta:
         model = SellerProduct
         fields = [
@@ -221,8 +224,22 @@ class SellerProductPublicSerializer(serializers.ModelSerializer):
             'free_shipping', 'shipping_cost', 'estimated_delivery_days',
             'returns_accepted', 'return_period_days',
             'discount_percentage', 'listing_details','rating', 'review_count', 
+            'is_favorited', 'is_in_cart',
             'created_at',
         ]
+
+    def _get_user(self):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return request.user
+        return None
+
+    def _get_linked_product(self, obj):
+        """SellerProduct → linked_listing → product"""
+        listing = getattr(obj, 'linked_listing', None)
+        if listing:
+            return getattr(listing, 'product', None)
+        return None
 
     def get_discount_percentage(self, obj):
         return obj.discount_percentage
@@ -234,6 +251,28 @@ class SellerProductPublicSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return obj.reviews.count()
+    
+    def get_is_favorited(self, obj):
+        user = self._get_user()
+        if not user:
+            return False  # Guest user
+        
+        from api_integration.models import Favorite
+        product = self._get_linked_product(obj)
+        if not product:
+            return False
+        return Favorite.objects.filter(user=user, product=product).exists()
+
+    def get_is_in_cart(self, obj):
+        user = self._get_user()
+        if not user:
+            return False  # Guest user
+        
+        from api_integration.models import CartItem
+        product = self._get_linked_product(obj)
+        if not product:
+            return False
+        return CartItem.objects.filter(user=user, product=product).exists()
 
 # ============================================================================
 # Admin Product Review
