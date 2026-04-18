@@ -312,8 +312,8 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 class CartItemSerializer(serializers.ModelSerializer):
     product_title = serializers.CharField(
         source='product.title', read_only=True)
-    product_image = serializers.URLField(
-        source='product.main_image', read_only=True)
+    # product_image = serializers.URLField(
+    #     source='product.main_image', read_only=True)
     listing = serializers.SerializerMethodField()
 
     class Meta:
