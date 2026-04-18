@@ -312,8 +312,8 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 class CartItemSerializer(serializers.ModelSerializer):
     product_title = serializers.CharField(
         source='product.title', read_only=True)
-    # product_image = serializers.URLField(
-    #     source='product.main_image', read_only=True)
+    product_image = serializers.URLField(
+        source='product.main_image', read_only=True)
     listing = serializers.SerializerMethodField()
 
     class Meta:
@@ -326,12 +326,7 @@ class CartItemSerializer(serializers.ModelSerializer):
             is_available=True
         ).order_by('price').first()
         return ProductListingSerializer(best).data if best else None
-    
-    def get_product_image(self, obj):
-        request = self.context.get('request')
-        if obj.product_image and request:
-            return request.build_absolute_uri(obj.product_image.url)
-        return None
+        
 
     def validate(self, attrs):
         request = self.context.get('request')
