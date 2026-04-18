@@ -320,12 +320,16 @@ class CartItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'product', 'product_title',
                   'product_image', 'quantity', 'listing'] 
         
-    def get_product_image(self, obj):  
+    def get_product_image(self, obj):
         request = self.context.get('request')
         image = obj.product.main_image
-        if image and request:
-            return request.build_absolute_uri(image.url)
-        return None
+        if not image:
+            return None
+        # ImageField হলে .url, string হলে সরাসরি use করো
+        image_url = image if isinstance(image, str) else image.url
+        if request:
+            return request.build_absolute_uri(image_url)
+        return image_url
 
     def get_listing(self, obj):
         best = obj.product.listings.filter(
