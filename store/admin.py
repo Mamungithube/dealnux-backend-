@@ -25,6 +25,8 @@ class SellerProductImageInline(TabularInline):
     fields = ['image', 'alt_text', 'order']
     tab = True
 
+    def get_queryset(self, request):  # ✅ শুধু এটুকু রাখুন
+        return super().get_queryset(request)
 
 # ============================================================================
 # Seller Request Admin
@@ -36,6 +38,11 @@ class SellerRequestAdmin(ModelAdmin):
     warn_unsaved_form = True
     list_fullwidth = True
     list_filter_submit = True
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'user', 'reviewed_by'
+        )
 
     list_display = [
         'shop_name',
@@ -184,6 +191,9 @@ class SellerProfileAdmin(ModelAdmin):
     warn_unsaved_form = True
     list_fullwidth = True
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user')
+
     list_display = [
         'display_shop',
         'display_user_email',
@@ -269,12 +279,16 @@ class SellerProductAdmin(ModelAdmin):
     warn_unsaved_form = True
     list_fullwidth = True
     list_filter_submit = True
+    list_per_page = 20
 
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
-            'seller',      # display_seller এর জন্য
-            'category',    # list_filter এর জন্য
+            'seller',
+            'category',
+            'linked_product',
+            'linked_listing',
+            'reviewed_by',
         )
 
     list_display = [
@@ -445,6 +459,11 @@ class OrderAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'buyer', 'seller', 'seller_product', 'listing'
+        )
+
     list_display = [
         'display_buyer',
         'display_order_id',
@@ -564,6 +583,10 @@ class CouponAdmin(ModelAdmin):
         'is_active',
         'expires_at',
     ]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('seller')
+    
     list_filter = ['discount_type', 'is_active', 'created_at']
     search_fields = ['code', 'seller__shop_name']
     readonly_fields = [
@@ -633,14 +656,21 @@ class CouponAdmin(ModelAdmin):
 # Sidebar Badge Functions
 # ============================================================================
 
+from django.core.cache import cache
+
 def pending_seller_requests_count(request):
-    count = SellerRequest.objects.filter(status='PENDING').count()
+    count = cache.get('pending_seller_requests_count')
+    if count is None:
+        count = SellerRequest.objects.filter(status='PENDING').count()
+        cache.set('pending_seller_requests_count', count, 60)
     return str(count) if count > 0 else None
 
 
 def pending_products_count(request):
-    # PENDING অথবা DRAFT স্ট্যাটাসের প্রোডাক্টগুলো গণনা করবে
-    from django.db.models import Q
-    count = SellerProduct.objects.filter(
-        Q(status='PENDING') | Q(status='DRAFT')).count()
+    count = cache.get('pending_products_count')
+    if count is None:
+        from django.db.models import Q
+        count = SellerProduct.objects.filter(
+            Q(status='PENDING') | Q(status='DRAFT')).count()
+        cache.set('pending_products_count', count, 60)
     return str(count) if count > 0 else None
