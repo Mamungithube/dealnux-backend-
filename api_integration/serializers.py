@@ -326,6 +326,12 @@ class CartItemSerializer(serializers.ModelSerializer):
             is_available=True
         ).order_by('price').first()
         return ProductListingSerializer(best).data if best else None
+    
+    def get_product_image(self, obj):
+        request = self.context.get('request')
+        if obj.product_image and request:
+            return request.build_absolute_uri(obj.product_image.url)
+        return None
 
     def validate(self, attrs):
         request = self.context.get('request')
