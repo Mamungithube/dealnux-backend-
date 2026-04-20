@@ -31,7 +31,7 @@ class HomeDepotService:
         It only works with numeric productIds.
         Text queries will return an empty list.
         """
-        # Numeric ID হলেই শুধু call করবে
+        # Only call if it is a numeric ID.
         if not str(query).strip().isdigit():
             logger.warning(
                 f"HomeDepot API requires numeric productId, got: '{query}'. Skipping."

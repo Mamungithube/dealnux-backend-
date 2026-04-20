@@ -77,7 +77,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 
 class PaymentDetailSerializer(PaymentSerializer):
-    """Single payment detail — stripe ids সহ (admin/buyer নিজে)"""
+    """Single payment detail — with stripe ids (admin/buyer himself)"""
     class Meta(PaymentSerializer.Meta):
         fields = PaymentSerializer.Meta.fields + [
             'stripe_checkout_session_id',

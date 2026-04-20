@@ -210,7 +210,7 @@ class CheckoutSessionStatusView(APIView):
         })
 
 # ============================================================================
-# 3. Stripe Webhook — Payment হলে Order তৈরি হবে (কোনো পরিবর্তন নেই)
+# 3. Stripe Webhook — Order will be created upon payment (no changes)
 # ============================================================================
 
 

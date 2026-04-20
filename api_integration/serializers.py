@@ -325,7 +325,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         image = obj.product.main_image
         if not image:
             return None
-        # ImageField হলে .url, string হলে সরাসরি use করো
+        # If ImageField, use .url, if string, use directly
         image_url = image if isinstance(image, str) else image.url
         if request:
             return request.build_absolute_uri(image_url)

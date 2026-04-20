@@ -290,7 +290,7 @@ class AmazonService:
 
     def get_promo_code_details(self, promo_code, country='US'):
         """
-        GET /promo-code-details — প্রোমো কোড এর details আনো।
+        GET /promo-code-details — Get promo code details.
         Response: {promo_title, is_promo_available, discount_percentage, products[]}
         """
         url = f"https://{self.host}/promo-code-details"

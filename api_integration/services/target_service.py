@@ -52,7 +52,7 @@ class TargetService:
                 if data.get('status') == 'success':
                     products = data.get('data', []) or []
                 else:
-                    # fallback — পুরনো nested structure
+                    # fallback —> old nested structure
                     products = (
                         data.get('data', {})
                             .get('search', {})

@@ -90,7 +90,7 @@ class WalmartService:
             except (ValueError, TypeError):
                 original_price = None
 
-        # price 0 হলে original দিয়ে replace
+        # If price is 0, replace with original.
         if price == 0.0 and original_price:
             price = original_price
             original_price = None

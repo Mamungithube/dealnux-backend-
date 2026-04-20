@@ -201,14 +201,14 @@ class SellerProductSerializer(serializers.ModelSerializer):
 
 
 class SellerProductPublicSerializer(serializers.ModelSerializer):
-    """Public API - for displaying approved products"""
+    """Public API -> for displaying approved products"""
     seller_shop  = serializers.CharField(source='seller.shop_name', read_only=True)
     seller_logo  = serializers.ImageField(source='seller.shop_logo', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True, allow_null=True)
     images       = SellerProductImageSerializer(many=True, read_only=True)
     listing_details = ProductListingSerializer(source='linked_listing', read_only=True)
     discount_percentage = serializers.SerializerMethodField()
-    rating       = serializers.SerializerMethodField()  # ✅
+    rating       = serializers.SerializerMethodField()  
     review_count = serializers.SerializerMethodField()
 
     is_favorited = serializers.SerializerMethodField()
@@ -406,7 +406,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
             final_price = total_price - discount_amount
 
-            # Coupon used_count বাড়াও
+            # Increase Coupon used_count
             coupon.used_count += 1
             coupon.save(update_fields=['used_count'])
         else:
@@ -428,14 +428,14 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             note             = validated_data.get('note', ''),
         )
 
-        # Stock কমাও
+        # Reduce stock
         seller_product.quantity -= quantity
         seller_product.save(update_fields=['quantity'])
 
         # Seller stats
         seller = seller_product.seller
         seller.total_orders   += 1
-        seller.total_earnings += final_price  # discount-এর পরের amount
+        seller.total_earnings += final_price  # amount after discount
         seller.save(update_fields=['total_orders', 'total_earnings'])
 
         return order
