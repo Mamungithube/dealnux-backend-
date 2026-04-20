@@ -94,7 +94,7 @@ def product_detail(request, pk):
     product = None
     seller_product_data = None
 
-    # ✅ আগে SellerProduct এ খোঁজো
+    # ✅ Search SellerProduct first.
     try:
         from store.models import SellerProduct
         seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
@@ -116,7 +116,7 @@ def product_detail(request, pk):
     except ImportError:
         pass
 
-    # ✅ SellerProduct এ না পেলে Product table এ খোঁজো
+    # ✅ If you don't find it in SellerProduct, search in the Product table.
     if not product:
         product = Product.objects.filter(id=pk, is_active=True).first()
 
@@ -138,7 +138,7 @@ def product_detail(request, pk):
     serializer = ProductDetailSerializer(product, context=context)
     data = serializer.data
 
-    # ✅ SellerProduct এর data দিয়ে override করো
+    # ✅ Override with SellerProduct data
     if seller_product_data:
         data.update(seller_product_data)
 
@@ -501,7 +501,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             query &= Q(title__icontains=word)
         candidates = Product.objects.filter(query, is_active=True)
 
-        # AND কাজ না করলে প্রথম ৫ word দিয়ে OR
+        # If AND doesn't work, use OR with the first 5 words.
         if not candidates.exists():
             query = Q()
             for word in slug_words[:5]:
@@ -640,7 +640,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.user and self.request.user.is_authenticated:
-            from api_integration.models import CartItem, Favorite  # ← এইখানে fix
+            from api_integration.models import CartItem, Favorite  
 
             context['favorite_ids'] = set(
                 Favorite.objects.filter(user=self.request.user)
@@ -870,7 +870,7 @@ def compare_prices_api(request, slug):
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
     
-    # ১. Strict Matching (AND logic ব্যবহার করা হয়েছে যাতে সুইং সেট না আসে)
+    # 1. Strict Matching (AND logic is used to prevent swing sets)
     keywords = target_fingerprint['core_name'].split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
@@ -896,7 +896,7 @@ def compare_prices_api(request, slug):
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # ৩. লিস্টিং সংগ্রহ
+    # 3. Listing collection
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
@@ -1113,7 +1113,7 @@ def smart_search(request):
     cache_key = f'smart_search_v4_{query}_{limit}_{user_id}'
     cached = cache.get(cache_key)
     if cached:
-        # cache এর results এ is_favorite inject করুন
+        # Inject is_favorite into the cache results
         results_with_fav = [
             {**item, 'is_favorite': item['id'] in favorite_ids}
             for item in cached
@@ -1508,7 +1508,7 @@ class CartViewSet(viewsets.ModelViewSet):
 
         product = None
 
-        # ১. Searching linked_product by SellerProduct id
+        # 1. Searching linked_product by SellerProduct id
         try:
             from store.models import SellerProduct 
             seller_product = SellerProduct.objects.get(
@@ -1517,7 +1517,7 @@ class CartViewSet(viewsets.ModelViewSet):
         except SellerProduct.DoesNotExist:
             pass
 
-        # ২. Search directly by Product ID (fallback)
+        # 2. Search directly by Product ID (fallback)
         if not product:
             try:
                 product = Product.objects.get(id=product_id)
@@ -1554,7 +1554,7 @@ class CartViewSet(viewsets.ModelViewSet):
         total_price = 0.0
 
         for item in serializer.data:
-            listing = item.get('listing')  # ✅ listings নয়, listing
+            listing = item.get('listing')  
             if not listing:
                 continue
 
@@ -1607,7 +1607,7 @@ class CartViewSet(viewsets.ModelViewSet):
     def checkout_options(self, request):
         cart_items = self.get_queryset()
         
-        # ১. Definite data collection
+        # . Definite data collection
         optimized_data = {} # {platform: [items]}
         single_store_data = {'BestBuy': []} 
         

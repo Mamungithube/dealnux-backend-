@@ -25,7 +25,7 @@ from decimal import Decimal
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
-# ১. Advertiser Request Apply
+# 1. Advertiser Request Apply
 class ApplyForAdvertiserView(generics.CreateAPIView):
     """
     User can apply to become an advertiser
@@ -200,7 +200,7 @@ class AdListView(generics.ListAPIView):
         ).update(status='expired')
 
         if expired_count > 0:
-            cache.delete('active_ads_pool')  # ✅ এই লাইনটা যোগ করো
+            cache.delete('active_ads_pool')  
 
         count = int(self.request.query_params.get('count', 3))
         count = min(count, 10)
@@ -266,14 +266,14 @@ class AdClickTrackerView(APIView):
     def post(self, request, ad_id):
         try:
             with transaction.atomic():
-                # ১. Lock করে আনো
+                # 1. Lock the ad
                 ad = CustomAd.objects.select_for_update().get(id=ad_id)
 
-                # ২. CPC রেট আনো
+                # 2. Get CPC rate
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else Decimal('0.50')
 
-                # ৩. বাজেট চেক — এখানে spent_amount নিশ্চিতভাবে Decimal
+                # 3. Budget check — here spent_amount is ensured to be Decimal
                 if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
                     return Response(
                         {
@@ -286,17 +286,17 @@ class AdClickTrackerView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # ৪. F() ব্যবহার না করে সরাসরি Python-এ calculate করো
+                # 4. Calculate without using F() expressions
                 new_clicks = ad.clicks + 1
                 new_spent = ad.spent_amount + cpc
 
-                # ৫. Database update করো
+                # 5. Update database
                 CustomAd.objects.filter(id=ad_id).update(
                     clicks=new_clicks,
                     spent_amount=new_spent
                 )
 
-                # ৬. Daily stat update
+                # 6. Daily stat update
                 today = timezone.now().date()
                 daily_stat, _ = AdDailyPerformance.objects.get_or_create(
                     ad=ad,
@@ -307,10 +307,10 @@ class AdClickTrackerView(APIView):
                     clicks=F('clicks') + 1
                 )
 
-                # ৭. Remaining budget calculate করো
+                # 7. Calculate the remaining budget
                 remaining = float(ad.total_budget - new_spent)
 
-                # ৮. Budget শেষ হলে expired করো
+                # 8. Expire when the budget is over.
                 if remaining <= 0:
                     CustomAd.objects.filter(id=ad_id).update(status='expired')
                     remaining = 0
@@ -930,11 +930,11 @@ class AdminAdListView(generics.ListAPIView):
 
         if status_filter == 'pending':
             queryset = queryset.filter(
-                is_approved=False, status='pending')  # ✅ ঠিক করা
+                is_approved=False, status='pending') 
         elif status_filter == 'approved':
             queryset = queryset.filter(is_approved=True, status='active')
         elif status_filter == 'rejected':
-            queryset = queryset.filter(status='rejected')  # ✅ ঠিক করা
+            queryset = queryset.filter(status='rejected')  
 
         return queryset
 
@@ -1090,7 +1090,6 @@ class AdminRejectAdView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ✅ 'paused' থেকে 'rejected' এ ঠিক করা
             ad.is_approved = False
             ad.status = 'rejected'
             ad.save()
@@ -1254,7 +1253,7 @@ class AdminDashboardStatsView(APIView):
 
             total_ads = CustomAd.objects.count()
             pending_ads = CustomAd.objects.filter(
-                is_approved=False, status='pending').count()  # ✅ ঠিক করা
+                is_approved=False, status='pending').count()  
             active_ads = CustomAd.objects.filter(
                 is_approved=True, status='active').count()
 
@@ -1350,7 +1349,7 @@ class AdminBulkApproveAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ✅ Save with list() first.
+            # Save with list() first.
             ads = list(CustomAd.objects.filter(
                 id__in=ad_ids, is_approved=False))
 
@@ -1366,12 +1365,12 @@ class AdminBulkApproveAdsView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # ✅ Bulk update
+            # Bulk update
             CustomAd.objects.filter(id__in=[ad.id for ad in ads]).update(
                 is_approved=True, status='active'
             )
 
-            # ✅ Insert all in one query with bulk_create
+            # Insert all in one query with bulk_create
             AdReview.objects.bulk_create([
                 AdReview(
                     ad=ad,
@@ -1461,7 +1460,7 @@ class AdminBulkRejectAdsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ✅ Save with list() first.
+            # Save with list() first.
             ads = list(CustomAd.objects.filter(id__in=ad_ids))
 
             if not ads:
@@ -1476,12 +1475,12 @@ class AdminBulkRejectAdsView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # ✅ Bulk update, status='rejected' fix
+            # Bulk update, status='rejected' fix
             CustomAd.objects.filter(id__in=[ad.id for ad in ads]).update(
                 is_approved=False, status='rejected'
             )
 
-            # ✅ Insert all in one query with bulk_create
+            # Insert all in one query with bulk_create
             AdReview.objects.bulk_create([
                 AdReview(
                     ad=ad,
