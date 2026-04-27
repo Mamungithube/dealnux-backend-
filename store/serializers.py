@@ -462,25 +462,43 @@ class CouponSerializer(serializers.ModelSerializer):
         return value.upper().strip()
 
 
+# store/serializers.py
+
 class CouponValidateSerializer(serializers.Serializer):
-    """When buyer applies a coupon"""
-    code         = serializers.CharField(max_length=50)
-    order_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    """ইন্ডিভিজুয়াল প্রোডাক্টের কুপন ভ্যালিডেশন"""
+    code              = serializers.CharField(max_length=50)
+    seller_product_id = serializers.IntegerField()
+    quantity          = serializers.IntegerField(min_value=1, default=1)
 
     def validate(self, attrs):
         code = attrs['code'].upper().strip()
+        product_id = attrs['seller_product_id']
+        
+        # ১. প্রোডাক্টটি চেক করা
         try:
-            coupon = Coupon.objects.get(code=code)
+            from .models import SellerProduct
+            product = SellerProduct.objects.get(id=product_id, status='APPROVED')
+        except SellerProduct.DoesNotExist:
+            raise serializers.ValidationError({"seller_product_id": ["Product not found or not approved."]})
+
+        # ২. কুপনটি ওই সেলারের কি না চেক করা
+        try:
+            from .models import Coupon
+            coupon = Coupon.objects.get(code=code, seller=product.seller)
         except Coupon.DoesNotExist:
-            raise serializers.ValidationError({"code": ["Invalid coupon code."]})
+            raise serializers.ValidationError({"code": ["This coupon is not valid for this seller's product."]})
 
         if not coupon.is_valid:
             raise serializers.ValidationError({"code": ["This coupon is expired or inactive."]})
 
-        if attrs['order_amount'] < coupon.min_order_amount:
+        # ৩. প্রোডাক্টের টোটাল দাম বের করে কুপনের মিনিমাম অ্যামাউন্ট চেক করা
+        item_total = product.price * attrs['quantity']
+        if item_total < coupon.min_order_amount:
             raise serializers.ValidationError({
-                "code": [f"Minimum order amount is {coupon.min_order_amount} {coupon.seller.shop_name}."]
+                "code": [f"Minimum order amount for this coupon is {coupon.min_order_amount} USD."]
             })
 
         attrs['coupon'] = coupon
+        attrs['product'] = product
+        attrs['item_total'] = item_total
         return attrs

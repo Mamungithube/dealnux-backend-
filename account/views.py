@@ -4,7 +4,7 @@ from rest_framework import viewsets
 
 from store.models import SellerRequest
 from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer, ChangePasswordSerializer, ResetPasswordSerializer,
-                         LoginSerializer, ProfileSerializer, ProfileUpdateSerializer, ProfileSetupSerializer)
+                          LoginSerializer, ProfileSerializer, ProfileUpdateSerializer, ProfileSetupSerializer)
 from .models import User, Profile
 from rest_framework.response import Response
 from rest_framework import status
@@ -22,10 +22,8 @@ import json
 import time
 from custom_ads.models import AdvertiserRequest
 
-
 def generate_otp():
     return str(random.randint(1000, 9999))
-
 
 # Create your views here.
 
@@ -313,6 +311,7 @@ class ForgotPasswordAPIView(APIView):
 
 """ -------------------Change Password view----------------------- """
 
+
 class ChangePasswordViewSet(viewsets.GenericViewSet):
     serializer_class = ChangePasswordSerializer
     permission_classes = [IsAuthenticated]
@@ -371,7 +370,8 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
             from django.contrib.auth import password_validation
             password_validation.validate_password(new_password, user)
         except Exception as exc:
-            error_messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            error_messages = exc.messages if hasattr(
+                exc, 'messages') else [str(exc)]
             return Response(
                 {
                     "success": False,
@@ -577,7 +577,7 @@ class ProfileSetupView(APIView):
                 "data": {"email": ["No user found with this email."]}
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # ✅ Check if the OTP has been verified.
+        # Check if the OTP has been verified.
         if not user.is_active:
             return Response({
                 "success": False,
@@ -587,7 +587,7 @@ class ProfileSetupView(APIView):
                 "data": {}
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # ✅ Check if the profile setup has already been done.
+        # Check if the profile setup has already been done.
         if user.profile_setup_completed:
             return Response({
                 "success": False,
@@ -631,20 +631,20 @@ class ProfileSetupView(APIView):
 
                 profile.save()
 
-                # ✅ Referral Bonus Process (Only Once)
-                print(
-                    f"[DEBUG] referred_by_code from request: {referred_by_code}")
-                print(
-                    f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
+                # Referral Bonus Process (Only Once)
+                # print(
+                #     f"[DEBUG] referred_by_code from request: {referred_by_code}")
+                # print(
+                #     f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
 
                 if referred_by_code and not user.has_claimed_referral:
                     # Trim referral code
                     referred_by_code = referred_by_code.strip()
-                    print(
-                        f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
+                    # print(
+                    #     f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
 
                     if not referred_by_code:
-                        print("[DEBUG] Referral code is empty after trim")
+                        # print("[DEBUG] Referral code is empty after trim")
                         return Response({
                             "success": False,
                             "code": status.HTTP_400_BAD_REQUEST,
@@ -657,12 +657,12 @@ class ProfileSetupView(APIView):
                         # Find the person whose code is being used
                         referrer = User.objects.get(
                             referral_code=referred_by_code)
-                        print(
-                            f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
+                        # print(
+                        #     f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
 
                         # You cannot use your own code.
                         if referrer == user:
-                            print(f"[DEBUG] User trying to use own code")
+                            # print(f"[DEBUG] User trying to use own code")
                             return Response({
                                 "success": False,
                                 "code": status.HTTP_400_BAD_REQUEST,
@@ -671,11 +671,11 @@ class ProfileSetupView(APIView):
                                 "data": {"referred_by_code": ["Invalid referral code."]}
                             }, status=status.HTTP_400_BAD_REQUEST)
 
-                        # ✅ Bonus day (in atomic transaction)
-                        print(f"[DEBUG] Adding bonus to referrer and new user")
-                        print(
-                            f"[DEBUG] Referrer old balance: {referrer.balance}")
-                        print(f"[DEBUG] New user old balance: {user.balance}")
+                        #  Bonus day (in atomic transaction)
+                        # print(f"[DEBUG] Adding bonus to referrer and new user")
+                        # print(
+                        #     f"[DEBUG] Referrer old balance: {referrer.balance}")
+                        # print(f"[DEBUG] New user old balance: {user.balance}")
 
                         referrer.balance += 10
                         referrer.save()
@@ -684,13 +684,13 @@ class ProfileSetupView(APIView):
                         user.referred_by = referrer
                         user.has_claimed_referral = True
 
-                        print(
-                            f"[DEBUG] Referrer new balance: {referrer.balance}")
-                        print(f"[DEBUG] New user new balance: {user.balance}")
-                        print(f"[DEBUG] Referral bonus applied successfully!")
+                        # print(
+                        #     f"[DEBUG] Referrer new balance: {referrer.balance}")
+                        # print(f"[DEBUG] New user new balance: {user.balance}")
+                        # print(f"[DEBUG] Referral bonus applied successfully!")
 
                     except User.DoesNotExist:
-                        print(f"[DEBUG] Referral code not found in database")
+                        # print(f"[DEBUG] Referral code not found in database")
                         return Response({
                             "success": False,
                             "code": status.HTTP_400_BAD_REQUEST,
@@ -699,7 +699,7 @@ class ProfileSetupView(APIView):
                             "data": {"referred_by_code": ["Referral code not found."]}
                         }, status=status.HTTP_400_BAD_REQUEST)
 
-                # ✅ Mark Profile setup complete.
+                # Mark Profile setup complete.
                 user.profile_setup_completed = True
                 user.save()
 
@@ -725,18 +725,20 @@ class ProfileSetupView(APIView):
 
 """------------------------Profile Detail View-----------------------------------"""
 
+
 class ProfileDetailsView(generics.RetrieveAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        profile, created = Profile.objects.get_or_create(user=self.request.user)
+        profile, created = Profile.objects.get_or_create(
+            user=self.request.user)
         return profile
 
     def get_advertiser_status(self, user):
         if user.ads_provided:
             return {"status": "approved"}
-        
+
         try:
             req = AdvertiserRequest.objects.get(user=user)
             return {
@@ -764,7 +766,7 @@ class ProfileDetailsView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        
+
         return Response(
             {
                 "success": True,
@@ -779,6 +781,8 @@ class ProfileDetailsView(generics.RetrieveAPIView):
             },
             status=status.HTTP_200_OK
         )
+
+
 """ ------------------------Profile UpdateView view--------------------------- """
 
 

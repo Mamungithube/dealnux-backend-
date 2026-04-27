@@ -149,3 +149,4 @@ class AdminSellerPayoutSerializer(serializers.ModelSerializer):
     class Meta:
         model  = SellerPayout
         fields = '__all__'
+

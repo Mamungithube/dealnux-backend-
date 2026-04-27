@@ -606,27 +606,32 @@ class CouponViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='validate', permission_classes=[IsAuthenticated])
     def validate_coupon(self, request):
+        # আমাদের নতুন সিরিয়ালাইজার ব্যবহার করছি
         serializer = CouponValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         coupon = serializer.validated_data['coupon']
-        order_amount = serializer.validated_data['order_amount']
+        product = serializer.validated_data['product']
+        item_total = serializer.validated_data['item_total']
 
+        # ডিসকাউন্ট হিসাব
         if coupon.discount_type == 'PERCENTAGE':
-            discount = (order_amount * coupon.discount_value) / 100
+            discount = (item_total * coupon.discount_value) / 100
         else:
-            discount = min(coupon.discount_value, order_amount)
+            discount = min(coupon.discount_value, item_total)
 
-        final_amount = order_amount - discount
+        final_amount = item_total - discount
 
         return success_response({
-            "code":          coupon.code,
-            "discount_type": coupon.discount_type,
-            "discount_value": float(coupon.discount_value),
-            "discount_applied": float(discount),
-            "original_amount":  float(order_amount),
-            "final_amount":     float(final_amount),
-        }, message="Coupon is valid!")
+            "code":              coupon.code,
+            "seller_shop":       product.seller.shop_name,
+            "product_title":     product.title,
+            "discount_type":     coupon.discount_type,
+            "discount_value":    float(coupon.discount_value),
+            "discount_applied":  float(discount),
+            "original_item_total": float(item_total),
+            "final_item_total":    float(final_amount),
+        }, message="Coupon applied successfully!")
 
 
 # ============================================================================
@@ -666,3 +671,5 @@ class SellerDashboardView(APIView):
         }
 
         return success_response(data, message="Seller dashboard fetched")
+
+

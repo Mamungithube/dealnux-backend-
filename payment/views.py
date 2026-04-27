@@ -522,3 +522,5 @@ class CheckSessionStatusView(APIView):
             return Response({"success": False, "error": str(e)}, status=400)
         except Exception as e:
             return Response({"success": False, "error": "An unexpected error occurred."}, status=500)
+
+
