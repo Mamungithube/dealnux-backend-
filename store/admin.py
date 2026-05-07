@@ -39,145 +39,126 @@ class SellerRequestAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
 
+    # কাস্টম কুয়েরিসেট যাতে ManyToMany এবং Foreign Key ডাটা দ্রুত লোড হয়
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related(
-            'user', 'reviewed_by'
-        )
+        return super().get_queryset(request).select_related('user').prefetch_related('categories')
 
     list_display = [
-        'shop_name',
+        'display_trade_name',
         'display_user',
-        'phone_number',
-        'display_documents',
+        'contact_phone',
         'display_status',
         'created_at',
     ]
-    list_filter = ['status', 'created_at']
-    search_fields = ['user__email', 'user__name', 'shop_name', 'phone_number']
-    readonly_fields = [
-        'user', 'shop_name', 'shop_description', 'phone_number',
-        'nid_document', 'business_document', 'created_at', 'updated_at',
-        'reviewed_at', 'reviewed_by',
-    ]
-    ordering = ['-created_at']
 
+    list_filter = ['status', 'legal_business_type', 'created_at']
+    search_fields = ['trade_name', 'user__email', 'contact_full_name', 'contact_phone']
+    
+    # বেশিরভাগ ফিল্ড রিড-অনলি রাখা হয়েছে যাতে অ্যাডমিন ইউজারের জমা দেওয়া লিগ্যাল ডাটা পরিবর্তন না করতে পারে
+    readonly_fields = [
+        'user', 'trade_name', 'legal_business_type', 'business_reg_number',
+        'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
+        'display_categories_list', 'estimated_sku_count', 'min_price', 'max_price',
+        'product_conditions', 'owns_inventory', 'fulfillment_methods', 'shipping_regions',
+        'return_policy_description', 'return_policy_document', 'government_id', 
+        'business_license', 'utility_bill', 'has_prior_experience', 
+        'experience_description', 'digital_signature', 'reviewed_at', 'created_at'
+    ]
+
+    # ১১টি ধাপ অনুযায়ী ফিল্ডসেট সাজানো
     fieldsets = (
-        (_('👤 User Info'), {
-            'fields': ('user',),
+        (_('👤 User Account'), {
+            'fields': ('user', 'status', 'admin_note'),
         }),
-        (_('🏪 Shop Information'), {
-            'fields': ('shop_name', 'shop_description', 'phone_number'),
+        (_('🏪 Step 1: Business Details'), {
+            'fields': ('trade_name', 'legal_business_type', 'business_reg_number'),
+            'classes': ['tab'],
         }),
-        (_('📄 Documents'), {
-            'fields': ('nid_document', 'business_document'),
-            'classes': ('collapse',),
+        (_('📞 Step 2: Primary Contact'), {
+            'fields': ('contact_full_name', 'job_title', 'contact_email', 'contact_phone'),
+            'classes': ['tab'],
         }),
-        (_('⚙️ Admin Review'), {
-            'fields': ('status', 'admin_note', 'reviewed_by', 'reviewed_at'),
+        (_('📦 Step 3: Product Catalog'), {
+            'fields': ('display_categories_list', 'estimated_sku_count', 'min_price', 'max_price', 'product_conditions', 'owns_inventory'),
+            'classes': ['tab'],
         }),
-        (_('🕐 Timestamps'), {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',),
+        (_('🚚 Step 4 & 5: Shipping & Returns'), {
+            'fields': ('fulfillment_methods', 'shipping_regions', 'return_policy_description', 'return_policy_document'),
+            'classes': ['tab'],
+        }),
+        (_('📄 Step 8: Documents & Verification'), {
+            'fields': ('government_id', 'business_license', 'utility_bill', 'has_prior_experience', 'experience_description'),
+            'classes': ['tab'],
+        }),
+        (_('⚖️ Step 6, 7 & 10: Legal & Signature'), {
+            'fields': ('agreed_to_compliance', 'agreed_to_prohibited_items', 'digital_signature'),
+            'classes': ['tab'],
         }),
     )
 
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        if 'delete_selected' in actions:
-            del actions['delete_selected']
-        return actions
-
     actions_row = ['action_approve_row', 'action_reject_row']
-    actions_list = []
 
-    def save_model(self, request, obj, form, change):
-        try:
-
-            if not change and not hasattr(obj, 'user'):
-
-                if not obj.user:
-                    raise ValidationError("User ফিল্ডটি খালি রাখা যাবে না।")
-
-            if change and 'status' in form.changed_data:
-                if obj.status == 'APPROVED':
-                    obj.status = 'PENDING'
-                    super().save_model(request, obj, form, change)
-                    obj.approve(admin_user=request.user)
-                    return
-                elif obj.status == 'REJECTED':
-                    note = obj.admin_note or 'Rejected via admin panel.'
-                    obj.status = 'PENDING'
-                    super().save_model(request, obj, form, change)
-                    obj.reject(admin_user=request.user, note=note)
-                    return
-
-            super().save_model(request, obj, form, change)
-
-        except Exception as e:
-
-            messages.error(request, f"Error: {e}")
+    @display(description=_('Business Name'), ordering='trade_name')
+    def display_trade_name(self, obj):
+        return format_html('<strong>{}</strong>', obj.trade_name or "N/A")
 
     @display(description=_('User'), ordering='user__email')
     def display_user(self, obj):
         return format_html(
-            '<div><strong>{}</strong><br>'
-            '<small style="color:#6b7280">{}</small></div>',
-            obj.user.name or '—',
-            obj.user.email,
+            '<div>{}<br><small style="color:#6b7280">{}</small></div>',
+            obj.user.name or "No Name",
+            obj.user.email
         )
 
-    @display(
-        description=_('Status'),
-        ordering='status',
-        label={
-            'PENDING':  'warning',
-            'APPROVED': 'success',
-            'REJECTED': 'danger',
-        },
-    )
+    @display(description=_('Status'), label={
+        'PENDING': 'warning',
+        'APPROVED': 'success',
+        'REJECTED': 'danger',
+    })
     def display_status(self, obj):
         return obj.status
 
-    @display(description=_('Documents'))
-    def display_documents(self, obj):
-        parts = []
-        if obj.nid_document:
-            parts.append('📋 NID')
-        if obj.business_document:
-            parts.append('🏢 Business')
-        text = ', '.join(parts) if parts else 'None'
-        return format_html('<small style="color:#6b7280">{}</small>', text)
+    @display(description=_('Categories'))
+    def display_categories_list(self, obj):
+        names = ", ".join([c.name for c in obj.categories.all()])
+        return names or "None"
 
+    # --- Actions ---
     @action(
         description=_('Approve'),
-        url_path='approve-row',
+        url_path='approve-request',
         icon='check_circle',
         variant=ActionVariant.SUCCESS,
     )
     def action_approve_row(self, request, object_id):
         from django.http import HttpResponseRedirect
-        obj = SellerRequest.objects.get(pk=object_id)
+        obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
-            obj.approve(admin_user=request.user)
-            self.message_user(
-                request, f'✓ {obj.user.email} approved as seller.')
+            # views.py এ যে লজিক ছিল সেটা মডেল মেথড হিসেবে কল হবে
+            from django.db import transaction
+            try:
+                with transaction.atomic():
+                    obj.approve(admin_user=request.user)
+                self.message_user(request, f'✓ {obj.user.email} approved as seller.', messages.SUCCESS)
+            except Exception as e:
+                self.message_user(request, f'Error: {str(e)}', messages.ERROR)
         return HttpResponseRedirect('../..')
 
     @action(
         description=_('Reject'),
-        url_path='reject-row',
+        url_path='reject-request',
         icon='cancel',
         variant=ActionVariant.DANGER,
     )
     def action_reject_row(self, request, object_id):
         from django.http import HttpResponseRedirect
-        obj = SellerRequest.objects.get(pk=object_id)
+        obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
-            obj.reject(admin_user=request.user, note='Rejected by admin.')
-            self.message_user(request, f'✗ {obj.user.email} request rejected.')
+            note = request.POST.get('admin_note', 'Rejected by admin via panel.')
+            obj.status = 'REJECTED'
+            obj.admin_note = note
+            obj.save()
+            self.message_user(request, f'✗ {obj.user.email} application rejected.', messages.WARNING)
         return HttpResponseRedirect('../..')
 
 

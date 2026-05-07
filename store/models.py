@@ -3,80 +3,119 @@ from django.utils import timezone
 from account.models import User
 from api_integration.models import Product, ProductListing, Platform, Category
 from dealnux import settings
-
 # ============================================================================
 # Seller Request — You can become a Seller if the Admin approves.
 # ============================================================================
 
+from django.db import models
+from django.conf import settings
+from api_integration.models import Category
+from django.utils import timezone
+
 class SellerRequest(models.Model):
-    """
-    If the user wants to become a seller, send this request. Admin will approve/reject।
-    """
+    STATUS_CHOICES = [('PENDING', 'Pending'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected')]
 
-    STATUS_CHOICES = [
-        ('PENDING',  'Pending'),
-        ('APPROVED', 'Approved'),
-        ('REJECTED', 'Rejected'),
-    ]
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='seller_request')
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='seller_request')
+    # --- STEP 1: Business Details ---
+    trade_name = models.CharField(max_length=255, null=True, blank=True) 
+    legal_business_type = models.CharField(max_length=100, null=True, blank=True)
+    business_reg_number = models.CharField(max_length=100, blank=True, null=True)
 
-    # Shop info
-    shop_name    = models.CharField(max_length=255)
-    shop_description = models.TextField(blank=True)
+    # --- STEP 2: Primary Contact ---
+    contact_full_name = models.CharField(max_length=255, null=True, blank=True)
+    job_title = models.CharField(max_length=100, blank=True, null=True)
+    contact_email = models.EmailField(null=True, blank=True) # এখানে error দিচ্ছিল, null=True যোগ করা হয়েছে
+    contact_phone = models.CharField(max_length=20, null=True, blank=True)
 
-    # Contact
-    phone_number = models.CharField(max_length=20)
+    # --- STEP 3: Product Catalog ---
+    categories = models.ManyToManyField(Category, related_name='seller_requests', blank=True)
+    estimated_sku_count = models.CharField(max_length=50, null=True, blank=True)
+    min_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    product_conditions = models.JSONField(default=list, blank=True)
+    owns_inventory = models.BooleanField(default=True)
 
-    # Documents (optional upload)
-    nid_document = models.FileField(upload_to='seller_docs/nid/', blank=True, null=True)
-    business_document = models.FileField(upload_to='seller_docs/business/', blank=True, null=True)
+    # --- STEP 4: Fulfillment & Shipping ---
+    fulfillment_methods = models.JSONField(default=list, blank=True)
+    shipping_regions = models.JSONField(default=list, blank=True)
 
-    # Admin action
-    status       = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
-    admin_note   = models.TextField(blank=True) 
-    reviewed_by  = models.ForeignKey(User, on_delete=models.SET_NULL, 
-                                          null=True, blank=True, related_name='reviewed_seller_requests'
-                                          )
-    reviewed_at  = models.DateTimeField(null=True, blank=True)
+    # --- STEP 5: Return Policy ---
+    return_policy_description = models.TextField(null=True, blank=True)
+    return_policy_document = models.FileField(upload_to='seller_docs/policies/', blank=True, null=True)
 
-    created_at   = models.DateTimeField(auto_now_add=True)
-    updated_at   = models.DateTimeField(auto_now=True)
+    # --- STEP 6 & 7: Compliance & Policy ---
+    agreed_to_compliance = models.BooleanField(default=False)
+    agreed_to_prohibited_items = models.BooleanField(default=False)
 
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = 'Seller Request'
-        verbose_name_plural = 'Seller Requests'
+    # --- STEP 8: Business History & Docs ---
+    has_prior_experience = models.BooleanField(default=False)
+    experience_description = models.TextField(blank=True, null=True)
+    
+    government_id = models.FileField(upload_to='seller_docs/ids/', null=True, blank=True)
+    business_license = models.FileField(upload_to='seller_docs/licenses/', null=True, blank=True)
+    utility_bill = models.FileField(upload_to='seller_docs/utility/', null=True, blank=True)
+
+    # --- STEP 10: Digital Signature ---
+    digital_signature = models.CharField(max_length=255, null=True, blank=True)
+
+    # --- Admin & Timestamps ---
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    admin_note = models.TextField(blank=True, null=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.user.email} → {self.shop_name} [{self.status}]"
+        return f"{self.trade_name or self.user.email} Application"
+
 
     def approve(self, admin_user):
-        """If the admin approves, the Seller Profile will be created and the user will be marked as a seller."""
+        """
+        অ্যাডমিন এপ্রুভ করলে:
+        ১. রিকোয়েস্ট স্ট্যাটাস APPROVED হবে।
+        ২. সেলার প্রোফাইল তৈরি/আপডেট হবে।
+        ৩. ইউজারের ads_provided (is_seller) ফ্ল্যাগ True হবে।
+        """
+        from django.utils import timezone
+        # একই ফাইলের ভেতরে থাকলে সরাসরি কল করা যায়, নাহলে নিচের ইমপোর্টটি লাগবে
+        # from .models import SellerProfile 
+
         self.status = 'APPROVED'
-        self.reviewed_by = admin_user
+        self.reviewed_by = admin_user  # কোন অ্যাডমিন এপ্রুভ করেছে তার রেকর্ড
         self.reviewed_at = timezone.now()
         self.save()
 
-        # SellerProfile create — bank info will be added to the profile later by the seller himself
-        SellerProfile.objects.get_or_create(
+        # ১. সেলার প্রোফাইল তৈরি বা আপডেট করা
+        # রিকোয়েস্টের নতুন ফিল্ডগুলোর সাথে প্রোফাইলের ম্যাপিং
+        profile, created = SellerProfile.objects.update_or_create(
             user=self.user,
             defaults={
-                'shop_name':        self.shop_name,
-                'shop_description': self.shop_description,
-                'phone_number':     self.phone_number,
+                'shop_name':        self.trade_name,        # Step 1 এর ডাটা
+                'phone_number':     self.contact_phone,     # Step 2 এর ডাটা
+                'legal_full_name':  self.contact_full_name, # Step 2 এর ডাটা
+                'business_address': self.experience_description, # Step 8 এর ডাটা
+                'is_active':        True
             }
         )
 
-        # Set is_seller flag in User model
-        # Reuse existing field, or add separate field below
-        self.user.ads_provided = True
-        self.user.save(update_fields=['ads_provided'])
+        # ২. ইউজার মডেলে ফ্ল্যাগ সেট করা যাতে সে সেলার ড্যাশবোর্ড এক্সেস পায়
+        user = self.user
+        user.ads_provided = True 
+        user.save(update_fields=['ads_provided'])
 
     def reject(self, admin_user, note=''):
-        self.status      = 'REJECTED'
-        self.admin_note  = note
-        self.reviewed_by = admin_user
+        """
+        অ্যাডমিন আবেদন রিজেক্ট করলে:
+        ১. রিকোয়েস্ট স্ট্যাটাস REJECTED হবে।
+        ২. অ্যাডমিনের দেওয়া কারণ (admin_note) সেভ হবে।
+        ৩. কে রিজেক্ট করেছে এবং কখন করেছে তার রেকর্ড থাকবে।
+        """
+        from django.utils import timezone
+
+        self.status = 'REJECTED'
+        self.admin_note = note
+        self.reviewed_by = admin_user # কোন অ্যাডমিন রিজেক্ট করেছে
         self.reviewed_at = timezone.now()
         self.save()
 

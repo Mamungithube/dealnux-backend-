@@ -5,43 +5,115 @@ from .models import (
     Order, Coupon,
 )
 from api_integration.serializers import ProductListingSerializer
-
+from api_integration.models import Category
 
 # ============================================================================
 # Seller Request
 # ============================================================================
 
+# store/serializers.py
+
 class SellerRequestSerializer(serializers.ModelSerializer):
-    """User can submit this request to become a seller"""
     user_email = serializers.CharField(source='user.email', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    # এটি ফ্রন্টএন্ড থেকে ক্যাটাগরির নামের লিস্ট গ্রহণ করবে
+    category_names = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=True
+    )
+    
+    # রেসপন্সে ক্যাটাগরির নামগুলো দেখানোর জন্য
+    display_categories = serializers.SerializerMethodField()
 
     class Meta:
         model = SellerRequest
         fields = [
             'id', 'user_email', 'status', 'status_display',
-            'shop_name', 'shop_description', 'phone_number',
-            'nid_document', 'business_document',
-            'admin_note', 'created_at', 'updated_at',
+            
+            # Step 1: Business Details
+            'trade_name', 'legal_business_type', 'business_reg_number',
+            
+            # Step 2: Primary Contact
+            'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
+            
+            # Step 3: Product Catalog
+            'category_names', 'display_categories', # নামের ফিল্ডগুলো
+            'estimated_sku_count', 'min_price', 'max_price', 
+            'product_conditions', 'owns_inventory',
+            
+            # Step 4: Fulfillment & Shipping
+            'fulfillment_methods', 'shipping_regions',
+            
+            # Step 5: Return Policy
+            'return_policy_description', 'return_policy_document',
+            
+            # Step 6 & 7: Compliance & Policy
+            'agreed_to_compliance', 'agreed_to_prohibited_items',
+            
+            # Step 8: Business History & Docs
+            'has_prior_experience', 'experience_description',
+            'government_id', 'business_license', 'utility_bill',
+            
+            # Step 10: Signature
+            'digital_signature',
+            
+            # Admin Info
+            'admin_note', 'created_at', 'updated_at'
         ]
         read_only_fields = ['status', 'admin_note', 'created_at', 'updated_at']
 
+    def get_display_categories(self, obj):
+        # ডাটাবেজ থেকে ক্যাটাগরির নামগুলোর লিস্ট রিটার্ন করবে
+        return obj.categories.values_list('name', flat=True)
+
     def validate(self, attrs):
         request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            # A user can only make one request (PENDING/APPROVED).
+        user = request.user if request else None
+        
+        if user:
             existing = SellerRequest.objects.filter(
-                user=request.user,
+                user=user, 
                 status__in=['PENDING', 'APPROVED']
-            ).first()
+            ).exists()
             if existing and not self.instance:
-                raise serializers.ValidationError({
-                    "seller_request": [
-                        f"You already have a {existing.status.lower()} seller request."
-                    ]
-                })
+                raise serializers.ValidationError(
+                    {"detail": "You already have an active or pending seller application."}
+                )
+
+        # ক্যাটাগরি নামগুলোকে অবজেক্টে রূপান্তর করা
+        category_names = attrs.get('category_names', [])
+        if category_names:
+            # ডাটাবেজে এই নামগুলো আছে কিনা চেক করা
+            categories = Category.objects.filter(name__in=category_names)
+            if categories.count() != len(category_names):
+                found_names = categories.values_list('name', flat=True)
+                missing_names = set(category_names) - set(found_names)
+                raise serializers.ValidationError(
+                    {"category_names": f"Categories not found: {list(missing_names)}"}
+                )
+            attrs['category_objects'] = categories
+            
         return attrs
 
+    def create(self, validated_data):
+        # ১. ManyToMany অবজেক্টগুলো আলাদা করে ফেলুন (এগুলো সরাসরি .create এ পাঠানো যায় না)
+        category_objects = validated_data.pop('category_objects', [])
+        
+        # ২. category_names পপ করে ফেলুন কারণ এটি মডেলে কোনো ফিল্ড নয়
+        if 'category_names' in validated_data:
+            validated_data.pop('category_names')
+
+        # ৩. সেলার রিকোয়েস্ট তৈরি করুন
+        # এখানে user=user আলাদা করে দেওয়ার দরকার নেই কারণ এটি validated_data এর ভেতরেই আছে
+        seller_request = SellerRequest.objects.create(**validated_data)
+        
+        # ৪. ক্যাটাগরিগুলো সেভ করুন
+        if category_objects:
+            seller_request.categories.set(category_objects)
+            
+        return seller_request
 
 class AdminSellerRequestSerializer(serializers.ModelSerializer):
     """For Admin — with approve/reject action"""

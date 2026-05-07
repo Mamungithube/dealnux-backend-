@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 import math
 import time
 import logging
-from rest_framework import viewsets
+from rest_framework import viewsets , status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
@@ -23,6 +23,8 @@ from .serializers import (
     CouponSerializer, CouponValidateSerializer,
 )
 logger = logging.getLogger(__name__)
+from django.utils import timezone
+from django.db import transaction
 
 class CustomPagination(PageNumberPagination):
     page_size = 10
@@ -104,8 +106,8 @@ def is_approved_seller(user):
 
 class SellerRequestViewSet(viewsets.ModelViewSet):
     """
-    User submits a request to become a seller.
-    Admin approves/rejects it.
+    ইউজার ১১টি ধাপে আবেদন করবে। 
+    অ্যাডমিন সব আবেদন দেখতে পারবে এবং অ্যাপ্রুভ/রিজেক্ট করতে পারবে।
     """
     serializer_class = SellerRequestSerializer
     permission_classes = [IsAuthenticated]
@@ -113,8 +115,9 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_staff:
-            return SellerRequest.objects.select_related('user', 'reviewed_by').all()
-        # Normal user can only see their own
+            # অ্যাডমিন সব রিকোয়েস্ট দেখতে পারবে
+            return SellerRequest.objects.all().order_by('-created_at')
+        # সাধারণ ইউজার শুধু তার নিজের রিকোয়েস্ট দেখবে
         return SellerRequest.objects.filter(user=user)
 
     def get_serializer_class(self):
@@ -126,61 +129,96 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(
-            data=request.data, context={'request': request})
+        # অরিজিনাল রেসপন্স ফরম্যাট বজায় রাখা হয়েছে
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        return success_response(serializer.data, message="Seller request submitted successfully", code=201)
+        
+        return Response({
+            "success": True,
+            "code": 201,
+            "message": "Seller application submitted successfully! Please wait for admin review.",
+            "data": serializer.data
+        }, status=status.HTTP_201_CREATED)
 
-    def list(self, request, *args, **kwargs):
-        qs = self.get_queryset()
-        # Admin filter by status
-        status_filter = request.query_params.get('status')
-        if status_filter and request.user.is_staff:
-            qs = qs.filter(status=status_filter.upper())
-        serializer = self.get_serializer(qs, many=True)
-        return success_response(serializer.data, message="Seller requests fetched")
+    @action(detail=False, methods=['get'])
+    def status(self, request):
+        """ইউজার তার অ্যাপ্লিকেশনের বর্তমান অবস্থা এবং ডাটা দেখবে"""
+        req = SellerRequest.objects.filter(user=request.user).first()
+        if not req:
+            return Response({
+                "success": False,
+                "code": 404,
+                "message": "You haven't submitted any application yet.",
+                "data": {}
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = self.get_serializer(req)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Application status fetched.",
+            "data": serializer.data
+        })
 
     # ── Admin Actions ──────────────────────────────────────────────────────
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
     def approve(self, request, pk=None):
+        """অ্যাডমিন আবেদন অ্যাপ্রুভ করলে অটোমেটিক সেলার প্রোফাইল তৈরি হবে"""
         seller_request = self.get_object()
 
         if seller_request.status == 'APPROVED':
-            return error_response("Already approved.", code=400)
+            return Response({"message": "Already approved."}, status=400)
 
         with transaction.atomic():
-            seller_request.approve(admin_user=request.user)
+            # ১. রিকোয়েস্ট স্ট্যাটাস আপডেট
+            seller_request.status = 'APPROVED'
+            seller_request.reviewed_at = timezone.now()
+            seller_request.save()
 
-            seller_profile, created = SellerProfile.objects.get_or_create(
+            # ২. সেলার প্রোফাইল তৈরি (রিকোয়েস্টের সব ডাটা প্রোফাইলে ট্রান্সফার)
+            profile, created = SellerProfile.objects.get_or_create(
                 user=seller_request.user,
                 defaults={
-                    'shop_name': seller_request.shop_name,
-                    'phone_number': seller_request.phone_number,
+                    'shop_name': seller_request.trade_name,
+                    'shop_description': f"Primary Category: {seller_request.categories.first().name if seller_request.categories.exists() else 'N/A'}",
+                    'phone_number': seller_request.contact_phone,
+                    'legal_full_name': seller_request.contact_full_name, # আপনার নতুন ফিল্ড
+                    'business_address': seller_request.experience_description, # বা উপযুক্ত ফিল্ড
                     'is_active': True
                 }
             )
 
-        return success_response(
-            AdminSellerRequestSerializer(seller_request).data,
-            message=f"{seller_request.user.email} approved and profile created successfully."
-        )
+            # ৩. ইউজার মডেলে সেলার ফ্ল্যাগ আপডেট
+            user = seller_request.user
+            user.ads_provided = True 
+            user.save(update_fields=['ads_provided'])
+
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": f"Seller '{seller_request.trade_name}' approved and profile activated.",
+            "data": SellerRequestSerializer(seller_request).data
+        })
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
     def reject(self, request, pk=None):
+        """অ্যাডমিন আবেদন রিজেক্ট করলে কারণ লিখে দিবে"""
         seller_request = self.get_object()
-        note = request.data.get('admin_note', '')
+        note = request.data.get('admin_note', 'Your application does not meet our requirements.')
 
-        if seller_request.status == 'REJECTED':
-            return error_response("Already rejected.", code=400)
+        seller_request.status = 'REJECTED'
+        seller_request.admin_note = note
+        seller_request.reviewed_at = timezone.now()
+        seller_request.save()
 
-        seller_request.reject(admin_user=request.user, note=note)
-        return success_response(
-            AdminSellerRequestSerializer(seller_request).data,
-            message="Seller request rejected."
-        )
-
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Seller application rejected.",
+            "data": {"admin_note": note}
+        })
 
 # ============================================================================
 # Seller Profile ViewSet
