@@ -165,7 +165,6 @@ class SellerRequestAdmin(ModelAdmin):
 # ============================================================================
 # Seller Profile Admin
 # ============================================================================
-
 @admin.register(SellerProfile)
 class SellerProfileAdmin(ModelAdmin):
     compressed_fields = True
@@ -179,30 +178,40 @@ class SellerProfileAdmin(ModelAdmin):
         'display_shop',
         'display_user_email',
         'phone_number',
-        'display_stats',
+        'display_wallet_summary', # নতুন ওয়ালেট সামারি
         'display_active',
         'created_at',
     ]
+
     list_filter = ['is_active', 'created_at']
-    search_fields = ['shop_name', 'user__email', 'phone_number']
+    search_fields = ['shop_name', 'user__email', 'phone_number', 'legal_full_name']
+    
+    # সব নতুন এবং পুরাতন ফিল্ড রিড-অনলি করা হয়েছে (ব্যালেন্স অ্যাডমিন ম্যানুয়ালি চেঞ্জ করা উচিত নয়)
     readonly_fields = [
-        'user', 'shop_name', 'shop_description', 'shop_logo', 'phone_number',
+        'user', 'legal_full_name', 'business_address', 
+        'shop_name', 'shop_description', 'shop_logo', 'phone_number',
+        'pending_balance', 'available_balance', 'total_withdrawn',
         'bank_name', 'bank_account_number',
-        'is_active',
-        'total_products', 'total_orders',
-        'total_earnings', 'created_at', 'updated_at',
+        'total_products', 'total_orders', 'total_earnings', 
+        'is_active', 'created_at', 'updated_at',
     ]
 
     fieldsets = (
         (_('🏪 Shop Info'), {
             'fields': ('user', 'shop_name', 'shop_description', 'shop_logo', 'phone_number'),
         }),
-        (_('💳 Payment Info'), {
+        (_('⚖️ Legal Information'), { # নতুন সেকশন
+            'fields': ('legal_full_name', 'business_address'),
+        }),
+        (_('💰 Wallet & Balances'), { # নতুন সেকশন
+            'fields': ('pending_balance', 'available_balance', 'total_withdrawn', 'total_earnings'),
+        }),
+        (_('💳 Payout/Bank Info'), {
             'fields': ('bank_name', 'bank_account_number'),
             'classes': ('collapse',),
         }),
-        (_('📊 Statistics (read-only)'), {
-            'fields': ('total_products', 'total_orders', 'total_earnings'),
+        (_('📊 Sales Statistics'), {
+            'fields': ('total_products', 'total_orders'),
         }),
         (_('⚙️ Status'), {
             'fields': ('is_active',),
@@ -234,15 +243,17 @@ class SellerProfileAdmin(ModelAdmin):
     def display_user_email(self, obj):
         return obj.user.email
 
-    @display(description=_('Stats'))
-    def display_stats(self, obj):
+    @display(description=_('Wallet Summary')) # লিস্টে ব্যালেন্স দেখার জন্য নতুন মেথড
+    def display_wallet_summary(self, obj):
         return format_html(
-            '<span style="font-size:12px;color:#6b7280">'
-            '📦 {} &nbsp;|&nbsp; 🛒 {} &nbsp;|&nbsp; 💰 ${}'
-            '</span>',
-            obj.total_products,
-            obj.total_orders,
-            f'{obj.total_earnings:,.2f}',
+            '<div style="font-size:11px; line-height:1.4">'
+            '<span style="color:#f59e0b">Pending: ${}</span><br>'
+            '<span style="color:#10b981">Available: ${}</span><br>'
+            '<span style="color:#6b7280">Withdrawn: ${}</span>'
+            '</div>',
+            f'{obj.pending_balance:,.2f}',
+            f'{obj.available_balance:,.2f}',
+            f'{obj.total_withdrawn:,.2f}',
         )
 
     @display(description=_('Active'), boolean=True, ordering='is_active')
