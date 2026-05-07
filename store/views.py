@@ -223,15 +223,15 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 # ============================================================================
 # Seller Profile ViewSet
 # ============================================================================
-
 class SellerProfileViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = StandardPagination
 
     def get_queryset(self):
+        # অ্যাডমিন সব প্রোফাইল দেখবে, সেলার শুধু নিজেরটা
         if self.request.user.is_staff:
-            return SellerProfile.objects.select_related('user').all()
+            return SellerProfile.objects.select_related('user', 'user__seller_request').all()
         return SellerProfile.objects.filter(user=self.request.user)
 
     def list(self, request, *args, **kwargs):
@@ -246,22 +246,24 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
+        # নিরাপত্তা চেক: নিজের প্রোফাইল ছাড়া অন্য কেউ এডিট করতে পারবে না (অ্যাডমিন বাদে)
         if not request.user.is_staff and instance.user != request.user:
             return error_response("Permission denied.", code=403)
+            
         partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(
-            instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return success_response(serializer.data, message="Seller profile updated")
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        """View your own seller profile"""
+        """সেলার লগইন করার পর নিজের প্রোফাইল ডাটা এখান থেকে নিবে"""
         try:
             profile = request.user.seller_profile
         except SellerProfile.DoesNotExist:
             return error_response("You are not an approved seller yet.", code=404)
+            
         serializer = self.get_serializer(profile)
         return success_response(serializer.data, message="Your seller profile")
 

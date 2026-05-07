@@ -134,17 +134,26 @@ class AdminSellerRequestSerializer(serializers.ModelSerializer):
 class SellerProfileSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_name  = serializers.CharField(source='user.name',  read_only=True)
+    
+    # রিকোয়েস্ট থেকে ডাটা দেখানোর জন্য (যদি দরকার হয়)
+    contact_phone = serializers.CharField(source='user.seller_request.contact_phone', read_only=True)
 
     class Meta:
         model  = SellerProfile
         fields = [
             'id', 'user_email', 'user_name',
-            'shop_name', 'shop_description', 'shop_logo', 'phone_number',
-            'bank_name', 'bank_account_number',
-            'total_products', 'total_orders', 'total_earnings',
+            'shop_name', 'shop_description', 'shop_logo', 
+            'contact_phone',
+            'pending_balance', 'available_balance', 'total_earnings',
+            'stripe_account_id', 'stripe_onboarding_completed',
+            'total_products', 'total_orders', 'seller_score',
             'is_active', 'created_at',
         ]
-        read_only_fields = ['total_products', 'total_orders', 'total_earnings', 'created_at']
+        read_only_fields = [
+            'pending_balance', 'available_balance', 'total_earnings', 
+            'stripe_account_id', 'stripe_onboarding_completed',
+            'total_products', 'total_orders', 'seller_score', 'created_at'
+        ]
 
 
 # ============================================================================

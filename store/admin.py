@@ -165,101 +165,82 @@ class SellerRequestAdmin(ModelAdmin):
 # # ============================================================================
 # # Seller Profile Admin
 # # ============================================================================
-# @admin.register(SellerProfile)
-# class SellerProfileAdmin(ModelAdmin):
-#     compressed_fields = True
-#     warn_unsaved_form = True
-#     list_fullwidth = True
 
-#     def get_queryset(self, request):
-#         return super().get_queryset(request).select_related('user')
+@admin.register(SellerProfile)
+class SellerProfileAdmin(ModelAdmin):
+    compressed_fields = True
+    warn_unsaved_form = True
+    list_fullwidth = True
 
-#     list_display = [
-#         'display_shop',
-#         'display_user_email',
-#         'phone_number',
-#         'display_wallet_summary', # নতুন ওয়ালেট সামারি
-#         'display_active',
-#         'created_at',
-#     ]
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user', 'user__seller_request')
 
-#     list_filter = ['is_active', 'created_at']
-#     search_fields = ['shop_name', 'user__email', 'phone_number', 'legal_full_name']
+    list_display = [
+        'display_shop',
+        'display_user_email',
+        'display_wallet_summary', 
+        'display_stripe_status',
+        'display_active',
+        'created_at',
+    ]
+
+    list_filter = ['is_active', 'stripe_onboarding_completed', 'created_at']
+    search_fields = ['shop_name', 'user__email']
     
-#     # সব নতুন এবং পুরাতন ফিল্ড রিড-অনলি করা হয়েছে (ব্যালেন্স অ্যাডমিন ম্যানুয়ালি চেঞ্জ করা উচিত নয়)
-#     readonly_fields = [
-#         'user', 'legal_full_name', 'business_address', 
-#         'shop_name', 'shop_description', 'shop_logo', 'phone_number',
-#         'pending_balance', 'available_balance', 'total_withdrawn',
-#         'bank_name', 'bank_account_number',
-#         'total_products', 'total_orders', 'total_earnings', 
-#         'is_active', 'created_at', 'updated_at',
-#     ]
+    # টাকা এবং স্ট্রাইপ আইডি অ্যাডমিন এডিট করতে পারবে না (নিরাপত্তার জন্য)
+    readonly_fields = [
+        'user', 'shop_name', 'pending_balance', 'available_balance', 
+        'total_earnings', 'stripe_account_id', 'stripe_onboarding_completed',
+        'total_products', 'total_orders', 'seller_score', 'created_at', 'updated_at',
+    ]
 
-#     fieldsets = (
-#         (_('🏪 Shop Info'), {
-#             'fields': ('user', 'shop_name', 'shop_description', 'shop_logo', 'phone_number'),
-#         }),
-#         (_('⚖️ Legal Information'), { # নতুন সেকশন
-#             'fields': ('legal_full_name', 'business_address'),
-#         }),
-#         (_('💰 Wallet & Balances'), { # নতুন সেকশন
-#             'fields': ('pending_balance', 'available_balance', 'total_withdrawn', 'total_earnings'),
-#         }),
-#         (_('💳 Payout/Bank Info'), {
-#             'fields': ('bank_name', 'bank_account_number'),
-#             'classes': ('collapse',),
-#         }),
-#         (_('📊 Sales Statistics'), {
-#             'fields': ('total_products', 'total_orders'),
-#         }),
-#         (_('⚙️ Status'), {
-#             'fields': ('is_active',),
-#         }),
-#     )
+    fieldsets = (
+        (_('🏪 Shop Branding'), {
+            'fields': ('user', 'shop_name', 'shop_description', 'shop_logo', 'seller_score'),
+        }),
+        (_('💰 Wallet & Earnings'), {
+            'fields': ('pending_balance', 'available_balance', 'total_earnings'),
+        }),
+        (_('💳 Stripe Connect (Payouts)'), {
+            'fields': ('stripe_account_id', 'stripe_onboarding_completed'),
+        }),
+        (_('📊 Activity Stats'), {
+            'fields': ('total_products', 'total_orders'),
+        }),
+        (_('⚙️ Status'), {
+            'fields': ('is_active',),
+        }),
+    )
 
-#     def has_delete_permission(self, request, obj=None):
-#         return False
+    @display(description=_('Shop'), ordering='shop_name')
+    def display_shop(self, obj):
+        return format_html('<strong>{}</strong>', obj.shop_name)
 
-#     def get_actions(self, request):
-#         actions = super().get_actions(request)
-#         if 'delete_selected' in actions:
-#             del actions['delete_selected']
-#         return actions
+    @display(description=_('Email'), ordering='user__email')
+    def display_user_email(self, obj):
+        return obj.user.email
 
-#     @display(description=_('Shop'), ordering='shop_name')
-#     def display_shop(self, obj):
-#         if obj.shop_logo:
-#             img = format_html(
-#                 '<img src="{}" width="28" height="28" '
-#                 'style="border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle"/>',
-#                 obj.shop_logo.url,
-#             )
-#         else:
-#             img = '🏪 '
-#         return format_html('{}<strong>{}</strong>', img, obj.shop_name)
+    @display(description=_('Wallet Summary'))
+    def display_wallet_summary(self, obj):
+        return format_html(
+            '<div style="font-size:11px">'
+            '<span style="color:#f59e0b">Pending: ${}</span><br>'
+            '<span style="color:#10b981">Available: ${}</span>'
+            '</div>',
+            f'{obj.pending_balance:,.2f}',
+            f'{obj.available_balance:,.2f}',
+        )
 
-#     @display(description=_('Email'), ordering='user__email')
-#     def display_user_email(self, obj):
-#         return obj.user.email
+    @display(description=_('Stripe Status'), boolean=True)
+    def display_stripe_status(self, obj):
+        return obj.stripe_onboarding_completed
 
-#     @display(description=_('Wallet Summary')) # লিস্টে ব্যালেন্স দেখার জন্য নতুন মেথড
-#     def display_wallet_summary(self, obj):
-#         return format_html(
-#             '<div style="font-size:11px; line-height:1.4">'
-#             '<span style="color:#f59e0b">Pending: ${}</span><br>'
-#             '<span style="color:#10b981">Available: ${}</span><br>'
-#             '<span style="color:#6b7280">Withdrawn: ${}</span>'
-#             '</div>',
-#             f'{obj.pending_balance:,.2f}',
-#             f'{obj.available_balance:,.2f}',
-#             f'{obj.total_withdrawn:,.2f}',
-#         )
+    @display(description=_('Active'), boolean=True, ordering='is_active')
+    def display_active(self, obj):
+        return obj.is_active
 
-#     @display(description=_('Active'), boolean=True, ordering='is_active')
-#     def display_active(self, obj):
-#         return obj.is_active
-
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 # ============================================================================
 # Seller Product Admin

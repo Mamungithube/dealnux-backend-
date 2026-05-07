@@ -70,52 +70,32 @@ class SellerRequest(models.Model):
         return f"{self.trade_name or self.user.email} Application"
 
 
+    # store/models.py এর ভেতরে SellerRequest ক্লাসের approve মেথড
+
     def approve(self, admin_user):
-        """
-        অ্যাডমিন এপ্রুভ করলে:
-        ১. রিকোয়েস্ট স্ট্যাটাস APPROVED হবে।
-        ২. সেলার প্রোফাইল তৈরি/আপডেট হবে।
-        ৩. ইউজারের ads_provided (is_seller) ফ্ল্যাগ True হবে।
-        """
+        from .models import SellerProfile
         from django.utils import timezone
-        # একই ফাইলের ভেতরে থাকলে সরাসরি কল করা যায়, নাহলে নিচের ইমপোর্টটি লাগবে
-        # from .models import SellerProfile 
 
         self.status = 'APPROVED'
-        self.reviewed_by = admin_user  # কোন অ্যাডমিন এপ্রুভ করেছে তার রেকর্ড
         self.reviewed_at = timezone.now()
         self.save()
 
-        # ১. সেলার প্রোফাইল তৈরি বা আপডেট করা
-        # রিকোয়েস্টের নতুন ফিল্ডগুলোর সাথে প্রোফাইলের ম্যাপিং
-        profile, created = SellerProfile.objects.update_or_create(
+        # প্রোফাইল তৈরি করার সময় শুধু শপের নাম দিবেন, লিগ্যাল নেম বা অ্যাড্রেস নয়
+        SellerProfile.objects.update_or_create(
             user=self.user,
             defaults={
-                'shop_name':        self.trade_name,        # Step 1 এর ডাটা
-                'phone_number':     self.contact_phone,     # Step 2 এর ডাটা
-                'legal_full_name':  self.contact_full_name, # Step 2 এর ডাটা
-                'business_address': self.experience_description, # Step 8 এর ডাটা
-                'is_active':        True
+                'shop_name': self.trade_name, # এটি মডেলে আছে
+                'is_active': True
             }
         )
 
-        # ২. ইউজার মডেলে ফ্ল্যাগ সেট করা যাতে সে সেলার ড্যাশবোর্ড এক্সেস পায়
-        user = self.user
-        user.ads_provided = True 
-        user.save(update_fields=['ads_provided'])
-
     def reject(self, admin_user, note=''):
-        """
-        অ্যাডমিন আবেদন রিজেক্ট করলে:
-        ১. রিকোয়েস্ট স্ট্যাটাস REJECTED হবে।
-        ২. অ্যাডমিনের দেওয়া কারণ (admin_note) সেভ হবে।
-        ৩. কে রিজেক্ট করেছে এবং কখন করেছে তার রেকর্ড থাকবে।
-        """
+
         from django.utils import timezone
 
         self.status = 'REJECTED'
         self.admin_note = note
-        self.reviewed_by = admin_user # কোন অ্যাডমিন রিজেক্ট করেছে
+        self.reviewed_by = admin_user  
         self.reviewed_at = timezone.now()
         self.save()
 
@@ -125,31 +105,33 @@ class SellerRequest(models.Model):
 # ============================================================================
 
 class SellerProfile(models.Model):
-    user           = models.OneToOneField(User, on_delete=models.CASCADE, related_name='seller_profile')
-
-    shop_name      = models.CharField(max_length=255)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='seller_profile')
+    
+    # শপ আইডেন্টিটি (এটি প্রোফাইলে রাখা ভালো যাতে দোকান হিসেবে চেনা যায়)
+    shop_name = models.CharField(max_length=255) 
+    shop_logo = models.ImageField(upload_to='seller_logos/', blank=True, null=True)
     shop_description = models.TextField(blank=True)
-    shop_logo      = models.ImageField(upload_to='seller_logos/', blank=True, null=True)
-    phone_number   = models.CharField(max_length=20)
 
-    # Payment   
-    bank_name      = models.CharField(max_length=200, blank=True)
-    bank_account_number = models.CharField(max_length=100, blank=True)
+    # ওয়ালেট সিস্টেম (ড্যাশবোর্ড স্ক্রিনশট এবং ডক অনুযায়ী)
+    pending_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)   # বায়ার প্রোডাক্ট একসেপ্ট করার আগ পর্যন্ত
+    available_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0) # যা সেলার এখন তুলতে পারবে
+    total_earnings = models.DecimalField(max_digits=12, decimal_places=2, default=0)    # লাইফটাইম সেল
 
-    # Stats
+    # শুধুমাত্র স্ট্রাইপ কানেক্ট ডাটা (ডক অনুযায়ী)
+    stripe_account_id = models.CharField(max_length=200, blank=True) 
+    stripe_onboarding_completed = models.BooleanField(default=False)
+
+    # স্ট্যাটিস্টিকস
     total_products = models.PositiveIntegerField(default=0)
-    total_orders   = models.PositiveIntegerField(default=0)
-    total_earnings = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_orders = models.PositiveIntegerField(default=0)
+    seller_score = models.IntegerField(default=0)
 
-    is_active      = models.BooleanField(default=True)
-    created_at     = models.DateTimeField(auto_now_add=True)
-    updated_at     = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-created_at']
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.shop_name} ({self.user.email})"
+        return f"{self.shop_name} - Stripe: {self.stripe_account_id or 'Not Connected'}"
 
 
 # ============================================================================
