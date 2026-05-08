@@ -3,34 +3,38 @@ from django.utils import timezone
 from account.models import User
 from api_integration.models import Product, ProductListing, Platform, Category
 from dealnux import settings
+import string
+import random
 # ============================================================================
 # Seller Request — You can become a Seller if the Admin approves.
 # ============================================================================
 
-from django.db import models
-from django.conf import settings
-from api_integration.models import Category
-from django.utils import timezone
 
 class SellerRequest(models.Model):
-    STATUS_CHOICES = [('PENDING', 'Pending'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected')]
+    STATUS_CHOICES = [('PENDING', 'Pending'), ('APPROVED',
+                                               'Approved'), ('REJECTED', 'Rejected')]
 
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='seller_request')
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='seller_request')
 
     # --- STEP 1: Business Details ---
-    trade_name = models.CharField(max_length=255, null=True, blank=True) 
-    legal_business_type = models.CharField(max_length=100, null=True, blank=True)
-    business_reg_number = models.CharField(max_length=100, blank=True, null=True)
+    trade_name = models.CharField(max_length=255, null=True, blank=True)
+    legal_business_type = models.CharField(
+        max_length=100, null=True, blank=True)
+    business_reg_number = models.CharField(
+        max_length=100, blank=True, null=True)
 
     # --- STEP 2: Primary Contact ---
     contact_full_name = models.CharField(max_length=255, null=True, blank=True)
     job_title = models.CharField(max_length=100, blank=True, null=True)
-    contact_email = models.EmailField(null=True, blank=True) # এখানে error দিচ্ছিল, null=True যোগ করা হয়েছে
+    contact_email = models.EmailField(null=True, blank=True)
     contact_phone = models.CharField(max_length=20, null=True, blank=True)
 
     # --- STEP 3: Product Catalog ---
-    categories = models.ManyToManyField(Category, related_name='seller_requests', blank=True)
-    estimated_sku_count = models.CharField(max_length=50, null=True, blank=True)
+    categories = models.ManyToManyField(
+        Category, related_name='seller_requests', blank=True)
+    estimated_sku_count = models.CharField(
+        max_length=50, null=True, blank=True)
     min_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     max_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     product_conditions = models.JSONField(default=list, blank=True)
@@ -42,7 +46,8 @@ class SellerRequest(models.Model):
 
     # --- STEP 5: Return Policy ---
     return_policy_description = models.TextField(null=True, blank=True)
-    return_policy_document = models.FileField(upload_to='seller_docs/policies/', blank=True, null=True)
+    return_policy_document = models.FileField(
+        upload_to='seller_docs/policies/', blank=True, null=True)
 
     # --- STEP 6 & 7: Compliance & Policy ---
     agreed_to_compliance = models.BooleanField(default=False)
@@ -51,16 +56,20 @@ class SellerRequest(models.Model):
     # --- STEP 8: Business History & Docs ---
     has_prior_experience = models.BooleanField(default=False)
     experience_description = models.TextField(blank=True, null=True)
-    
-    government_id = models.FileField(upload_to='seller_docs/ids/', null=True, blank=True)
-    business_license = models.FileField(upload_to='seller_docs/licenses/', null=True, blank=True)
-    utility_bill = models.FileField(upload_to='seller_docs/utility/', null=True, blank=True)
+
+    government_id = models.FileField(
+        upload_to='seller_docs/ids/', null=True, blank=True)
+    business_license = models.FileField(
+        upload_to='seller_docs/licenses/', null=True, blank=True)
+    utility_bill = models.FileField(
+        upload_to='seller_docs/utility/', null=True, blank=True)
 
     # --- STEP 10: Digital Signature ---
     digital_signature = models.CharField(max_length=255, null=True, blank=True)
 
     # --- Admin & Timestamps ---
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='PENDING')
     admin_note = models.TextField(blank=True, null=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -69,22 +78,18 @@ class SellerRequest(models.Model):
     def __str__(self):
         return f"{self.trade_name or self.user.email} Application"
 
-
     # store/models.py এর ভেতরে SellerRequest ক্লাসের approve মেথড
 
     def approve(self, admin_user):
-        from .models import SellerProfile
-        from django.utils import timezone
 
         self.status = 'APPROVED'
         self.reviewed_at = timezone.now()
         self.save()
 
-        # প্রোফাইল তৈরি করার সময় শুধু শপের নাম দিবেন, লিগ্যাল নেম বা অ্যাড্রেস নয়
         SellerProfile.objects.update_or_create(
             user=self.user,
             defaults={
-                'shop_name': self.trade_name, # এটি মডেলে আছে
+                'shop_name': self.trade_name,
                 'is_active': True
             }
         )
@@ -95,7 +100,7 @@ class SellerRequest(models.Model):
 
         self.status = 'REJECTED'
         self.admin_note = note
-        self.reviewed_by = admin_user  
+        self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
         self.save()
 
@@ -105,26 +110,38 @@ class SellerRequest(models.Model):
 # ============================================================================
 
 class SellerProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='seller_profile')
-    
-    # শপ আইডেন্টিটি (এটি প্রোফাইলে রাখা ভালো যাতে দোকান হিসেবে চেনা যায়)
-    shop_name = models.CharField(max_length=255) 
-    shop_logo = models.ImageField(upload_to='seller_logos/', blank=True, null=True)
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='seller_profile')
+
+    # Shop Identity (it is good to keep it in use so that it can be recognized as a shop)
+    shop_name = models.CharField(max_length=255)
+    shop_logo = models.ImageField(
+        upload_to='seller_logos/', blank=True, null=True)
     shop_description = models.TextField(blank=True)
 
-    # ওয়ালেট সিস্টেম (ড্যাশবোর্ড স্ক্রিনশট এবং ডক অনুযায়ী)
-    pending_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)   # বায়ার প্রোডাক্ট একসেপ্ট করার আগ পর্যন্ত
-    available_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0) # যা সেলার এখন তুলতে পারবে
-    total_earnings = models.DecimalField(max_digits=12, decimal_places=2, default=0)    # লাইফটাইম সেল
+    # Wallet system (as per dashboard screenshot and doc)
+    pending_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+    available_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+    total_earnings = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
 
-    # শুধুমাত্র স্ট্রাইপ কানেক্ট ডাটা (ডক অনুযায়ী)
-    stripe_account_id = models.CharField(max_length=200, blank=True) 
+    # Stripe Connect Data Only (According to the doc)
+    stripe_account_id = models.CharField(max_length=200, blank=True)
     stripe_onboarding_completed = models.BooleanField(default=False)
 
-    # স্ট্যাটিস্টিকস
+    # Stats (can be calculated on the fly, but keeping it here for dashboard performance)
     total_products = models.PositiveIntegerField(default=0)
     total_orders = models.PositiveIntegerField(default=0)
     seller_score = models.IntegerField(default=0)
+
+    pending_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+    available_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+    total_withdrawn = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -159,49 +176,57 @@ class SellerProduct(models.Model):
         ('OPEN_BOX',    'Open Box'),
     ]
 
-    seller         = models.ForeignKey(SellerProfile, on_delete=models.CASCADE, related_name='products')
-    category       = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
+    seller = models.ForeignKey(
+        SellerProfile, on_delete=models.CASCADE, related_name='products')
+    category = models.ForeignKey(
+        Category, on_delete=models.SET_NULL, null=True, blank=True)
 
-    # Basic info            
-    title          = models.CharField(max_length=500)
-    description    = models.TextField(blank=True)
-    brand          = models.CharField(max_length=200, blank=True)
-    model_number   = models.CharField(max_length=200, blank=True)
+    # Basic info
+    title = models.CharField(max_length=500)
+    description = models.TextField(blank=True)
+    brand = models.CharField(max_length=200, blank=True)
+    model_number = models.CharField(max_length=200, blank=True)
 
     # Price & stock
-    price          = models.DecimalField(max_digits=10, decimal_places=2)
-    original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    currency       = models.CharField(max_length=10, default='USD')
-    quantity       = models.PositiveIntegerField(default=1)
-    condition      = models.CharField(max_length=20, choices=CONDITION_CHOICES, default='NEW')
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    original_price = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=10, default='USD')
+    quantity = models.PositiveIntegerField(default=1)
+    condition = models.CharField(
+        max_length=20, choices=CONDITION_CHOICES, default='NEW')
 
     # Images
-    main_image     = models.ImageField(upload_to='seller_products/', blank=True, null=True)
+    main_image = models.ImageField(
+        upload_to='seller_products/', blank=True, null=True)
 
     # Shipping
-    free_shipping  = models.BooleanField(default=False)
-    shipping_cost  = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    estimated_delivery_days = models.PositiveIntegerField(null=True, blank=True)
+    free_shipping = models.BooleanField(default=False)
+    shipping_cost = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    estimated_delivery_days = models.PositiveIntegerField(
+        null=True, blank=True)
 
     # Returns
     returns_accepted = models.BooleanField(default=True)
     return_period_days = models.PositiveIntegerField(default=7)
 
     # Admin review
-    status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
-    admin_note     = models.TextField(blank=True)
-    reviewed_by    = models.ForeignKey(User, on_delete=models.SET_NULL,null=True, 
-                                                blank=True,related_name='reviewed_seller_products')
-    reviewed_at    = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    admin_note = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
+                                    blank=True, related_name='reviewed_seller_products')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     # Link to global Product & Listing (set after approval)
-    linked_product = models.ForeignKey(Product, on_delete=models.SET_NULL,null=True, 
-                                                blank=True,related_name='seller_products')
-    linked_listing = models.ForeignKey(ProductListing, on_delete=models.SET_NULL,null=True, 
-                                                blank=True,related_name='seller_product_source')
+    linked_product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True,
+                                       blank=True, related_name='seller_products')
+    linked_listing = models.ForeignKey(ProductListing, on_delete=models.SET_NULL, null=True,
+                                       blank=True, related_name='seller_product_source')
 
-    created_at     = models.DateTimeField(auto_now_add=True)
-    updated_at     = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -226,7 +251,7 @@ class SellerProduct(models.Model):
         """
         from django.utils.text import slugify
 
-        self.status      = 'APPROVED'
+        self.status = 'APPROVED'
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
 
@@ -235,7 +260,7 @@ class SellerProduct(models.Model):
         local_platform, _ = Platform.objects.update_or_create(
             code=f"local-seller-{self.seller.id}",
             defaults={
-                'name': self.seller.shop_name,  
+                'name': self.seller.shop_name,
                 'api_enabled': False,
             }
         )
@@ -257,8 +282,8 @@ class SellerProduct(models.Model):
         )
 
         # ProductListing
-        listing, _  = ProductListing.objects.update_or_create(
-            product =product,
+        listing, _ = ProductListing.objects.update_or_create(
+            product=product,
             platform=local_platform,
             external_id=f"seller-{self.seller.id}-product-{self.id}",
             defaults={
@@ -292,8 +317,8 @@ class SellerProduct(models.Model):
         self.seller.save(update_fields=['total_products'])
 
     def reject(self, admin_user, note=''):
-        self.status      = 'REJECTED'
-        self.admin_note  = note
+        self.status = 'REJECTED'
+        self.admin_note = note
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
         self.save()
@@ -306,30 +331,33 @@ class SellerProduct(models.Model):
 class ProductReview(models.Model):
     RATING_CHOICES = [(i, i) for i in range(1, 6)]
 
-    product    = models.ForeignKey(SellerProduct, on_delete=models.CASCADE, related_name='reviews')
-    user        = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_product_reviews')
-    rating      = models.PositiveSmallIntegerField(choices=RATING_CHOICES)
-    comment     = models.TextField(blank=True)
-    created_at  = models.DateTimeField(auto_now_add=True)
-    updated_at  = models.DateTimeField(auto_now=True)
+    product = models.ForeignKey(
+        SellerProduct, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_product_reviews')
+    rating = models.PositiveSmallIntegerField(choices=RATING_CHOICES)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('product', 'user') 
+        unique_together = ('product', 'user')
         ordering = ['-created_at']
 
     def __str__(self):
         return f"{self.user.email} → {self.product.title} ({self.rating}★)"
-    
-    
+
+
 # ============================================================================
 # Seller Product Image — Multiple images
 # ============================================================================
 
 class SellerProductImage(models.Model):
-    product    = models.ForeignKey(SellerProduct, on_delete=models.CASCADE, related_name='images')
-    image      = models.ImageField(upload_to='seller_product_images/')
-    alt_text   = models.CharField(max_length=300, blank=True)
-    order      = models.PositiveIntegerField(default=0)
+    product = models.ForeignKey(
+        SellerProduct, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='seller_product_images/')
+    alt_text = models.CharField(max_length=300, blank=True)
+    order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -342,43 +370,79 @@ class SellerProductImage(models.Model):
 # ============================================================================
 # Order — Purchase from Seller product
 # ============================================================================
-
 class Order(models.Model):
     STATUS_CHOICES = [
         ('PENDING',    'Pending'),
         ('CONFIRMED',  'Confirmed'),
         ('SHIPPED',    'Shipped'),
         ('DELIVERED',  'Delivered'),
+        ('ACCEPTED',   'Accepted by Buyer'), 
         ('CANCELLED',  'Cancelled'),
         ('REFUNDED',   'Refunded'),
     ]
 
-    buyer           = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
-    seller          = models.ForeignKey(SellerProfile, on_delete=models.SET_NULL, 
-                                         null=True, related_name='orders')
+    FAULT_CHOICES = [
+        ('NONE',   'None'),
+        ('SELLER', 'Seller at Fault'), 
+        ('BUYER',  'Buyer at Fault'), 
+    ]
 
-    # Snapshot of listing at time of order
-    seller_product  = models.ForeignKey(SellerProduct, on_delete=models.SET_NULL, null=True)
-    listing         = models.ForeignKey(ProductListing, on_delete=models.SET_NULL, null=True)
+    buyer = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='orders')
+    seller = models.ForeignKey(
+        SellerProfile, on_delete=models.SET_NULL, null=True, related_name='orders')
 
-    quantity        = models.PositiveIntegerField(default=1)
-    unit_price      = models.DecimalField(max_digits=10, decimal_places=2)
-    total_price     = models.DecimalField(max_digits=10, decimal_places=2)
-    currency        = models.CharField(max_length=10, default='USD')
+    # ঐ সময়ের প্রোডাক্ট ও লিস্টিংয়ের তথ্য
+    seller_product = models.ForeignKey(
+        SellerProduct, on_delete=models.SET_NULL, null=True)
+    listing = models.ForeignKey(
+        ProductListing, on_delete=models.SET_NULL, null=True)
 
-    # Shipping address snapshot
+    # --- Pricing Breakdown (As per Client Doc) ---
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(
+        max_digits=10, decimal_places=2)  
+
+    discount_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0) 
+
+    item_total = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0) 
+    shipping_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0) 
+    # Dealnux Concession Fee (5-10%)
+    service_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+
+    # Grand Total (বায়ার মোট যা পে করেছে)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    currency = models.CharField(max_length=10, default='USD')
+
+    # --- Delivery & Logistics ---
     shipping_address = models.TextField()
-
-    coupon          = models.ForeignKey('Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
-    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    final_price     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-
-    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     tracking_number = models.CharField(max_length=200, blank=True)
-    note            = models.TextField(blank=True)
+    note = models.TextField(blank=True)
 
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
+    # --- Escrow & Acceptance Logic ---
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    is_accepted_by_buyer = models.BooleanField(
+        default=False)  # True if buyer accepts
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    # --- Dispute & Refund Logic (As per Client Doc) ---
+    fault_party = models.CharField(
+        max_length=10, choices=FAULT_CHOICES, default='NONE')
+    refund_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+
+    coupon = models.ForeignKey(
+        'Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    order_number = models.CharField(max_length=20, unique=True, editable=False, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -387,9 +451,22 @@ class Order(models.Model):
         return f"Order #{self.id} by {self.buyer.email}"
 
     def save(self, *args, **kwargs):
-        # total_price auto calculate
+        if not self.order_number:
+            # Generating a 4-digit random ID starting with
+            random_id = ''.join(random.choices(string.digits, k=4))
+            self.order_number = f"#ORD-{random_id}"
+            
+            # Check to ensure uniqueness
+            while Order.objects.filter(order_number=self.order_number).exists():
+                random_id = ''.join(random.choices(string.digits, k=4))
+                self.order_number = f"#ORD-{random_id}"
+
+        # Payment calculation logic (Unchanged)
         if self.unit_price and self.quantity:
-            self.total_price = self.unit_price * self.quantity
+            subtotal = (self.unit_price * self.quantity) - self.discount_amount
+            self.item_total = subtotal
+            self.total_price = subtotal + self.shipping_fee + self.service_fee
+        
         super().save(*args, **kwargs)
 
 
@@ -403,16 +480,19 @@ class Coupon(models.Model):
         ('FIXED',      'Fixed Amount'),
     ]
 
-    seller           = models.ForeignKey(SellerProfile, on_delete=models.CASCADE, related_name='coupons')
-    code             = models.CharField(max_length=50, unique=True)
-    discount_type    = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='PERCENTAGE')
-    discount_value   = models.DecimalField(max_digits=10, decimal_places=2)
-    min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    max_uses         = models.PositiveIntegerField(null=True, blank=True)
-    used_count       = models.PositiveIntegerField(default=0)
-    is_active        = models.BooleanField(default=True)
-    expires_at       = models.DateTimeField(null=True, blank=True)
-    created_at       = models.DateTimeField(auto_now_add=True)
+    seller = models.ForeignKey(
+        SellerProfile, on_delete=models.CASCADE, related_name='coupons')
+    code = models.CharField(max_length=50, unique=True)
+    discount_type = models.CharField(
+        max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='PERCENTAGE')
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    min_order_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    max_uses = models.PositiveIntegerField(null=True, blank=True)
+    used_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']

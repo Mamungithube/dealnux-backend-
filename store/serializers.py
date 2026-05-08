@@ -11,20 +11,18 @@ from api_integration.models import Category
 # Seller Request
 # ============================================================================
 
-# store/serializers.py
-
 class SellerRequestSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     
-    # এটি ফ্রন্টএন্ড থেকে ক্যাটাগরির নামের লিস্ট গ্রহণ করবে
+    # To receive a list of category names from the frontend
     category_names = serializers.ListField(
         child=serializers.CharField(),
         write_only=True,
         required=True
     )
     
-    # রেসপন্সে ক্যাটাগরির নামগুলো দেখানোর জন্য
+    # To show category names in the response
     display_categories = serializers.SerializerMethodField()
 
     class Meta:
@@ -65,7 +63,7 @@ class SellerRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['status', 'admin_note', 'created_at', 'updated_at']
 
     def get_display_categories(self, obj):
-        # ডাটাবেজ থেকে ক্যাটাগরির নামগুলোর লিস্ট রিটার্ন করবে
+        # Returns a list of category names from the database.
         return obj.categories.values_list('name', flat=True)
 
     def validate(self, attrs):
@@ -82,10 +80,10 @@ class SellerRequestSerializer(serializers.ModelSerializer):
                     {"detail": "You already have an active or pending seller application."}
                 )
 
-        # ক্যাটাগরি নামগুলোকে অবজেক্টে রূপান্তর করা
+        # Converting category names to objects
         category_names = attrs.get('category_names', [])
         if category_names:
-            # ডাটাবেজে এই নামগুলো আছে কিনা চেক করা
+            # Check if these names are in the database
             categories = Category.objects.filter(name__in=category_names)
             if categories.count() != len(category_names):
                 found_names = categories.values_list('name', flat=True)
@@ -98,18 +96,18 @@ class SellerRequestSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        # ১. ManyToMany অবজেক্টগুলো আলাদা করে ফেলুন (এগুলো সরাসরি .create এ পাঠানো যায় না)
+        # 1. Separate the ManyToMany objects (these cannot be passed directly to .create)
         category_objects = validated_data.pop('category_objects', [])
         
-        # ২. category_names পপ করে ফেলুন কারণ এটি মডেলে কোনো ফিল্ড নয়
+        # 2. Pop out category_names because it is not a field in the model.
         if 'category_names' in validated_data:
             validated_data.pop('category_names')
 
-        # ৩. সেলার রিকোয়েস্ট তৈরি করুন
-        # এখানে user=user আলাদা করে দেওয়ার দরকার নেই কারণ এটি validated_data এর ভেতরেই আছে
+        # 3. Create a seller request
+        # There is no need to separate user=user here because it is inside validated_data
         seller_request = SellerRequest.objects.create(**validated_data)
         
-        # ৪. ক্যাটাগরিগুলো সেভ করুন
+        # 4. Save the categories
         if category_objects:
             seller_request.categories.set(category_objects)
             
@@ -135,7 +133,7 @@ class SellerProfileSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
     user_name  = serializers.CharField(source='user.name',  read_only=True)
     
-    # রিকোয়েস্ট থেকে ডাটা দেখানোর জন্য (যদি দরকার হয়)
+    #To display data from the request (if needed)
     contact_phone = serializers.CharField(source='user.seller_request.contact_phone', read_only=True)
 
     class Meta:
@@ -387,44 +385,29 @@ class AdminSellerProductSerializer(serializers.ModelSerializer):
 # Order
 # ============================================================================
 class OrderSerializer(serializers.ModelSerializer):
-    buyer_email    = serializers.CharField(source='buyer.email', read_only=True)
-    seller_shop    = serializers.CharField(source='seller.shop_name', read_only=True)
+    buyer_email = serializers.CharField(source='buyer.email', read_only=True)
+    seller_shop = serializers.CharField(source='seller.shop_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     seller_product = SellerProductPublicSerializer(read_only=True)
-    coupon_code    = serializers.CharField(source='coupon.code', read_only=True, allow_null=True) 
+    coupon_code = serializers.CharField(source='coupon.code', read_only=True, allow_null=True)
 
     class Meta:
         model = Order
         fields = [
             'id', 'buyer_email', 'seller_shop',
             'seller_product', 'listing',
-            'quantity', 'unit_price', 'total_price',
-            'coupon_code', 'discount_amount', 'final_price', 
-            'currency',
+            'quantity', 'unit_price', 'discount_amount', 
+            'item_total', 'shipping_fee', 'service_fee', 'total_price', 
+            'coupon_code', 'currency',
             'shipping_address', 'status', 'status_display',
-            'tracking_number', 'note',
+            'tracking_number', 'note','order_number',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'buyer_email', 'seller_shop', 'unit_price', 'total_price',
-            'discount_amount', 'final_price', 
+            'discount_amount', 'final_price', 'item_total',
             'status', 'tracking_number', 'created_at', 'updated_at',
         ]
-
-    def validate(self, attrs):
-        seller_product = attrs.get('seller_product')
-        quantity       = attrs.get('quantity', 1)
-
-        if seller_product:
-            if seller_product.status != 'APPROVED':
-                raise serializers.ValidationError({
-                    "seller_product": ["This product is not available for purchase."]
-                })
-            if seller_product.quantity < quantity:
-                raise serializers.ValidationError({
-                    "quantity": [f"Only {seller_product.quantity} items available."]
-                })
-        return attrs
 
 class OrderCreateSerializer(serializers.ModelSerializer):
     coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
@@ -438,27 +421,31 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         quantity       = attrs.get('quantity', 1)
         coupon_code    = attrs.pop('coupon_code', None)
 
+        # 1. Check if the product is approved (your previous code)
         if seller_product.status != 'APPROVED':
             raise serializers.ValidationError({
                 "seller_product": ["This product is not available."]
             })
+        
+        # 2. Stock Check (Your previous code)
         if seller_product.quantity < quantity:
             raise serializers.ValidationError({
                 "quantity": [f"Only {seller_product.quantity} items available."]
             })
 
-        # Coupon validate
+        # 3. Coupon Validation (your previous logic)
         if coupon_code:
             try:
-                coupon = Coupon.objects.get(code=coupon_code.upper().strip())
+                # It will also check whether the coupon is from that specific seller or not.
+                coupon = Coupon.objects.get(code=coupon_code.upper().strip(), seller=seller_product.seller)
             except Coupon.DoesNotExist:
-                raise serializers.ValidationError({"coupon_code": ["Invalid coupon code."]})
+                raise serializers.ValidationError({"coupon_code": ["Invalid coupon code for this seller."]})
 
             if not coupon.is_valid:
                 raise serializers.ValidationError({"coupon_code": ["This coupon is expired or inactive."]})
 
-            total = seller_product.price * quantity
-            if total < coupon.min_order_amount:
+            total_base = seller_product.price * quantity
+            if total_base < coupon.min_order_amount:
                 raise serializers.ValidationError({
                     "coupon_code": [f"Minimum order amount is {coupon.min_order_amount} USD."]
                 })
@@ -470,54 +457,66 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        from decimal import Decimal
         seller_product = validated_data['seller_product']
         request        = self.context['request']
         quantity       = validated_data.get('quantity', 1)
         coupon         = validated_data.pop('coupon', None)
 
-        total_price     = seller_product.price * quantity
-        discount_amount = 0
+        # 1. Base Calculation
+        unit_price = seller_product.price
+        total_base = unit_price * quantity
+        discount_amount = Decimal('0')
 
-        # Discount calculate
+        # 2. Discount (your previous logic)
         if coupon:
             if coupon.discount_type == 'PERCENTAGE':
-                discount_amount = (total_price * coupon.discount_value) / 100
+                discount_amount = (total_base * coupon.discount_value) / 100
             else:  # FIXED
-                discount_amount = min(coupon.discount_value, total_price)
+                discount_amount = min(coupon.discount_value, total_base)
 
-            final_price = total_price - discount_amount
-
-            # Increase Coupon used_count
             coupon.used_count += 1
             coupon.save(update_fields=['used_count'])
-        else:
-            final_price = total_price
 
+        # 3. Fee Calculation (new logic)
+        item_total = total_base - discount_amount
+        shipping_fee = seller_product.shipping_cost if not seller_product.free_shipping else Decimal('0')
+        
+        # 8% service fee (on item + shipping) as per doc
+        service_fee_rate = Decimal('0.08') 
+        service_fee = (item_total + shipping_fee) * service_fee_rate
+        
+        # 4. Grand Total (what the buyer will pay)
+        total_price = item_total + shipping_fee + service_fee
+
+        # 5. Order Creation
         order = Order.objects.create(
             buyer            = request.user,
             seller           = seller_product.seller,
             seller_product   = seller_product,
             listing          = seller_product.linked_listing,
             quantity         = quantity,
-            unit_price       = seller_product.price,
-            total_price      = total_price,
+            unit_price       = unit_price,
             discount_amount  = discount_amount,
-            final_price      = final_price,
+            item_total       = item_total,
+            shipping_fee     = shipping_fee,
+            service_fee      = service_fee,
+            total_price      = total_price,
             coupon           = coupon,
             currency         = seller_product.currency,
             shipping_address = validated_data.get('shipping_address', ''),
             note             = validated_data.get('note', ''),
+            status           = 'PENDING'
         )
 
-        # Reduce stock
+        # Stock reduction (your previous code)
         seller_product.quantity -= quantity
         seller_product.save(update_fields=['quantity'])
 
-        # Seller stats
+        # Seller stats update
         seller = seller_product.seller
-        seller.total_orders   += 1
-        seller.total_earnings += final_price  # amount after discount
-        seller.save(update_fields=['total_orders', 'total_earnings'])
+        seller.total_orders += 1
+        seller.save(update_fields=['total_orders'])
 
         return order
 
@@ -546,7 +545,7 @@ class CouponSerializer(serializers.ModelSerializer):
 # store/serializers.py
 
 class CouponValidateSerializer(serializers.Serializer):
-    """ইন্ডিভিজুয়াল প্রোডাক্টের কুপন ভ্যালিডেশন"""
+    """Individual product coupon validation"""
     code              = serializers.CharField(max_length=50)
     seller_product_id = serializers.IntegerField()
     quantity          = serializers.IntegerField(min_value=1, default=1)
@@ -555,14 +554,14 @@ class CouponValidateSerializer(serializers.Serializer):
         code = attrs['code'].upper().strip()
         product_id = attrs['seller_product_id']
         
-        # ১. প্রোডাক্টটি চেক করা
+        # 1. Check the product
         try:
             from .models import SellerProduct
             product = SellerProduct.objects.get(id=product_id, status='APPROVED')
         except SellerProduct.DoesNotExist:
             raise serializers.ValidationError({"seller_product_id": ["Product not found or not approved."]})
 
-        # ২. কুপনটি ওই সেলারের কি না চেক করা
+        # 2. Check if the coupon is from that specific seller
         try:
             from .models import Coupon
             coupon = Coupon.objects.get(code=code, seller=product.seller)
@@ -572,7 +571,7 @@ class CouponValidateSerializer(serializers.Serializer):
         if not coupon.is_valid:
             raise serializers.ValidationError({"code": ["This coupon is expired or inactive."]})
 
-        # ৩. প্রোডাক্টের টোটাল দাম বের করে কুপনের মিনিমাম অ্যামাউন্ট চেক করা
+        # 3. Calculate the product's total cost and check the coupon's minimum amount
         item_total = product.price * attrs['quantity']
         if item_total < coupon.min_order_amount:
             raise serializers.ValidationError({

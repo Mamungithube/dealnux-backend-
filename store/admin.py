@@ -13,8 +13,8 @@ from .models import (
 )
 from django.core.exceptions import ValidationError
 from django.contrib import messages
-
-
+from django.db import transaction
+from django.http import HttpResponseRedirect
 # ============================================================================
 # Inline
 # ============================================================================
@@ -25,7 +25,7 @@ class SellerProductImageInline(TabularInline):
     fields = ['image', 'alt_text', 'order']
     tab = True
 
-    def get_queryset(self, request):  # ✅ শুধু এটুকু রাখুন
+    def get_queryset(self, request):
         return super().get_queryset(request)
 
 # ============================================================================
@@ -39,7 +39,7 @@ class SellerRequestAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
 
-    # কাস্টম কুয়েরিসেট যাতে ManyToMany এবং Foreign Key ডাটা দ্রুত লোড হয়
+    # Custom QuerySet to load ManyToMany and Foreign Key data quickly
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user').prefetch_related('categories')
 
@@ -54,7 +54,7 @@ class SellerRequestAdmin(ModelAdmin):
     list_filter = ['status', 'legal_business_type', 'created_at']
     search_fields = ['trade_name', 'user__email', 'contact_full_name', 'contact_phone']
     
-    # বেশিরভাগ ফিল্ড রিড-অনলি রাখা হয়েছে যাতে অ্যাডমিন ইউজারের জমা দেওয়া লিগ্যাল ডাটা পরিবর্তন না করতে পারে
+    # Most fields are kept read-only so that admins cannot change the legal data submitted by users.
     readonly_fields = [
         'user', 'trade_name', 'legal_business_type', 'business_reg_number',
         'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
@@ -65,32 +65,32 @@ class SellerRequestAdmin(ModelAdmin):
         'experience_description', 'digital_signature', 'reviewed_at', 'created_at'
     ]
 
-    # ১১টি ধাপ অনুযায়ী ফিল্ডসেট সাজানো
+    # Sorting fieldsets according to 11 steps
     fieldsets = (
         (_('👤 User Account'), {
             'fields': ('user', 'status', 'admin_note'),
         }),
-        (_('🏪 Step 1: Business Details'), {
+        (_('🏪 Business Details'), {
             'fields': ('trade_name', 'legal_business_type', 'business_reg_number'),
             'classes': ['tab'],
         }),
-        (_('📞 Step 2: Primary Contact'), {
+        (_('📞 Primary Contact'), {
             'fields': ('contact_full_name', 'job_title', 'contact_email', 'contact_phone'),
             'classes': ['tab'],
         }),
-        (_('📦 Step 3: Product Catalog'), {
+        (_('📦 Product Catalog'), {
             'fields': ('display_categories_list', 'estimated_sku_count', 'min_price', 'max_price', 'product_conditions', 'owns_inventory'),
             'classes': ['tab'],
         }),
-        (_('🚚 Step 4 & 5: Shipping & Returns'), {
+        (_('🚚 Shipping & Returns'), {
             'fields': ('fulfillment_methods', 'shipping_regions', 'return_policy_description', 'return_policy_document'),
             'classes': ['tab'],
         }),
-        (_('📄 Step 8: Documents & Verification'), {
+        (_('📄 Documents & Verification'), {
             'fields': ('government_id', 'business_license', 'utility_bill', 'has_prior_experience', 'experience_description'),
             'classes': ['tab'],
         }),
-        (_('⚖️ Step 6, 7 & 10: Legal & Signature'), {
+        (_('⚖️ Legal & Signature'), {
             'fields': ('agreed_to_compliance', 'agreed_to_prohibited_items', 'digital_signature'),
             'classes': ['tab'],
         }),
@@ -131,11 +131,11 @@ class SellerRequestAdmin(ModelAdmin):
         variant=ActionVariant.SUCCESS,
     )
     def action_approve_row(self, request, object_id):
-        from django.http import HttpResponseRedirect
+        
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
-            # views.py এ যে লজিক ছিল সেটা মডেল মেথড হিসেবে কল হবে
-            from django.db import transaction
+            # The logic in views.py will be called as a model method.
+            
             try:
                 with transaction.atomic():
                     obj.approve(admin_user=request.user)
@@ -151,7 +151,7 @@ class SellerRequestAdmin(ModelAdmin):
         variant=ActionVariant.DANGER,
     )
     def action_reject_row(self, request, object_id):
-        from django.http import HttpResponseRedirect
+        
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
             note = request.POST.get('admin_note', 'Rejected by admin via panel.')
@@ -168,79 +168,60 @@ class SellerRequestAdmin(ModelAdmin):
 
 @admin.register(SellerProfile)
 class SellerProfileAdmin(ModelAdmin):
-    compressed_fields = True
-    warn_unsaved_form = True
     list_fullwidth = True
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user', 'user__seller_request')
-
     list_display = [
         'display_shop',
-        'display_user_email',
-        'display_wallet_summary', 
-        'display_stripe_status',
+        'display_user',
+        'display_balances', 
+        'total_products',
         'display_active',
         'created_at',
     ]
-
-    list_filter = ['is_active', 'stripe_onboarding_completed', 'created_at']
+    list_filter = ['is_active', 'created_at']
     search_fields = ['shop_name', 'user__email']
     
-    # টাকা এবং স্ট্রাইপ আইডি অ্যাডমিন এডিট করতে পারবে না (নিরাপত্তার জন্য)
+    # Wallet and stats admin cannot change manually
     readonly_fields = [
         'user', 'shop_name', 'pending_balance', 'available_balance', 
-        'total_earnings', 'stripe_account_id', 'stripe_onboarding_completed',
-        'total_products', 'total_orders', 'seller_score', 'created_at', 'updated_at',
+        'total_earnings', 'total_products', 'total_orders', 'created_at', 'updated_at'
     ]
 
     fieldsets = (
-        (_('🏪 Shop Branding'), {
-            'fields': ('user', 'shop_name', 'shop_description', 'shop_logo', 'seller_score'),
+        (_('🏪 Shop Identity'), {
+            'fields': ('user', 'shop_name', 'shop_description', 'shop_logo'),
         }),
-        (_('💰 Wallet & Earnings'), {
+        (_('💰 Wallet & Escrow'), {
             'fields': ('pending_balance', 'available_balance', 'total_earnings'),
+            'description': _('Pending: Held in escrow | Available: Ready for withdrawal')
         }),
-        (_('💳 Stripe Connect (Payouts)'), {
-            'fields': ('stripe_account_id', 'stripe_onboarding_completed'),
+        (_('📊 Performance Stats'), {
+            'fields': ('total_products', 'total_orders', 'seller_score'),
         }),
-        (_('📊 Activity Stats'), {
-            'fields': ('total_products', 'total_orders'),
-        }),
-        (_('⚙️ Status'), {
+        (_('⚙️ System Status'), {
             'fields': ('is_active',),
         }),
     )
 
-    @display(description=_('Shop'), ordering='shop_name')
+    @display(description=_('Shop/Seller'))
     def display_shop(self, obj):
         return format_html('<strong>{}</strong>', obj.shop_name)
 
-    @display(description=_('Email'), ordering='user__email')
-    def display_user_email(self, obj):
+    @display(description=_('User Email'))
+    def display_user(self, obj):
         return obj.user.email
 
-    @display(description=_('Wallet Summary'))
-    def display_wallet_summary(self, obj):
+    @display(description=_('Wallet (Pending / Available)'))
+    def display_balances(self, obj):
         return format_html(
-            '<div style="font-size:11px">'
-            '<span style="color:#f59e0b">Pending: ${}</span><br>'
-            '<span style="color:#10b981">Available: ${}</span>'
-            '</div>',
+            '<span style="color: #f59e0b; font-weight: bold;">P: ${}</span> | '
+            '<span style="color: #10b981; font-weight: bold;">A: ${}</span>',
             f'{obj.pending_balance:,.2f}',
-            f'{obj.available_balance:,.2f}',
+            f'{obj.available_balance:,.2f}'
         )
 
-    @display(description=_('Stripe Status'), boolean=True)
-    def display_stripe_status(self, obj):
-        return obj.stripe_onboarding_completed
-
-    @display(description=_('Active'), boolean=True, ordering='is_active')
+    @display(description=_('Status'), boolean=True)
     def display_active(self, obj):
         return obj.is_active
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 # ============================================================================
 # Seller Product Admin
@@ -399,7 +380,7 @@ class SellerProductAdmin(ModelAdmin):
         variant=ActionVariant.SUCCESS,
     )
     def action_approve_product(self, request, object_id):
-        from django.http import HttpResponseRedirect
+        
         obj = SellerProduct.objects.get(pk=object_id)
         if obj.status != 'APPROVED':
             obj.approve(admin_user=request.user)
@@ -414,7 +395,7 @@ class SellerProductAdmin(ModelAdmin):
         variant=ActionVariant.DANGER,
     )
     def action_reject_product(self, request, object_id):
-        from django.http import HttpResponseRedirect
+        
         obj = SellerProduct.objects.get(pk=object_id)
         if obj.status != 'REJECTED':
             obj.reject(admin_user=request.user, note='Rejected by admin.')
@@ -428,113 +409,90 @@ class SellerProductAdmin(ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(ModelAdmin):
-    compressed_fields = True
     list_fullwidth = True
-    list_filter_submit = True
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related(
-            'buyer', 'seller', 'seller_product', 'listing'
-        )
-
     list_display = [
+        'order_number',
         'display_buyer',
-        'display_order_id',
         'display_seller',
-        'display_amount',
-        'quantity',
-        'display_order_status',
+        'display_price_breakdown', 
+        'display_total',
+        'display_status',
+        'is_accepted_by_buyer',
         'created_at',
     ]
-    list_filter = ['status', 'created_at', 'currency']
-    search_fields = [
-        'buyer__email', 'buyer__name',
-        'seller__shop_name', 'tracking_number',
-        'seller_product__title',
-    ]
+    list_filter = ['status', 'is_accepted_by_buyer', 'fault_party', 'created_at']
+    search_fields = ['order_number', 'buyer__email', 'seller__shop_name', 'tracking_number']
+
+    # Payment data is protected.
     readonly_fields = [
-        'buyer', 'seller', 'unit_price', 'seller_product', 'listing',
-        'quantity', 'currency', 'shipping_address', 'tracking_number', 'note',
-        'total_price', 'created_at', 'updated_at',
+        'buyer', 'seller', 'seller_product', 'listing',
+        'unit_price', 'quantity', 'discount_amount', 'item_total', 
+        'shipping_fee', 'service_fee', 'total_price', 'currency',
+        'is_accepted_by_buyer', 'accepted_at', 'refund_amount', 'created_at', 'updated_at'
     ]
-    ordering = ['-created_at']
 
     fieldsets = (
         (_('🛒 Order Info'), {
-            'fields': ('buyer', 'seller', 'seller_product', 'listing'),
+            'fields': ('buyer', 'seller', 'seller_product', 'status'),
         }),
-        (_('💰 Pricing'), {
-            'fields': ('quantity', 'unit_price', 'total_price', 'currency'),
+        (_('💰 Pricing Breakdown'), {
+            'fields': (
+                'quantity', 'unit_price', 'discount_amount', 
+                'item_total', 'shipping_fee', 'service_fee', 'total_price', 'currency'
+            ),
+            'description': _('Detailed breakdown of payments and fees.')
         }),
-        (_('📦 Delivery'), {
+        (_('🚚 Shipping & Delivery'), {
             'fields': ('shipping_address', 'tracking_number', 'note'),
         }),
-        (_('⚙️ Status'), {
-            'fields': ('status',),
-        }),
-        (_('🕐 Timestamps'), {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',),
+        (_('✅ Acceptance & Refund'), {
+            'fields': ('is_accepted_by_buyer', 'accepted_at', 'fault_party', 'refund_amount'),
         }),
     )
 
-    actions_submit_line = ['action_mark_shipped']
+    @display(description=_('Buyer'))
+    def display_buyer(self, obj):
+        return format_html('{}<br><small>{}</small>', obj.buyer.name, obj.buyer.email)
+
+    @display(description=_('Shop'))
+    def display_seller(self, obj):
+        return obj.seller.shop_name if obj.seller else "—"
+
+    @display(description=_('Breakdown (Item+Ship+Fee)'))
+    def display_price_breakdown(self, obj):
+        return format_html(
+            '<small>Item: ${}</small><br>'
+            '<small>Ship: ${}</small><br>'
+            '<small style="color: #6366f1;">Fee: ${}</small>',
+            f'{obj.item_total:,.2f}',
+            f'{obj.shipping_fee:,.2f}',
+            f'{obj.service_fee:,.2f}'
+        )
+
+    @display(description=_('Grand Total'))
+    def display_total(self, obj):
+        return format_html('<strong style="color: #10b981;">${}</strong>', f'{obj.total_price:,.2f}')
+
+    @display(description=_('Status'), label={
+        'PENDING': 'warning',
+        'CONFIRMED': 'info',
+        'SHIPPED': 'info',
+        'ACCEPTED': 'success',
+        'CANCELLED': 'danger',
+        'REFUNDED': 'danger',
+    })
+    def display_status(self, obj):
+        return obj.status
 
     def has_delete_permission(self, request, obj=None):
         return False
 
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        if 'delete_selected' in actions:
-            del actions['delete_selected']
-        return actions
 
-    @display(description=_('Order'), ordering='id')
-    def display_order_id(self, obj):
-        return format_html('<strong>#{}</strong>', obj.id)
-
-    @display(description=_('Buyer'), ordering='buyer__email')
-    def display_buyer(self, obj):
-        return format_html(
-            '<strong>{}</strong><br>'
-            '<small style="color:#6b7280">{}</small>',
-            obj.buyer.name or '—',
-            obj.buyer.email,
-        )
-
-    @display(description=_('Shop'), ordering='seller__shop_name')
-    def display_seller(self, obj):
-        return obj.seller.shop_name if obj.seller else '—'
-
-    @display(description=_('Total'), ordering='total_price')
-    def display_amount(self, obj):
-        return format_html(
-            '<strong style="color:#16a34a">${} {}</strong>',
-            f'{obj.total_price:,.2f}',
-            obj.currency,
-        )
-
-    @display(
-        description=_('Status'),
-        ordering='status',
-        label={
-            'PENDING':   'warning',
-            'CONFIRMED': 'info',
-            'SHIPPED':   'info',
-            'DELIVERED': 'success',
-            'CANCELLED': 'danger',
-            'REFUNDED':  'danger',
-        },
-    )
-    def display_order_status(self, obj):
-        return obj.status
-
-    @action(description=_('Save & Mark as Shipped'))
-    def action_mark_shipped(self, request, obj):
-        if obj.status == 'CONFIRMED':
-            obj.status = 'SHIPPED'
-            obj.save(update_fields=['status'])
-            self.message_user(request, f'Order #{obj.id} marked as shipped.')
+# ============================================================================
+# 3. Sidebar Badges (Optional - For better UX)
+# ============================================================================
+def pending_orders_count(request):
+    return Order.objects.filter(status='PENDING').count() or None
 
 
 # ============================================================================

@@ -32,6 +32,9 @@ class Payment(models.Model):
     stripe_payment_intent_id = models.CharField(max_length=500, blank=True)
     stripe_checkout_url = models.URLField(max_length=1000, blank=True)
     status              = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    item_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    shipping_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    service_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at          = models.DateTimeField(auto_now_add=True)
     updated_at          = models.DateTimeField(auto_now=True)
 
