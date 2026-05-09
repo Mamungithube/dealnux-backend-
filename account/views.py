@@ -755,7 +755,7 @@ class ProfileDetailsView(generics.RetrieveAPIView):
             data = {
                 "status": req.status.lower(),
                 "applied_at": req.created_at,
-                "shop_name": req.shop_name,
+                "shop_name": req.trade_name ,
             }
             if req.status == 'REJECTED':
                 data["admin_note"] = req.admin_note
