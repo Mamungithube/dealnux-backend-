@@ -54,27 +54,13 @@ git clone https://github.com/yourusername/dealnux-backend.git
 cd dealnux-backend
 ```
 
-### 2. Configure Environment Variables
-
-Create a `.env` file in the root directory and add the required keys:
-
-```env
-DEBUG=True
-SECRET_KEY=your_secret_key
-STRIPE_SECRET_KEY=your_stripe_key
-RAPIDAPI_KEY=your_rapidapi_key
-DB_NAME=dealnux_db
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
-
-### 3. Run the Project with Docker
+### 2. Run the Project with Docker
 
 ```bash
 docker compose up --build
 ```
 
-### 4. Apply Migrations & Create Superuser
+### 3. Apply Migrations & Create Superuser
 
 ```bash
 docker compose exec web python manage.py migrate
