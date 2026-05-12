@@ -1,3 +1,5 @@
+import json
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -130,18 +132,27 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
-        # Original response format maintained
-        serializer = self.get_serializer(
-            data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        # ১. অরিজিনাল ডাটা কপি করে নেওয়া (সরাসরি পরিবর্তন করা যায় না)
+        data = request.data.copy()
+        
+        # ২. category_names এর ডাটা রিসিভ করা
+        category_data = data.get('category_names')
 
-        return Response({
-            "success": True,
-            "code": 201,
-            "message": "Seller application submitted successfully! Please wait for admin review.",
-            "data": serializer.data
-        }, status=status.HTTP_201_CREATED)
+        # লজিক: যদি এটি স্ট্রিং হয় এবং দেখতে লিস্টের মতো হয়, তবে ওটাকে আসল লিস্টে কনভার্ট করো
+        if isinstance(category_data, str) and category_data.startswith('['):
+            try:
+                data.setlist('category_names', json.loads(category_data))
+            except (ValueError, TypeError):
+                # যদি লোড করতে না পারে, তবে জ্যাঙ্গোর ডিফল্ট মেথড ব্যবহার করো
+                data.setlist('category_names', request.data.getlist('category_names'))
+        
+        # ৩. এখন সিরিয়ালাইজারকে প্রসেস করা ডাটা দিন
+        serializer = self.get_serializer(data=data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return api_response(True, "Seller request submitted successfully", serializer.data, 201)
+        
+        return api_response(False, "Validation failed", serializer.errors, 400)
 
     @action(detail=False, methods=['get'])
     def status(self, request):
