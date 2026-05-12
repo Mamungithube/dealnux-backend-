@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Q
+from django.db.models import Q, Sum
 from stripe.climate import Product
 
 from .models import (
@@ -223,47 +223,101 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 # ============================================================================
 # Seller Profile ViewSet
 # ============================================================================
+
+
 class SellerProfileViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = StandardPagination
 
     def get_queryset(self):
-        # Admin will see all profiles, sellers will only see their own
         if self.request.user.is_staff:
-            return SellerProfile.objects.select_related('user', 'user__seller_request').all()
+            return SellerProfile.objects.all()
         return SellerProfile.objects.filter(user=self.request.user)
 
-    def list(self, request, *args, **kwargs):
-        qs = self.get_queryset()
-        serializer = self.get_serializer(qs, many=True)
-        return success_response(serializer.data, message="Seller profiles fetched")
+    # ── ১. Overview Page: ড্যাশবোর্ড কার্ডের ডাটা ──
+    @action(detail=False, methods=['get'], url_path='dashboard/overview')
+    def dashboard_overview(self, request):
+        try:
+            seller = request.user.seller_profile
+        except SellerProfile.DoesNotExist:
+            return error_response("Seller profile not found", code=404)
 
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return success_response(serializer.data, message="Seller profile fetched")
+        today = timezone.now()
+        
+        # এই মাসের আয় (ACCEPTED অর্ডার থেকে)
+        this_month_earned = Order.objects.filter(
+            seller=seller, 
+            status='ACCEPTED', 
+            created_at__month=today.month,
+            created_at__year=today.year
+        ).aggregate(total=Sum('item_total'))['total'] or 0
 
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        # Security check: No one other than your own profile can edit it (except admins)
-        if not request.user.is_staff and instance.user != request.user:
-            return error_response("Permission denied.", code=403)
-            
-        partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return success_response(serializer.data, message="Seller profile updated")
+        # ইন-স্টক প্রোডাক্ট সংখ্যা
+        total_units = SellerProduct.objects.filter(
+            seller=seller, status='APPROVED'
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        data = {
+            "shop_name": seller.shop_name,
+            "total_products": seller.total_products,
+            "total_units_in_stock": total_units,
+            "active_orders": Order.objects.filter(seller=seller, status__in=['PENDING', 'CONFIRMED', 'SHIPPED']).count(),
+            "needs_action": Order.objects.filter(seller=seller, status='PENDING').count(),
+            "this_month_earnings": float(this_month_earned),
+            "total_earned": float(seller.total_earnings)
+        }
+        return success_response(data, message="Dashboard overview fetched")
+
+    # ── ২. Shipping Page: সেটিংস দেখা এবং আপডেট করা ──
+    @action(detail=False, methods=['get', 'patch'], url_path='dashboard/shipping')
+    def dashboard_shipping(self, request):
+        try:
+            seller = request.user.seller_profile
+        except SellerProfile.DoesNotExist:
+            return error_response("Seller profile not found", code=404)
+        
+        if request.method == 'PATCH':
+            # ফ্রন্টএন্ড থেকে আসা ডাটা দিয়ে ফিল্ড আপডেট
+            seller.local_pickup_active = request.data.get('local_pickup_active', seller.local_pickup_active)
+            seller.local_delivery_active = request.data.get('local_delivery_active', seller.local_delivery_active)
+            seller.standard_shipping_active = request.data.get('standard_shipping_active', seller.standard_shipping_active)
+            seller.order_processing_time = request.data.get('order_processing_time', seller.order_processing_time)
+            seller.preferred_couriers = request.data.get('preferred_couriers', seller.preferred_couriers)
+            seller.save()
+            return success_response(None, message="Shipping settings updated")
+
+        data = {
+            "local_pickup_active": seller.local_pickup_active,
+            "local_delivery_active": seller.local_delivery_active,
+            "standard_shipping_active": seller.standard_shipping_active,
+            "order_processing_time": seller.order_processing_time,
+            "preferred_couriers": seller.preferred_couriers
+        }
+        return success_response(data, message="Shipping settings fetched")
+
+    # ── ৩. Payouts Page: শুধুমাত্র ওয়ালেট ব্যালেন্স প্রদর্শন ──
+    @action(detail=False, methods=['get'], url_path='dashboard/payouts')
+    def dashboard_payouts(self, request):
+        try:
+            seller = request.user.seller_profile
+        except SellerProfile.DoesNotExist:
+            return error_response("Seller profile not found", code=404)
+        
+        # পেমেন্ট হিস্ট্রি পরে পেমেন্ট অ্যাপ থেকে আসবে, এখন শুধু ব্যালেন্স পাঠানো হচ্ছে
+        data = {
+            "available_balance": float(seller.available_balance),
+            "pending_balance": float(seller.pending_balance),
+            "total_earned": float(seller.total_earnings),
+            "payout_history": [] # এটি পেমেন্ট অ্যাপের কাজ শেষ হলে কানেক্ট করা হবে
+        }
+        return success_response(data, message="Wallet balances fetched")
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        """Seller will see their own profile data here"""
         try:
             profile = request.user.seller_profile
         except SellerProfile.DoesNotExist:
             return error_response("You are not an approved seller yet.", code=404)
-            
         serializer = self.get_serializer(profile)
         return success_response(serializer.data, message="Your seller profile")
 

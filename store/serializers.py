@@ -130,29 +130,9 @@ class AdminSellerRequestSerializer(serializers.ModelSerializer):
 # ============================================================================
 
 class SellerProfileSerializer(serializers.ModelSerializer):
-    user_email = serializers.CharField(source='user.email', read_only=True)
-    user_name  = serializers.CharField(source='user.name',  read_only=True)
-    
-    #To display data from the request (if needed)
-    contact_phone = serializers.CharField(source='user.seller_request.contact_phone', read_only=True)
-
     class Meta:
-        model  = SellerProfile
-        fields = [
-            'id', 'user_email', 'user_name',
-            'shop_name', 'shop_description', 'shop_logo', 
-            'contact_phone',
-            'pending_balance', 'available_balance', 'total_earnings',
-            'stripe_account_id', 'stripe_onboarding_completed',
-            'total_products', 'total_orders', 'seller_score',
-            'is_active', 'created_at',
-        ]
-        read_only_fields = [
-            'pending_balance', 'available_balance', 'total_earnings', 
-            'stripe_account_id', 'stripe_onboarding_completed',
-            'total_products', 'total_orders', 'seller_score', 'created_at'
-        ]
-
+        model = SellerProfile
+        fields = '__all__'
 
 # ============================================================================
 # Seller Product Images

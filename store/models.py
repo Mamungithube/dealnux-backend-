@@ -143,6 +143,12 @@ class SellerProfile(models.Model):
     total_withdrawn = models.DecimalField(
         max_digits=12, decimal_places=2, default=0)
 
+    local_pickup_active = models.BooleanField(default=False)
+    local_delivery_active = models.BooleanField(default=False)
+    standard_shipping_active = models.BooleanField(default=True)
+    order_processing_time = models.CharField(max_length=50, default="1-2 Business Days")
+    preferred_couriers = models.JSONField(default=list, blank=True) # ['FedEx', 'DHL']
+
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -509,3 +515,4 @@ class Coupon(models.Model):
         if self.expires_at and timezone.now() > self.expires_at:
             return False
         return True
+
