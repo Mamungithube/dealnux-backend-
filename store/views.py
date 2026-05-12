@@ -1,8 +1,10 @@
+from django.db import transaction
+from django.utils import timezone
 from rest_framework.views import APIView
 import math
 import time
 import logging
-from rest_framework import viewsets , status
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
@@ -23,8 +25,7 @@ from .serializers import (
     CouponSerializer, CouponValidateSerializer,
 )
 logger = logging.getLogger(__name__)
-from django.utils import timezone
-from django.db import transaction
+
 
 class CustomPagination(PageNumberPagination):
     page_size = 10
@@ -130,10 +131,11 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         # Original response format maintained
-        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(
+            data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        
+
         return Response({
             "success": True,
             "code": 201,
@@ -152,7 +154,7 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
                 "message": "You haven't submitted any application yet.",
                 "data": {}
             }, status=status.HTTP_404_NOT_FOUND)
-        
+
         serializer = self.get_serializer(req)
         return Response({
             "success": True,
@@ -192,7 +194,7 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 
             # 3. Update Seller Flag in User Model
             user = seller_request.user
-            user.ads_provided = True 
+            user.ads_provided = True
             user.save(update_fields=['ads_provided'])
 
         return Response({
@@ -206,7 +208,8 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
     def reject(self, request, pk=None):
         """Admin will reject the application and provide a reason"""
         seller_request = self.get_object()
-        note = request.data.get('admin_note', 'Your application does not meet our requirements.')
+        note = request.data.get(
+            'admin_note', 'Your application does not meet our requirements.')
 
         seller_request.status = 'REJECTED'
         seller_request.admin_note = note
@@ -229,97 +232,106 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        if self.request.user.is_staff:
-            return SellerProfile.objects.all()
-        return SellerProfile.objects.filter(user=self.request.user)
-
-    # ── ১. Overview Page: ড্যাশবোর্ড কার্ডের ডাটা ──
+    # --- ১. Dashboard Overview Page ---
     @action(detail=False, methods=['get'], url_path='dashboard/overview')
     def dashboard_overview(self, request):
-        try:
-            seller = request.user.seller_profile
-        except SellerProfile.DoesNotExist:
-            return error_response("Seller profile not found", code=404)
-
+        seller = request.user.seller_profile
         today = timezone.now()
         
-        # এই মাসের আয় (ACCEPTED অর্ডার থেকে)
         this_month_earned = Order.objects.filter(
-            seller=seller, 
-            status='ACCEPTED', 
-            created_at__month=today.month,
-            created_at__year=today.year
+            seller=seller, status='ACCEPTED', 
+            created_at__month=today.month, created_at__year=today.year
         ).aggregate(total=Sum('item_total'))['total'] or 0
 
-        # ইন-স্টক প্রোডাক্ট সংখ্যা
         total_units = SellerProduct.objects.filter(
             seller=seller, status='APPROVED'
         ).aggregate(total=Sum('quantity'))['total'] or 0
 
         data = {
             "shop_name": seller.shop_name,
-            "total_products": seller.total_products,
-            "total_units_in_stock": total_units,
-            "active_orders": Order.objects.filter(seller=seller, status__in=['PENDING', 'CONFIRMED', 'SHIPPED']).count(),
-            "needs_action": Order.objects.filter(seller=seller, status='PENDING').count(),
-            "this_month_earnings": float(this_month_earned),
-            "total_earned": float(seller.total_earnings)
+            "stats": {
+                "total_products": seller.total_products,
+                "total_units_in_stock": total_units,
+                "active_orders": Order.objects.filter(seller=seller, status__in=['PENDING', 'CONFIRMED', 'SHIPPED']).count(),
+                "needs_action": Order.objects.filter(seller=seller, status='PENDING').count(),
+                "this_month_earnings": float(this_month_earned),
+                "total_earned": float(seller.total_earnings)
+            }
         }
-        return success_response(data, message="Dashboard overview fetched")
+        return success_response(data)
 
-    # ── ২. Shipping Page: সেটিংস দেখা এবং আপডেট করা ──
+    # --- ২. Detailed Shipping Page (GET & PATCH) ---
     @action(detail=False, methods=['get', 'patch'], url_path='dashboard/shipping')
     def dashboard_shipping(self, request):
-        try:
-            seller = request.user.seller_profile
-        except SellerProfile.DoesNotExist:
-            return error_response("Seller profile not found", code=404)
+        seller = request.user.seller_profile
         
         if request.method == 'PATCH':
-            # ফ্রন্টএন্ড থেকে আসা ডাটা দিয়ে ফিল্ড আপডেট
+            # Local Pickup Update
             seller.local_pickup_active = request.data.get('local_pickup_active', seller.local_pickup_active)
+            seller.pickup_address_street = request.data.get('pickup_address_street', seller.pickup_address_street)
+            seller.pickup_address_city = request.data.get('pickup_address_city', seller.pickup_address_city)
+            seller.pickup_address_state = request.data.get('pickup_address_state', seller.pickup_address_state)
+            seller.pickup_address_zip = request.data.get('pickup_address_zip', seller.pickup_address_zip)
+            seller.pickup_hours_start = request.data.get('pickup_hours_start', seller.pickup_hours_start)
+            seller.pickup_hours_end = request.data.get('pickup_hours_end', seller.pickup_hours_end)
+            seller.pickup_available_days = request.data.get('pickup_available_days', seller.pickup_available_days)
+
+            # Local Delivery Update
             seller.local_delivery_active = request.data.get('local_delivery_active', seller.local_delivery_active)
+            seller.delivery_radius = request.data.get('delivery_radius', seller.delivery_radius)
+            seller.delivery_fee = request.data.get('delivery_fee', seller.delivery_fee)
+            seller.delivery_timeframe = request.data.get('delivery_timeframe', seller.delivery_timeframe)
+
+            # Standard Shipping Update
             seller.standard_shipping_active = request.data.get('standard_shipping_active', seller.standard_shipping_active)
             seller.order_processing_time = request.data.get('order_processing_time', seller.order_processing_time)
             seller.preferred_couriers = request.data.get('preferred_couriers', seller.preferred_couriers)
+            
             seller.save()
-            return success_response(None, message="Shipping settings updated")
+            return success_response(None, message="All shipping settings updated")
 
+        # GET Response - ডিজাইন অনুযায়ী গুছিয়ে পাঠানো হচ্ছে
         data = {
-            "local_pickup_active": seller.local_pickup_active,
-            "local_delivery_active": seller.local_delivery_active,
-            "standard_shipping_active": seller.standard_shipping_active,
-            "order_processing_time": seller.order_processing_time,
-            "preferred_couriers": seller.preferred_couriers
+            "local_pickup": {
+                "active": seller.local_pickup_active,
+                "address": {
+                    "street": seller.pickup_address_street,
+                    "city": seller.pickup_address_city,
+                    "state": seller.pickup_address_state,
+                    "zip": seller.pickup_address_zip,
+                },
+                "hours": {
+                    "start": seller.pickup_hours_start.strftime("%I:%M %p") if seller.pickup_hours_start else None,
+                    "end": seller.pickup_hours_end.strftime("%I:%M %p") if seller.pickup_hours_end else None,
+                },
+                "available_days": seller.pickup_available_days
+            },
+            "local_delivery": {
+                "active": seller.local_delivery_active,
+                "radius": seller.delivery_radius,
+                "fee": float(seller.delivery_fee),
+                "timeframe": seller.delivery_timeframe
+            },
+            "standard_shipping": {
+                "active": seller.standard_shipping_active,
+                "processing_time": seller.order_processing_time,
+                "preferred_couriers": seller.preferred_couriers
+            }
         }
-        return success_response(data, message="Shipping settings fetched")
+        return success_response(data)
 
-    # ── ৩. Payouts Page: শুধুমাত্র ওয়ালেট ব্যালেন্স প্রদর্শন ──
+    # --- ৩. Payouts/Wallet Page ---
     @action(detail=False, methods=['get'], url_path='dashboard/payouts')
     def dashboard_payouts(self, request):
-        try:
-            seller = request.user.seller_profile
-        except SellerProfile.DoesNotExist:
-            return error_response("Seller profile not found", code=404)
-        
-        # পেমেন্ট হিস্ট্রি পরে পেমেন্ট অ্যাপ থেকে আসবে, এখন শুধু ব্যালেন্স পাঠানো হচ্ছে
+        seller = request.user.seller_profile
         data = {
             "available_balance": float(seller.available_balance),
             "pending_balance": float(seller.pending_balance),
+            "total_withdrawn": float(seller.total_withdrawn),
             "total_earned": float(seller.total_earnings),
-            "payout_history": [] # এটি পেমেন্ট অ্যাপের কাজ শেষ হলে কানেক্ট করা হবে
+            "payout_history": [] # এটি পরে পেমেন্ট অ্যাপ থেকে আসবে
         }
-        return success_response(data, message="Wallet balances fetched")
-
-    @action(detail=False, methods=['get'])
-    def me(self, request):
-        try:
-            profile = request.user.seller_profile
-        except SellerProfile.DoesNotExist:
-            return error_response("You are not an approved seller yet.", code=404)
-        serializer = self.get_serializer(profile)
-        return success_response(serializer.data, message="Your seller profile")
+        return success_response(data)
 
 
 # ============================================================================
@@ -356,11 +368,11 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             status_filter = self.request.query_params.get('status')
             if status_filter:
                 qs = qs.filter(status=status_filter.upper())
-            return qs.order_by('?')  
+            return qs.order_by('?')
 
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
-                
+
                 return SellerProduct.objects.filter(seller=user.seller_profile).order_by('-created_at')
 
         qs = SellerProduct.objects.filter(
@@ -454,7 +466,8 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         end = start + page_size
         results = qs[start:end]
 
-        serializer = SellerProductSerializer(results, many=True, context={'request': request})
+        serializer = SellerProductSerializer(
+            results, many=True, context={'request': request})
 
         return success_response({
             'products': serializer.data,
@@ -514,6 +527,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     # সিরিয়ালাইজারটি অটোমেটিক অ্যাকশন অনুযায়ী সিলেক্ট হবে
+
     def get_serializer_class(self):
         if self.action == 'create':
             return OrderCreateSerializer
@@ -523,7 +537,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_staff:
             return Order.objects.all().order_by('-created_at')
-        
+
         # বায়ার যে অর্ডার দিয়েছে অথবা সেলার যার কাছে অর্ডার এসেছে
         return Order.objects.filter(
             Q(buyer=user) | Q(seller__user=user)
@@ -531,12 +545,13 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """অর্ডার তৈরি করার পর টাকা পেন্ডিং ব্যালেন্সে যাবে (Webhook এ করা ভালো, তবে এখানেও রাখা যায়)"""
-        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(
+            data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        
+
         with transaction.atomic():
             order = serializer.save()
-            
+
             # পেমেন্ট সাকসেস হওয়ার পর (ধরে নিচ্ছি এখানে চেকআউট হচ্ছে)
             # সেলারের প্রোফাইলে পেন্ডিং ব্যালেন্স বাড়িয়ে দেওয়া
             seller_profile = order.seller
@@ -546,15 +561,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             seller_profile.save(update_fields=['pending_balance'])
 
         return success_response(
-            OrderSerializer(order).data, 
-            message="Order placed and funds held in escrow.", 
+            OrderSerializer(order).data,
+            message="Order placed and funds held in escrow.",
             code=201
         )
 
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(qs)
-        
+
         # ফিল্টার: স্ট্যাটাস অনুযায়ী (?status=SHIPPED)
         status_filter = request.query_params.get('status')
         if status_filter:
@@ -563,7 +578,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-            
+
         serializer = self.get_serializer(qs, many=True)
         return success_response(serializer.data, message="Orders fetched")
 
@@ -576,7 +591,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='add-tracking')
     def add_tracking(self, request, pk=None):
         order = self.get_object()
-        
+
         # শুধুমাত্র অর্ডারের সেলার বা অ্যাডমিন ট্র্যাকিং দিতে পারবে
         if order.seller.user != request.user and not request.user.is_staff:
             return error_response("You are not the seller of this order.", code=403)
@@ -588,7 +603,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.tracking_number = tracking_no
         order.status = 'SHIPPED'
         order.save(update_fields=['tracking_number', 'status'])
-        
+
         return success_response(OrderSerializer(order).data, message="Order marked as shipped.")
 
     # ── ২. বায়ার অ্যাকশন: প্রোডাক্ট রিসিভ করা (The Payout Trigger) ──
@@ -599,10 +614,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         টাকা 'Pending Balance' থেকে 'Available Balance'-এ ট্রান্সফার হবে।
         """
         order = self.get_object()
-        
+
         if order.buyer != request.user:
             return error_response("Only the buyer can accept this delivery.", code=403)
-        
+
         if order.status == 'ACCEPTED':
             return error_response("Order is already accepted.", code=400)
 
@@ -616,14 +631,14 @@ class OrderViewSet(viewsets.ModelViewSet):
             # ওয়ালেট আপডেট
             seller_profile = order.seller
             amount_to_release = order.item_total + order.shipping_fee
-            
+
             # পেন্ডিং থেকে কমানো
             seller_profile.pending_balance -= amount_to_release
             # অ্যাভেইলএবল (উইথড্র যোগ্য) ব্যালেন্সে বাড়ানো
             seller_profile.available_balance += amount_to_release
             # লাইফটাইম আর্নিং আপডেট করা
             seller_profile.total_earnings += amount_to_release
-            
+
             seller_profile.save()
 
         return success_response(None, message="Payment released to seller successfully!")
@@ -637,7 +652,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         Case 2: Buyer fault -> Refund (Price only, buyer pays shipping & fees)
         """
         order = self.get_object()
-        fault = request.data.get('fault_party') # 'SELLER' or 'BUYER'
+        fault = request.data.get('fault_party')  # 'SELLER' or 'BUYER'
 
         if fault not in ['SELLER', 'BUYER']:
             return error_response("Invalid fault_party. Must be SELLER or BUYER.", code=400)
@@ -645,19 +660,19 @@ class OrderViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             order.status = 'REFUNDED'
             order.fault_party = fault
-            
+
             # সেলারের পেন্ডিং ওয়ালেট থেকে টাকা কমানো (যেহেতু অর্ডার ফেইল্ড)
             seller_profile = order.seller
             amount_to_deduct = order.item_total + order.shipping_fee
             seller_profile.pending_balance -= amount_to_deduct
             seller_profile.save()
-            
+
             # বায়ারকে কত ফেরত দেওয়া হবে তার হিসাব
             if fault == 'SELLER':
-                refund_amount = order.total_price # ফুল রিফান্ড
+                refund_amount = order.total_price  # ফুল রিফান্ড
             else:
-                refund_amount = order.item_total # আংশিক (শিপিং ও ফি কাটা)
-            
+                refund_amount = order.item_total  # আংশিক (শিপিং ও ফি কাটা)
+
             order.refund_amount = refund_amount
             order.save()
 
@@ -697,7 +712,8 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
 
         # ✅ শুধু SellerProduct চেক করো
         from store.models import SellerProduct
-        product = SellerProduct.objects.filter(id=product_id, status='APPROVED').first()
+        product = SellerProduct.objects.filter(
+            id=product_id, status='APPROVED').first()
         if not product:
             return error_response("Product not found", code=404)
 
@@ -714,7 +730,8 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
         if instance.user != request.user:
             return error_response("Permission denied.", code=403)
         partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return success_response(serializer.data, message="Review updated.")
@@ -739,7 +756,7 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
             "total_reviews":  stats['total'],
             "reviews":        serializer.data
         }, message="Reviews fetched.")
-    
+
 
 # ============================================================================
 # Coupon ViewSet
@@ -815,13 +832,16 @@ class SellerDashboardView(APIView):
             return error_response("You are not an approved seller.", code=403)
 
         seller = request.user.seller_profile
-        
+
         # প্রোডাক্ট স্ট্যাটাস কাউন্ট
-        pending_products = SellerProduct.objects.filter(seller=seller, status='PENDING').count()
-        approved_products = SellerProduct.objects.filter(seller=seller, status='APPROVED').count()
-        
+        pending_products = SellerProduct.objects.filter(
+            seller=seller, status='PENDING').count()
+        approved_products = SellerProduct.objects.filter(
+            seller=seller, status='APPROVED').count()
+
         # রিসেন্ট ৫টি অর্ডার
-        recent_orders = Order.objects.filter(seller=seller).order_by('-created_at')[:5]
+        recent_orders = Order.objects.filter(
+            seller=seller).order_by('-created_at')[:5]
 
         data = {
             "shop_name": seller.shop_name,
@@ -841,5 +861,3 @@ class SellerDashboardView(APIView):
         }
 
         return success_response(data, message="Seller dashboard fetched")
-
-

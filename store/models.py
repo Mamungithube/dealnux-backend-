@@ -113,44 +113,50 @@ class SellerProfile(models.Model):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name='seller_profile')
 
-    # Shop Identity (it is good to keep it in use so that it can be recognized as a shop)
+    # --- ১. শপ আইডেন্টিটি ---
     shop_name = models.CharField(max_length=255)
-    shop_logo = models.ImageField(
-        upload_to='seller_logos/', blank=True, null=True)
+    shop_logo = models.ImageField(upload_to='seller_logos/', blank=True, null=True)
     shop_description = models.TextField(blank=True)
 
-    # Wallet system (as per dashboard screenshot and doc)
-    pending_balance = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0)
-    available_balance = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0)
-    total_earnings = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0)
+    # --- ২. ওয়ালেট সিস্টেম (ডুপ্লিকেট রিমুভ করা হয়েছে) ---
+    pending_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    available_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_earnings = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_withdrawn = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    # Stripe Connect Data Only (According to the doc)
-    stripe_account_id = models.CharField(max_length=200, blank=True)
-    stripe_onboarding_completed = models.BooleanField(default=False)
-
-    # Stats (can be calculated on the fly, but keeping it here for dashboard performance)
-    total_products = models.PositiveIntegerField(default=0)
-    total_orders = models.PositiveIntegerField(default=0)
-    seller_score = models.IntegerField(default=0)
-
-    pending_balance = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0)
-    available_balance = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0)
-    total_withdrawn = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0)
-
+    # --- ৩. শিপিং সেটিংস (আপনার স্ক্রিনশট অনুযায়ী যুক্ত করা হয়েছে) ---
+    
+    # Local Pickup
     local_pickup_active = models.BooleanField(default=False)
+    pickup_address_street = models.CharField(max_length=255, blank=True, null=True)
+    pickup_address_city = models.CharField(max_length=100, blank=True, null=True)
+    pickup_address_state = models.CharField(max_length=100, blank=True, null=True)
+    pickup_address_zip = models.CharField(max_length=20, blank=True, null=True)
+    pickup_hours_start = models.TimeField(blank=True, null=True) # 09:00 AM
+    pickup_hours_end = models.TimeField(blank=True, null=True)   # 05:00 PM
+    pickup_available_days = models.JSONField(default=list, blank=True) # ["Mon", "Tue"]
+
+    # Local Delivery
     local_delivery_active = models.BooleanField(default=False)
+    delivery_radius = models.IntegerField(default=5) # Miles (Slider)
+    delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    delivery_timeframe = models.CharField(max_length=50, blank=True, null=True) # "Same Day", "1-2 Days"
+
+    # Standard Shipping
     standard_shipping_active = models.BooleanField(default=True)
     order_processing_time = models.CharField(max_length=50, default="1-2 Business Days")
     preferred_couriers = models.JSONField(default=list, blank=True) # ['FedEx', 'DHL']
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    # --- ৪. স্ট্রাইপ এবং স্ট্যাটস ---
+    stripe_account_id = models.CharField(max_length=200, blank=True)
+    stripe_onboarding_completed = models.BooleanField(default=False)
+    
+    total_products = models.PositiveIntegerField(default=0)
+    total_orders = models.PositiveIntegerField(default=0)
+    seller_score = models.IntegerField(default=0)
+
     is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
