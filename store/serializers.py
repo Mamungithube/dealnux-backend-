@@ -6,7 +6,7 @@ from .models import (
 )
 from api_integration.serializers import ProductListingSerializer
 from api_integration.models import Category
-
+import json 
 # ============================================================================
 # Seller Request
 # ============================================================================
@@ -81,16 +81,39 @@ class SellerRequestSerializer(serializers.ModelSerializer):
                 )
 
         # Converting category names to objects
-        category_names = attrs.get('category_names', [])
-        if category_names:
-            # Check if these names are in the database
-            categories = Category.objects.filter(name__in=category_names)
-            if categories.count() != len(category_names):
-                found_names = categories.values_list('name', flat=True)
-                missing_names = set(category_names) - set(found_names)
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = request.user if request else None
+        
+        if user:
+            existing = SellerRequest.objects.filter(
+                user=user, 
+                status__in=['PENDING', 'APPROVED']
+            ).exists()
+            if existing and not self.instance:
                 raise serializers.ValidationError(
-                    {"category_names": f"Categories not found: {list(missing_names)}"}
+                    {"detail": "You already have an active or pending seller application."}
                 )
+
+        # --- ক্যাটাগরি প্রসেসিং লজিক (সংশোধিত) ---
+        category_names = attrs.get('category_names', [])
+        
+        # যদি পোস্টম্যান থেকে ["A", "B"] স্ট্রিং আকারে আসে, তবে তা লিস্টে রূপান্তর করা
+        if isinstance(category_names, list) and len(category_names) == 1:
+            raw_val = category_names[0]
+            if isinstance(raw_val, str) and raw_val.startswith('['):
+                try:
+                    category_names = json.loads(raw_val)
+                except:
+                    pass
+
+        if category_names:
+            # ডাটাবেজে এই নামগুলো আছে কিনা চেক করা
+            categories = Category.objects.filter(name__in=category_names)
+            if categories.count() == 0:
+                raise serializers.ValidationError({"category_names": "No matching categories found."})
+            
+            # যেগুলো পাওয়া গেছে শুধু সেগুলোই অ্যাড করা
             attrs['category_objects'] = categories
             
         return attrs
