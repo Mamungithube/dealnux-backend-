@@ -615,21 +615,17 @@ class OrderViewSet(viewsets.ModelViewSet):
         সেলার তার নিজের দোকানের সব অর্ডার এখান থেকে দেখতে পাবে।
         URL: GET /api/v1/store/orders/seller-orders/
         """
-        # ১. চেক করুন ইউজার সেলার কি না
         if not hasattr(request.user, 'seller_profile'):
             return error_response("You are not a registered seller.", code=403)
 
         seller = request.user.seller_profile
-        
-        # ২. ঐ সেলারের সব অর্ডার ডাটাবেজ থেকে আনা হচ্ছে
+
         queryset = Order.objects.filter(seller=seller).select_related('buyer', 'seller_product').order_by('-created_at')
 
-        # ৩. যদি ফ্রন্টএন্ড থেকে স্ট্যাটাস ফিল্টার পাঠায় (যেমন: ?status=PENDING)
         status_filter = request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter.upper())
 
-        # ৪. প্যাজিনেশন অ্যাপ্লাই করা (আপনার CustomPagination ব্যবহার হবে)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -659,38 +655,82 @@ class OrderViewSet(viewsets.ModelViewSet):
         
         return success_response(OrderSerializer(order).data, message="Order marked as shipped with tracking info.")
 
+    @action(detail=False, methods=['get'], url_path='my-orders')
+    def my_orders(self, request):
+        user = request.user
+        
+        # কার্ড স্ট্যাটাস ক্যালকুলেশন (ডিজাইন অনুযায়ী)
+        total_orders = Order.objects.filter(buyer=user).count()
+        delivered_count = Order.objects.filter(buyer=user, status='DELIVERED').count()
+        
+        # 'Awaiting action' মানে যে অর্ডারগুলো DELIVERED কিন্তু বায়ার এখনও Accept করেনি
+        pending_action = Order.objects.filter(
+            buyer=user, 
+            status='DELIVERED', 
+            is_accepted_by_buyer=False
+        ).count()
+
+        # অর্ডার লিস্ট ফিল্টারিং
+        qs = Order.objects.filter(buyer=user).select_related('seller', 'seller_product').order_by('-created_at')
+        
+        status_filter = request.query_params.get('status')
+        if status_filter and status_filter.upper() != 'ALL':
+            qs = qs.filter(status=status_filter.upper())
+
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+
+            paginated_response = self.get_paginated_response(serializer.data)
+            paginated_response.data['data']['summary'] = {
+                "lifetime_savings": float(user.total_lifetime_savings),
+                "total_orders": total_orders,
+                "delivered_text": f"{delivered_count} delivered",
+                "pending_action_count": pending_action,
+                "plan_name": "Pro",
+                "plan_status": "Active"
+            }
+            return paginated_response
+
+        serializer = self.get_serializer(qs, many=True)
+        summary = {
+            "lifetime_savings": float(user.total_lifetime_savings),
+            "total_orders": total_orders,
+            "pending_action_count": pending_action
+        }
+        return success_response({"summary": summary, "orders": serializer.data})
+
     # ── Buyer Action: Received the product (The Payout Trigger) ──
     @action(detail=True, methods=['post'], url_path='accept-order')
     def accept_order(self, request, pk=None):
-        """
-        When the buyer clicks the "Accept" button:
-        The money will be transferred from the 'Pending Balance' to the 'Available Balance'.
-        """
+        """When the buyer clicks this, the money will go to the seller's Available Balance."""
         order = self.get_object()
-
+        
         if order.buyer != request.user:
-            return error_response("Only the buyer can accept this delivery.", code=403)
+            return error_response("You are not authorized to accept this order.", code=403)
+        
+        if order.status != 'DELIVERED':
+            return error_response("Only delivered orders can be accepted.", code=400)
 
-        if order.status == 'ACCEPTED':
-            return error_response("Order is already accepted.", code=400)
+        if order.is_accepted_by_buyer:
+            return error_response("This order has already been accepted.", code=400)
 
         with transaction.atomic():
-            # status update 
             order.status = 'ACCEPTED'
             order.is_accepted_by_buyer = True
             order.accepted_at = timezone.now()
             order.save()
 
-            # wallet update
             seller_profile = order.seller
             amount_to_release = order.item_total + order.shipping_fee
+            
             seller_profile.pending_balance -= amount_to_release
             seller_profile.available_balance += amount_to_release
             seller_profile.total_earnings += amount_to_release
-
             seller_profile.save()
 
-        return success_response(None, message="Payment released to seller successfully!")
+        return success_response(None, message="Payment released! Thank you for confirming.")
 
     # ── Admin Action: Process refund (Fault Logic) ──
     @action(detail=True, methods=['post'], url_path='process-refund', permission_classes=[IsAdminUser])
