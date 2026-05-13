@@ -394,7 +394,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'item_total', 'shipping_fee', 'service_fee', 'total_price', 
             'coupon_code', 'currency',
             'shipping_address', 'status', 'status_display',
-            'tracking_number', 'note','order_number',
+            'tracking_number','courier_name', 'note','order_number',
             'created_at', 'updated_at',
         ]
         read_only_fields = [

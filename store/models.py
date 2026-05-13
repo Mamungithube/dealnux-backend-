@@ -426,6 +426,7 @@ class Order(models.Model):
     # --- Delivery & Logistics ---
     shipping_address = models.TextField()
     tracking_number = models.CharField(max_length=200, blank=True)
+    courier_name = models.CharField(max_length=100, blank=True, null=True)
     note = models.TextField(blank=True)
 
     # --- Escrow & Acceptance Logic ---

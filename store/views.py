@@ -642,20 +642,22 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='add-tracking')
     def add_tracking(self, request, pk=None):
         order = self.get_object()
-
-        # Only the seller or admin of the order can provide tracking.
+        
         if order.seller.user != request.user and not request.user.is_staff:
             return error_response("You are not the seller of this order.", code=403)
 
+        courier = request.data.get('courier_name')
         tracking_no = request.data.get('tracking_number')
+
         if not tracking_no:
             return error_response("Tracking number is required.", code=400)
 
+        order.courier_name = courier 
         order.tracking_number = tracking_no
         order.status = 'SHIPPED'
-        order.save(update_fields=['tracking_number', 'status'])
-
-        return success_response(OrderSerializer(order).data, message="Order marked as shipped.")
+        order.save()
+        
+        return success_response(OrderSerializer(order).data, message="Order marked as shipped with tracking info.")
 
     # ── Buyer Action: Received the product (The Payout Trigger) ──
     @action(detail=True, methods=['post'], url_path='accept-order')
