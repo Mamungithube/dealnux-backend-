@@ -14,7 +14,7 @@ def pending_advertiser_requests_count(request):
 @admin.register(AdvertiserRequest)
 class AdvertiserRequestAdmin(ModelAdmin):
     # ===============================
-    # ⚙️ Admin Config
+    # Admin Config
     # ===============================
     list_display = (
         'display_business',
@@ -38,12 +38,8 @@ class AdvertiserRequestAdmin(ModelAdmin):
 
     ordering = ('-applied_at',)
 
-    # ✅ Row ভিত্তিক Action Button
     actions_row = ['action_approve_row', 'action_reject_row']
 
-    # ===============================
-    # 🎨 Display সুন্দর করা
-    # ===============================
     @display(description='Business')
     def display_business(self, obj):
         return format_html(
@@ -77,9 +73,7 @@ class AdvertiserRequestAdmin(ModelAdmin):
             return "Approved"
         return "Rejected"
 
-    # ===============================
-    # 🚀 Row Actions
-    # ===============================
+
     @action(
         description='Approve',
         url_path='approve-advertiser',
@@ -148,7 +142,6 @@ class AdSettingAdmin(ModelAdmin):
 class CustomAdAdmin(ModelAdmin):
     def get_queryset(self, request):
             qs = super().get_queryset(request)
-            # Admin page load হলে expired ads automatically update হবে
             qs.filter(
                 status='active',
                 end_date__lt=timezone.now()

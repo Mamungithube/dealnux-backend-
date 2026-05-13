@@ -35,14 +35,14 @@ def get_weighted_ads(count=3):
     if not active_ads:
         return[]
 
-    # 2. Pure Random Selection (Lottery)
+    # Pure Random Selection (Lottery)
     # k_val is how many ads we want to show (which comes from count, but cannot be greater than pool)
     k_val = min(len(active_ads), count)
     
     # Using random.sample will prevent duplicate ads, and everyone will have an equal chance.
     selected_ads = random.sample(active_ads, k_val)
 
-    # 3. Impression update
+    # Impression update
     if selected_ads:
         ad_ids = [ad.id for ad in selected_ads]
         

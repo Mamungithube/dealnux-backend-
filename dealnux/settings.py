@@ -24,7 +24,7 @@ import api_integration
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# .env ফাইল লোড করা
+# .env file loading
 load_dotenv(BASE_DIR / '.env')
 
 # Quick-start development settings - unsuitable for production
@@ -35,14 +35,14 @@ def get_env_list(var_name, default=""):
     value = os.getenv(var_name, default)
     if not value:
         return []
-    # স্পেস ট্রিম করা এবং খালি স্ট্রিং ফিল্টার করা
+
     return [item.strip() for item in value.split(",") if item.strip()]
 
 # Security settings
 SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# সংশোধিত লিস্ট হ্যান্ডলিং
+
 # default to empty list; use environment variable to specify hosts in production
 ALLOWED_HOSTS = get_env_list('ALLOWED_HOSTS', '')
 CORS_ALLOWED_ORIGINS = get_env_list('CORS_ALLOWED_ORIGINS')

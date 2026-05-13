@@ -78,7 +78,6 @@ class SellerRequest(models.Model):
     def __str__(self):
         return f"{self.trade_name or self.user.email} Application"
 
-    # store/models.py এর ভেতরে SellerRequest ক্লাসের approve মেথড
 
     def approve(self, admin_user):
 
@@ -113,18 +112,14 @@ class SellerProfile(models.Model):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name='seller_profile')
 
-    # --- ১. শপ আইডেন্টিটি ---
     shop_name = models.CharField(max_length=255)
     shop_logo = models.ImageField(upload_to='seller_logos/', blank=True, null=True)
     shop_description = models.TextField(blank=True)
 
-    # --- ২. ওয়ালেট সিস্টেম (ডুপ্লিকেট রিমুভ করা হয়েছে) ---
     pending_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     available_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_earnings = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_withdrawn = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-
-    # --- ৩. শিপিং সেটিংস (আপনার স্ক্রিনশট অনুযায়ী যুক্ত করা হয়েছে) ---
     
     # Local Pickup
     local_pickup_active = models.BooleanField(default=False)
@@ -147,7 +142,6 @@ class SellerProfile(models.Model):
     order_processing_time = models.CharField(max_length=50, default="1-2 Business Days")
     preferred_couriers = models.JSONField(default=list, blank=True) # ['FedEx', 'DHL']
 
-    # --- ৪. স্ট্রাইপ এবং স্ট্যাটস ---
     stripe_account_id = models.CharField(max_length=200, blank=True)
     stripe_onboarding_completed = models.BooleanField(default=False)
     
@@ -281,7 +275,6 @@ class SellerProduct(models.Model):
             local_platform.name = self.seller.shop_name
             local_platform.save(update_fields=['name'])
 
-        # Product তৈরি
         product, _ = Product.objects.get_or_create(
             title=self.title,
             defaults={
@@ -404,7 +397,6 @@ class Order(models.Model):
     seller = models.ForeignKey(
         SellerProfile, on_delete=models.SET_NULL, null=True, related_name='orders')
 
-    # ঐ সময়ের প্রোডাক্ট ও লিস্টিংয়ের তথ্য
     seller_product = models.ForeignKey(
         SellerProduct, on_delete=models.SET_NULL, null=True)
     listing = models.ForeignKey(
@@ -426,7 +418,7 @@ class Order(models.Model):
     service_fee = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
 
-    # Grand Total (বায়ার মোট যা পে করেছে)
+    # Grand Total
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
 
     currency = models.CharField(max_length=10, default='USD')

@@ -55,15 +55,15 @@ class SellerRequestAdmin(ModelAdmin):
     search_fields = ['trade_name', 'user__email', 'contact_full_name', 'contact_phone']
     
     # Most fields are kept read-only so that admins cannot change the legal data submitted by users.
-    readonly_fields = [
-        'user', 'trade_name', 'legal_business_type', 'business_reg_number',
-        'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
-        'display_categories_list', 'estimated_sku_count', 'min_price', 'max_price',
-        'product_conditions', 'owns_inventory', 'fulfillment_methods', 'shipping_regions',
-        'return_policy_description', 'return_policy_document', 'government_id', 
-        'business_license', 'utility_bill', 'has_prior_experience', 
-        'experience_description', 'digital_signature', 'reviewed_at', 'created_at'
-    ]
+    # readonly_fields = [
+    #     'user', 'trade_name', 'legal_business_type', 'business_reg_number',
+    #     'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
+    #     'display_categories_list', 'estimated_sku_count', 'min_price', 'max_price',
+    #     'product_conditions', 'owns_inventory', 'fulfillment_methods', 'shipping_regions',
+    #     'return_policy_description', 'return_policy_document', 'government_id', 
+    #     'business_license', 'utility_bill', 'has_prior_experience', 
+    #     'experience_description', 'digital_signature', 'reviewed_at', 'created_at'
+    # ]
 
     # Sorting fieldsets according to 11 steps
     fieldsets = (
@@ -256,13 +256,13 @@ class SellerProductAdmin(ModelAdmin):
     ]
     list_filter = ['status', 'condition', 'category', 'created_at']
     search_fields = ['title', 'brand', 'seller__shop_name', 'model_number']
-    readonly_fields = [
-        'seller', 'category', 'title', 'description', 'brand', 'model_number',
-        'main_image', 'price', 'original_price', 'currency', 'quantity', 'condition',
-        'free_shipping', 'shipping_cost', 'estimated_delivery_days',
-        'returns_accepted', 'return_period_days',
-        'created_at', 'updated_at',
-    ]
+    # readonly_fields = [
+    #     'seller', 'category', 'title', 'description', 'brand', 'model_number',
+    #     'main_image', 'price', 'original_price', 'currency', 'quantity', 'condition',
+    #     'free_shipping', 'shipping_cost', 'estimated_delivery_days',
+    #     'returns_accepted', 'return_period_days',
+    #     'created_at', 'updated_at',
+    # ]
     tab_fields = [
         'returns_accepted', 'return_period_days',
 

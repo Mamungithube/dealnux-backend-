@@ -266,14 +266,14 @@ class AdClickTrackerView(APIView):
     def post(self, request, ad_id):
         try:
             with transaction.atomic():
-                # 1. Lock the ad
+                # Lock the ad
                 ad = CustomAd.objects.select_for_update().get(id=ad_id)
 
-                # 2. Get CPC rate
+                # Get CPC rate
                 setting = AdSetting.objects.first()
                 cpc = setting.cpc_amount if setting else Decimal('0.50')
 
-                # 3. Budget check — here spent_amount is ensured to be Decimal
+                # Budget check — here spent_amount is ensured to be Decimal
                 if ad.status == 'expired' or ad.spent_amount >= ad.total_budget:
                     return Response(
                         {
@@ -286,17 +286,17 @@ class AdClickTrackerView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # 4. Calculate without using F() expressions
+                # Calculate without using F() expressions
                 new_clicks = ad.clicks + 1
                 new_spent = ad.spent_amount + cpc
 
-                # 5. Update database
+                # Update database
                 CustomAd.objects.filter(id=ad_id).update(
                     clicks=new_clicks,
                     spent_amount=new_spent
                 )
 
-                # 6. Daily stat update
+                # Daily stat update
                 today = timezone.now().date()
                 daily_stat, _ = AdDailyPerformance.objects.get_or_create(
                     ad=ad,
@@ -307,10 +307,10 @@ class AdClickTrackerView(APIView):
                     clicks=F('clicks') + 1
                 )
 
-                # 7. Calculate the remaining budget
+                # Calculate the remaining budget
                 remaining = float(ad.total_budget - new_spent)
 
-                # 8. Expire when the budget is over.
+                # Expire when the budget is over.
                 if remaining <= 0:
                     CustomAd.objects.filter(id=ad_id).update(status='expired')
                     remaining = 0

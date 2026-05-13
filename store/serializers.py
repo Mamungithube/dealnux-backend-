@@ -7,6 +7,7 @@ from .models import (
 from api_integration.serializers import ProductListingSerializer
 from api_integration.models import Category
 import json 
+
 # ============================================================================
 # Seller Request
 # ============================================================================
@@ -95,10 +96,8 @@ class SellerRequestSerializer(serializers.ModelSerializer):
                     {"detail": "You already have an active or pending seller application."}
                 )
 
-        # --- ক্যাটাগরি প্রসেসিং লজিক (সংশোধিত) ---
         category_names = attrs.get('category_names', [])
         
-        # যদি পোস্টম্যান থেকে ["A", "B"] স্ট্রিং আকারে আসে, তবে তা লিস্টে রূপান্তর করা
         if isinstance(category_names, list) and len(category_names) == 1:
             raw_val = category_names[0]
             if isinstance(raw_val, str) and raw_val.startswith('['):
@@ -108,29 +107,21 @@ class SellerRequestSerializer(serializers.ModelSerializer):
                     pass
 
         if category_names:
-            # ডাটাবেজে এই নামগুলো আছে কিনা চেক করা
             categories = Category.objects.filter(name__in=category_names)
             if categories.count() == 0:
                 raise serializers.ValidationError({"category_names": "No matching categories found."})
-            
-            # যেগুলো পাওয়া গেছে শুধু সেগুলোই অ্যাড করা
+
             attrs['category_objects'] = categories
             
         return attrs
 
     def create(self, validated_data):
-        # 1. Separate the ManyToMany objects (these cannot be passed directly to .create)
         category_objects = validated_data.pop('category_objects', [])
-        
-        # 2. Pop out category_names because it is not a field in the model.
         if 'category_names' in validated_data:
             validated_data.pop('category_names')
 
-        # 3. Create a seller request
-        # There is no need to separate user=user here because it is inside validated_data
         seller_request = SellerRequest.objects.create(**validated_data)
-        
-        # 4. Save the categories
+
         if category_objects:
             seller_request.categories.set(category_objects)
             
@@ -223,7 +214,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
         from api_integration.models import Category
         if not value:
             return None
-        # 1. Search by numeric string → pk
+        # Search by numeric string → pk
         if str(value).strip().isdigit():
             try:
                 return Category.objects.get(pk=int(value))
@@ -231,15 +222,15 @@ class SellerProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"Category with pk={value} not found."
                 )
-        # 2. Search by name (case-insensitive)
+        # Search by name (case-insensitive)
         cat = Category.objects.filter(name__iexact=str(value).strip()).first()
         if cat:
             return cat
-        # 3. Search by slug (case-insensitive)
+        # Search by slug (case-insensitive)
         cat = Category.objects.filter(slug__iexact=str(value).strip()).first()
         if cat:
             return cat
-        # 4. partial name match (e.g. "Toys" → "Toys & Games")
+        # partial name match (e.g. "Toys" → "Toys & Games")
         cat = Category.objects.filter(name__icontains=str(value).strip()).first()
         if cat:
             return cat
@@ -283,7 +274,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
 
 
 class SellerProductPublicSerializer(serializers.ModelSerializer):
-    """Public API -> for displaying approved products"""
+    """Public API --> for displaying approved products"""
     seller_shop  = serializers.CharField(source='seller.shop_name', read_only=True)
     seller_logo  = serializers.ImageField(source='seller.shop_logo', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True, allow_null=True)
@@ -424,19 +415,17 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         quantity       = attrs.get('quantity', 1)
         coupon_code    = attrs.pop('coupon_code', None)
 
-        # 1. Check if the product is approved (your previous code)
         if seller_product.status != 'APPROVED':
             raise serializers.ValidationError({
                 "seller_product": ["This product is not available."]
             })
         
-        # 2. Stock Check (Your previous code)
         if seller_product.quantity < quantity:
             raise serializers.ValidationError({
                 "quantity": [f"Only {seller_product.quantity} items available."]
             })
 
-        # 3. Coupon Validation (your previous logic)
+        # Coupon Validation
         if coupon_code:
             try:
                 # It will also check whether the coupon is from that specific seller or not.
@@ -466,22 +455,22 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         quantity       = validated_data.get('quantity', 1)
         coupon         = validated_data.pop('coupon', None)
 
-        # 1. Base Calculation
+        #  Base Calculation
         unit_price = seller_product.price
         total_base = unit_price * quantity
         discount_amount = Decimal('0')
 
-        # 2. Discount (your previous logic)
+        #  Discount
         if coupon:
             if coupon.discount_type == 'PERCENTAGE':
                 discount_amount = (total_base * coupon.discount_value) / 100
-            else:  # FIXED
+            else:  
                 discount_amount = min(coupon.discount_value, total_base)
 
             coupon.used_count += 1
             coupon.save(update_fields=['used_count'])
 
-        # 3. Fee Calculation (new logic)
+        # Fee Calculation (new logic)
         item_total = total_base - discount_amount
         shipping_fee = seller_product.shipping_cost if not seller_product.free_shipping else Decimal('0')
         
@@ -489,10 +478,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         service_fee_rate = Decimal('0.08') 
         service_fee = (item_total + shipping_fee) * service_fee_rate
         
-        # 4. Grand Total (what the buyer will pay)
+        # Grand Total (what the buyer will pay)
         total_price = item_total + shipping_fee + service_fee
 
-        # 5. Order Creation
+        # Order Creation
         order = Order.objects.create(
             buyer            = request.user,
             seller           = seller_product.seller,
@@ -545,7 +534,6 @@ class CouponSerializer(serializers.ModelSerializer):
         return value.upper().strip()
 
 
-# store/serializers.py
 
 class CouponValidateSerializer(serializers.Serializer):
     """Individual product coupon validation"""
@@ -557,14 +545,14 @@ class CouponValidateSerializer(serializers.Serializer):
         code = attrs['code'].upper().strip()
         product_id = attrs['seller_product_id']
         
-        # 1. Check the product
+        # Check the product
         try:
             from .models import SellerProduct
             product = SellerProduct.objects.get(id=product_id, status='APPROVED')
         except SellerProduct.DoesNotExist:
             raise serializers.ValidationError({"seller_product_id": ["Product not found or not approved."]})
 
-        # 2. Check if the coupon is from that specific seller
+        # Check if the coupon is from that specific seller
         try:
             from .models import Coupon
             coupon = Coupon.objects.get(code=code, seller=product.seller)
@@ -574,7 +562,7 @@ class CouponValidateSerializer(serializers.Serializer):
         if not coupon.is_valid:
             raise serializers.ValidationError({"code": ["This coupon is expired or inactive."]})
 
-        # 3. Calculate the product's total cost and check the coupon's minimum amount
+        # Calculate the product's total cost and check the coupon's minimum amount
         item_total = product.price * attrs['quantity']
         if item_total < coupon.min_order_amount:
             raise serializers.ValidationError({

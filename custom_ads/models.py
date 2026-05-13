@@ -59,7 +59,7 @@ class CustomAd(models.Model):
         """Custom validation for dates, budget, and image"""
         super().clean()
 
-        # 1. Date and budget validation (previous ones)
+        # Date and budget validation (previous ones)
         if self.end_date <= self.start_date:
             raise ValidationError("End date must be after start date")
         if self.priority_weight > 100:
@@ -67,7 +67,7 @@ class CustomAd(models.Model):
         if self.total_budget <= 0:
             raise ValidationError("Budget must be greater than 0")
 
-        # ২. image validation (YouTube Thumbnail Size & Security)
+        #image validation (YouTube Thumbnail Size & Security)
         if self.image:
             # File size check (10 MB = 10 * 1024 * 1024 bytes)
             if self.image.size > 10 * 1024 * 1024:
