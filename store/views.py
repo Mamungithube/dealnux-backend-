@@ -229,9 +229,16 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 
 
 class SellerProfileViewSet(viewsets.ModelViewSet):
+    queryset = SellerProfile.objects.all() 
     serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
 
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return SellerProfile.objects.all()
+        return SellerProfile.objects.filter(user=self.request.user)
+    
     # --- Dashboard Overview Page ---
     @action(detail=False, methods=['get'], url_path='dashboard/overview')
     def dashboard_overview(self, request):
