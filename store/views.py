@@ -608,6 +608,36 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return success_response(serializer.data, message="Order details fetched")
 
+
+    @action(detail=False, methods=['get'], url_path='seller-orders')
+    def seller_orders(self, request):
+        """
+        সেলার তার নিজের দোকানের সব অর্ডার এখান থেকে দেখতে পাবে।
+        URL: GET /api/v1/store/orders/seller-orders/
+        """
+        # ১. চেক করুন ইউজার সেলার কি না
+        if not hasattr(request.user, 'seller_profile'):
+            return error_response("You are not a registered seller.", code=403)
+
+        seller = request.user.seller_profile
+        
+        # ২. ঐ সেলারের সব অর্ডার ডাটাবেজ থেকে আনা হচ্ছে
+        queryset = Order.objects.filter(seller=seller).select_related('buyer', 'seller_product').order_by('-created_at')
+
+        # ৩. যদি ফ্রন্টএন্ড থেকে স্ট্যাটাস ফিল্টার পাঠায় (যেমন: ?status=PENDING)
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter.upper())
+
+        # ৪. প্যাজিনেশন অ্যাপ্লাই করা (আপনার CustomPagination ব্যবহার হবে)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return success_response(serializer.data, message="Seller shop orders fetched")
+
     # ── Seller Action: Adding Tracking Number ──
     @action(detail=True, methods=['post'], url_path='add-tracking')
     def add_tracking(self, request, pk=None):
