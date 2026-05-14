@@ -229,16 +229,15 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 
 
 class SellerProfileViewSet(viewsets.ModelViewSet):
-    queryset = SellerProfile.objects.all() 
+    queryset = SellerProfile.objects.all()
     serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
-
 
     def get_queryset(self):
         if self.request.user.is_staff:
             return SellerProfile.objects.all()
         return SellerProfile.objects.filter(user=self.request.user)
-    
+
     # --- Dashboard Overview Page ---
     @action(detail=False, methods=['get'], url_path='dashboard/overview')
     def dashboard_overview(self, request):
@@ -608,11 +607,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return success_response(serializer.data, message="Order details fetched")
 
-
     @action(detail=False, methods=['get'], url_path='seller-orders')
     def seller_orders(self, request):
         """
-        সেলার তার নিজের দোকানের সব অর্ডার এখান থেকে দেখতে পাবে।
         URL: GET /api/v1/store/orders/seller-orders/
         """
         if not hasattr(request.user, 'seller_profile'):
@@ -620,7 +617,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         seller = request.user.seller_profile
 
-        queryset = Order.objects.filter(seller=seller).select_related('buyer', 'seller_product').order_by('-created_at')
+        queryset = Order.objects.filter(seller=seller).select_related(
+            'buyer', 'seller_product').order_by('-created_at')
 
         status_filter = request.query_params.get('status')
         if status_filter:
@@ -635,48 +633,44 @@ class OrderViewSet(viewsets.ModelViewSet):
         return success_response(serializer.data, message="Seller shop orders fetched")
 
     # ── Seller Action: Adding Tracking Number ──
-    @action(detail=True, methods=['post', 'patch' ], url_path='add-tracking')
+    @action(detail=True, methods=['post'], url_path='add-tracking')
     def add_tracking(self, request, pk=None):
         order = self.get_object()
-        
+
         if order.seller.user != request.user and not request.user.is_staff:
             return error_response("You are not the seller of this order.", code=403)
 
-        courier = request.data.get('courier_name')
         tracking_no = request.data.get('tracking_number')
-
         if not tracking_no:
             return error_response("Tracking number is required.", code=400)
 
-        order.courier_name = courier 
+        # ডাটা সেভ
         order.tracking_number = tracking_no
         order.status = 'SHIPPED'
         order.save()
-        
-        return success_response(OrderSerializer(order).data, message="Order marked as shipped with tracking info.")
+
+        return success_response(OrderSerializer(order).data, message="Order marked as Shipped.")
 
     @action(detail=False, methods=['get'], url_path='my-orders')
     def my_orders(self, request):
         user = request.user
-        
-        # কার্ড স্ট্যাটাস ক্যালকুলেশন (ডিজাইন অনুযায়ী)
+
         total_orders = Order.objects.filter(buyer=user).count()
-        delivered_count = Order.objects.filter(buyer=user, status='DELIVERED').count()
-        
-        # 'Awaiting action' মানে যে অর্ডারগুলো DELIVERED কিন্তু বায়ার এখনও Accept করেনি
+        delivered_count = Order.objects.filter(
+            buyer=user, status='DELIVERED').count()
+
         pending_action = Order.objects.filter(
-            buyer=user, 
-            status='DELIVERED', 
+            buyer=user,
+            status='DELIVERED',
             is_accepted_by_buyer=False
         ).count()
 
-        # অর্ডার লিস্ট ফিল্টারিং
-        qs = Order.objects.filter(buyer=user).select_related('seller', 'seller_product').order_by('-created_at')
-        
+        qs = Order.objects.filter(buyer=user).select_related(
+            'seller', 'seller_product').order_by('-created_at')
+
         status_filter = request.query_params.get('status')
         if status_filter and status_filter.upper() != 'ALL':
             qs = qs.filter(status=status_filter.upper())
-
 
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -701,23 +695,22 @@ class OrderViewSet(viewsets.ModelViewSet):
         }
         return success_response({"summary": summary, "orders": serializer.data})
 
-    # ── Buyer Action: Received the product (The Payout Trigger) ──
+
     @action(detail=True, methods=['post'], url_path='accept-order')
     def accept_order(self, request, pk=None):
-        """When the buyer clicks this, the money will go to the seller's Available Balance."""
         order = self.get_object()
         
         if order.buyer != request.user:
-            return error_response("You are not authorized to accept this order.", code=403)
+            return error_response("You are not authorized.", code=403)
         
-        if order.status != 'DELIVERED':
-            return error_response("Only delivered orders can be accepted.", code=400)
+        if order.status != 'SHIPPED':
+            return error_response("You can only accept the order after it has been shipped.", code=400)
 
         if order.is_accepted_by_buyer:
-            return error_response("This order has already been accepted.", code=400)
+            return error_response("Order already accepted.", code=400)
 
         with transaction.atomic():
-            order.status = 'ACCEPTED'
+            order.status = 'DELIVERED'
             order.is_accepted_by_buyer = True
             order.accepted_at = timezone.now()
             order.save()
@@ -730,7 +723,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             seller_profile.total_earnings += amount_to_release
             seller_profile.save()
 
-        return success_response(None, message="Payment released! Thank you for confirming.")
+        return success_response(None, message="Success! Payment released and order marked as Delivered.")
 
     # ── Admin Action: Process refund (Fault Logic) ──
     @action(detail=True, methods=['post'], url_path='process-refund', permission_classes=[IsAdminUser])
@@ -757,7 +750,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             # Calculation of how much will be refunded to the buyer
             if fault == 'SELLER':
-                refund_amount = order.total_price  # Full refund (price + shipping + fees)
+                # Full refund (price + shipping + fees)
+                refund_amount = order.total_price
             else:
                 refund_amount = order.item_total  # Partial refund (price only)
 
