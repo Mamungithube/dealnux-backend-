@@ -6,7 +6,8 @@ from .models import (
 )
 from api_integration.serializers import ProductListingSerializer
 from api_integration.models import Category
-import json 
+import json
+from django.db import transaction 
 
 # ============================================================================
 # Seller Request
@@ -403,114 +404,125 @@ class OrderSerializer(serializers.ModelSerializer):
             'status', 'tracking_number', 'created_at', 'updated_at',
         ]
 
-class OrderCreateSerializer(serializers.ModelSerializer):
+
+class OrderItemSerializer(serializers.Serializer):
+    """প্রতিটি ইন্ডিভিজুয়াল আইটেমের জন্য ছোট সিরিয়ালাইজার"""
+    seller_product = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
     coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
-    class Meta:
-        model = Order
-        fields = ['seller_product', 'quantity', 'shipping_address', 'note', 'coupon_code']
+class OrderCreateSerializer(serializers.Serializer):
+    """মাল্টিপল আইটেম চেকআউট সিরিয়ালাইজার"""
+    items = OrderItemSerializer(many=True) # এখানে অনেকগুলো প্রোডাক্ট আসবে
+    shipping_address = serializers.CharField(max_length=500)
+    note = serializers.CharField(max_length=500, required=False, allow_blank=True)
 
     def validate(self, attrs):
-        seller_product = attrs.get('seller_product')
-        quantity       = attrs.get('quantity', 1)
-        coupon_code    = attrs.pop('coupon_code', None)
+        item_list = attrs.get('items', [])
+        if not item_list:
+            raise serializers.ValidationError({"items": ["At least one item is required."]})
 
-        if seller_product.status != 'APPROVED':
-            raise serializers.ValidationError({
-                "seller_product": ["This product is not available."]
+        validated_items = []
+        for item in item_list:
+            # ১. প্রোডাক্ট চেক
+            try:
+                product = SellerProduct.objects.get(id=item['seller_product'], status='APPROVED')
+            except SellerProduct.DoesNotExist:
+                raise serializers.ValidationError({"seller_product": [f"Product ID {item['seller_product']} not found or not approved."]})
+
+            # ২. স্টক চেক
+            if product.quantity < item['quantity']:
+                raise serializers.ValidationError({"quantity": [f"Only {product.quantity} units available for {product.title}."]})
+
+            # ৩. কুপন চেক (ইন্ডিভিজুয়াল)
+            coupon = None
+            coupon_code = item.get('coupon_code')
+            if coupon_code:
+                try:
+                    coupon = Coupon.objects.get(code=coupon_code.upper().strip(), seller=product.seller)
+                    if not coupon.is_valid:
+                        raise serializers.ValidationError({"coupon_code": [f"Coupon {coupon_code} is invalid or expired."]})
+                    
+                    if (product.price * item['quantity']) < coupon.min_order_amount:
+                        raise serializers.ValidationError({"coupon_code": [f"Min amount for coupon {coupon_code} is {coupon.min_order_amount}."]})
+                except Coupon.DoesNotExist:
+                    raise serializers.ValidationError({"coupon_code": [f"Coupon {coupon_code} is not valid for {product.seller.shop_name}."]})
+
+            # ভ্যালিডেটেড ডাটা লিস্টে রাখা
+            validated_items.append({
+                'product': product,
+                'quantity': item['quantity'],
+                'coupon': coupon
             })
         
-        if seller_product.quantity < quantity:
-            raise serializers.ValidationError({
-                "quantity": [f"Only {seller_product.quantity} items available."]
-            })
-
-        # Coupon Validation
-        if coupon_code:
-            try:
-                # It will also check whether the coupon is from that specific seller or not.
-                coupon = Coupon.objects.get(code=coupon_code.upper().strip(), seller=seller_product.seller)
-            except Coupon.DoesNotExist:
-                raise serializers.ValidationError({"coupon_code": ["Invalid coupon code for this seller."]})
-
-            if not coupon.is_valid:
-                raise serializers.ValidationError({"coupon_code": ["This coupon is expired or inactive."]})
-
-            total_base = seller_product.price * quantity
-            if total_base < coupon.min_order_amount:
-                raise serializers.ValidationError({
-                    "coupon_code": [f"Minimum order amount is {coupon.min_order_amount} USD."]
-                })
-
-            attrs['coupon'] = coupon
-        else:
-            attrs['coupon'] = None
-
+        attrs['validated_items'] = validated_items
         return attrs
 
     def create(self, validated_data):
         from decimal import Decimal
-        seller_product = validated_data['seller_product']
-        request        = self.context['request']
-        quantity       = validated_data.get('quantity', 1)
-        coupon         = validated_data.pop('coupon', None)
+        request = self.context['request']
+        items = validated_data['validated_items']
+        shipping_address = validated_data['shipping_address']
+        note = validated_data.get('note', '')
 
-        #  Base Calculation
-        unit_price = seller_product.price
-        total_base = unit_price * quantity
-        discount_amount = Decimal('0')
+        created_orders = []
 
-        #  Discount
-        if coupon:
-            if coupon.discount_type == 'PERCENTAGE':
-                discount_amount = (total_base * coupon.discount_value) / 100
-            else:  
-                discount_amount = min(coupon.discount_value, total_base)
+        with transaction.atomic():
+            for item in items:
+                product = item['product']
+                qty = item['quantity']
+                coupon = item['coupon']
 
-            coupon.used_count += 1
-            coupon.save(update_fields=['used_count'])
+                # ১. হিসাব কিতাব
+                total_base = product.price * qty
+                discount = Decimal('0')
+                if coupon:
+                    if coupon.discount_type == 'PERCENTAGE':
+                        discount = (total_base * coupon.discount_value) / 100
+                    else:
+                        discount = min(coupon.discount_value, total_base)
+                    coupon.used_count += 1
+                    coupon.save()
 
-        # Fee Calculation (new logic)
-        item_total = total_base - discount_amount
-        shipping_fee = seller_product.shipping_cost if not seller_product.free_shipping else Decimal('0')
-        
-        # 8% service fee (on item + shipping) as per doc
-        service_fee_rate = Decimal('0.08') 
-        service_fee = (item_total + shipping_fee) * service_fee_rate
-        
-        # Grand Total (what the buyer will pay)
-        total_price = item_total + shipping_fee + service_fee
+                item_total = total_base - discount
+                shipping = product.shipping_cost if not product.free_shipping else Decimal('0')
+                
+                # Dealnux Service Fee (8%)
+                service_fee = (item_total + shipping) * Decimal('0.08')
+                total_price = item_total + shipping + service_fee
 
-        # Order Creation
-        order = Order.objects.create(
-            buyer            = request.user,
-            seller           = seller_product.seller,
-            seller_product   = seller_product,
-            listing          = seller_product.linked_listing,
-            quantity         = quantity,
-            unit_price       = unit_price,
-            discount_amount  = discount_amount,
-            item_total       = item_total,
-            shipping_fee     = shipping_fee,
-            service_fee      = service_fee,
-            total_price      = total_price,
-            coupon           = coupon,
-            currency         = seller_product.currency,
-            shipping_address = validated_data.get('shipping_address', ''),
-            note             = validated_data.get('note', ''),
-            status           = 'PENDING'
-        )
+                # ২. প্রতিটি প্রোডাক্টের জন্য আলাদা অর্ডার তৈরি (যাতে আলাদা সেলার হ্যান্ডেল করতে পারে)
+                order = Order.objects.create(
+                    buyer=request.user,
+                    seller=product.seller,
+                    seller_product=product,
+                    listing=product.linked_listing,
+                    quantity=qty,
+                    unit_price=product.price,
+                    discount_amount=discount,
+                    item_total=item_total,
+                    shipping_fee=shipping,
+                    service_fee=service_fee,
+                    total_price=total_price,
+                    coupon=coupon,
+                    currency=product.currency,
+                    shipping_address=shipping_address,
+                    note=note,
+                    status='PENDING'
+                )
 
-        # Stock reduction (your previous code)
-        seller_product.quantity -= quantity
-        seller_product.save(update_fields=['quantity'])
+                # ৩. স্টক ও ওয়ালেট আপডেট
+                product.quantity -= qty
+                product.save()
 
-        # Seller stats update
-        seller = seller_product.seller
-        seller.total_orders += 1
-        seller.save(update_fields=['total_orders'])
+                seller_profile = product.seller
+                seller_profile.pending_balance += (item_total + shipping)
+                seller_profile.total_orders += 1
+                seller_profile.save()
 
-        return order
+                created_orders.append(order)
+
+        return created_orders[0] 
 
 # ============================================================================
 # Coupon
