@@ -644,8 +644,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not tracking_no:
             return error_response("Tracking number is required.", code=400)
 
-        # ডাটা সেভ
         order.tracking_number = tracking_no
+        if courier:
+            order.courier_name = courier
+            
         order.status = 'SHIPPED'
         order.save()
 
@@ -695,14 +697,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         }
         return success_response({"summary": summary, "orders": serializer.data})
 
-
     @action(detail=True, methods=['post'], url_path='accept-order')
     def accept_order(self, request, pk=None):
         order = self.get_object()
-        
+
         if order.buyer != request.user:
             return error_response("You are not authorized.", code=403)
-        
+
         if order.status != 'SHIPPED':
             return error_response("You can only accept the order after it has been shipped.", code=400)
 
@@ -717,7 +718,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             seller_profile = order.seller
             amount_to_release = order.item_total + order.shipping_fee
-            
+
             seller_profile.pending_balance -= amount_to_release
             seller_profile.available_balance += amount_to_release
             seller_profile.total_earnings += amount_to_release
