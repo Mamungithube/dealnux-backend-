@@ -641,13 +641,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             return error_response("You are not the seller of this order.", code=403)
 
         tracking_no = request.data.get('tracking_number')
+        courier = request.data.get('courier_name')
+
         if not tracking_no:
             return error_response("Tracking number is required.", code=400)
 
         order.tracking_number = tracking_no
         if courier:
             order.courier_name = courier
-            
+
         order.status = 'SHIPPED'
         order.save()
 
