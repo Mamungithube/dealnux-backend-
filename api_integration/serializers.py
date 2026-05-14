@@ -310,6 +310,7 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
+    product = serializers.SerializerMethodField()
     product_title = serializers.CharField(
         source='product.title', read_only=True)
     product_image = serializers.SerializerMethodField()
@@ -336,6 +337,11 @@ class CartItemSerializer(serializers.ModelSerializer):
             is_available=True
         ).order_by('price').first()
         return ProductListingSerializer(best).data if best else None
+    
+    def get_product(self, obj):
+        from store.models import SellerProduct
+        sp = SellerProduct.objects.filter(linked_product=obj.product).first()
+        return sp.id if sp else obj.product.id
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -352,6 +358,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                 })
 
         return attrs
+    
+
 
 
 class FavoriteSerializer(serializers.ModelSerializer):

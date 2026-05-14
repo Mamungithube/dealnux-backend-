@@ -1537,6 +1537,7 @@ class CartViewSet(viewsets.ModelViewSet):
         )
 
         serializer = self.get_serializer(cart_item)
+        
         return self._success(serializer.data, message="Item added to cart", code=201)
 
     def retrieve(self, request, *args, **kwargs):
