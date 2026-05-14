@@ -633,7 +633,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         return success_response(serializer.data, message="Seller shop orders fetched")
 
     # ── Seller Action: Adding Tracking Number ──
-    @action(detail=True, methods=['post'], url_path='add-tracking')
+    @action(detail=True, methods=['post', 'put', 'patch'], url_path='add-tracking')
     def add_tracking(self, request, pk=None):
         order = self.get_object()
 
