@@ -404,76 +404,69 @@ class OrderSerializer(serializers.ModelSerializer):
             'status', 'tracking_number', 'created_at', 'updated_at',
         ]
 
-
 class OrderItemSerializer(serializers.Serializer):
-    """প্রতিটি ইন্ডিভিজুয়াল আইটেমের জন্য ছোট সিরিয়ালাইজার"""
+    """প্রতিটি প্রোডাক্টের জন্য ইনপুট ফরম্যাট"""
     seller_product = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
-    coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
 
 class OrderCreateSerializer(serializers.Serializer):
-    """মাল্টিপল আইটেম চেকআউট সিরিয়ালাইজার"""
-    items = OrderItemSerializer(many=True) # এখানে অনেকগুলো প্রোডাক্ট আসবে
+    """মাল্টিপল আইটেম চেকআউট সিরিয়ালাইজার (Note ফিল্ড ছাড়া)"""
+    items = OrderItemSerializer(many=True)
     shipping_address = serializers.CharField(max_length=500)
-    note = serializers.CharField(max_length=500, required=False, allow_blank=True)
 
     def validate(self, attrs):
         item_list = attrs.get('items', [])
         if not item_list:
             raise serializers.ValidationError({"items": ["At least one item is required."]})
 
-        validated_items = []
+        validated_data_list = []
         for item in item_list:
             # ১. প্রোডাক্ট চেক
             try:
                 product = SellerProduct.objects.get(id=item['seller_product'], status='APPROVED')
             except SellerProduct.DoesNotExist:
-                raise serializers.ValidationError({"seller_product": [f"Product ID {item['seller_product']} not found or not approved."]})
+                raise serializers.ValidationError({"seller_product": [f"Product ID {item['seller_product']} not found."]})
 
             # ২. স্টক চেক
             if product.quantity < item['quantity']:
-                raise serializers.ValidationError({"quantity": [f"Only {product.quantity} units available for {product.title}."]})
+                raise serializers.ValidationError({"quantity": [f"Insufficient stock for {product.title}."]})
 
-            # ৩. কুপন চেক (ইন্ডিভিজুয়াল)
+            # ৩. ইন্ডিভিজুয়াল কুপন চেক
             coupon = None
-            coupon_code = item.get('coupon_code')
-            if coupon_code:
+            c_code = item.get('coupon_code')
+            if c_code:
                 try:
-                    coupon = Coupon.objects.get(code=coupon_code.upper().strip(), seller=product.seller)
+                    coupon = Coupon.objects.get(code=c_code.upper().strip(), seller=product.seller)
                     if not coupon.is_valid:
-                        raise serializers.ValidationError({"coupon_code": [f"Coupon {coupon_code} is invalid or expired."]})
-                    
-                    if (product.price * item['quantity']) < coupon.min_order_amount:
-                        raise serializers.ValidationError({"coupon_code": [f"Min amount for coupon {coupon_code} is {coupon.min_order_amount}."]})
+                        raise serializers.ValidationError({"coupon_code": [f"Coupon {c_code} is invalid."]})
                 except Coupon.DoesNotExist:
-                    raise serializers.ValidationError({"coupon_code": [f"Coupon {coupon_code} is not valid for {product.seller.shop_name}."]})
+                    raise serializers.ValidationError({"coupon_code": [f"Invalid coupon for {product.seller.shop_name}."]})
 
-            # ভ্যালিডেটেড ডাটা লিস্টে রাখা
-            validated_items.append({
+            validated_data_list.append({
                 'product': product,
                 'quantity': item['quantity'],
                 'coupon': coupon
             })
         
-        attrs['validated_items'] = validated_items
+        attrs['validated_items'] = validated_data_list
         return attrs
 
     def create(self, validated_data):
         from decimal import Decimal
         request = self.context['request']
         items = validated_data['validated_items']
-        shipping_address = validated_data['shipping_address']
-        note = validated_data.get('note', '')
+        address = validated_data['shipping_address']
 
-        created_orders = []
+        first_order = None
 
         with transaction.atomic():
-            for item in items:
-                product = item['product']
-                qty = item['quantity']
-                coupon = item['coupon']
+            for entry in items:
+                product = entry['product']
+                qty = entry['quantity']
+                coupon = entry['coupon']
 
-                # ১. হিসাব কিতাব
+                # হিসাব নিকাশ
                 total_base = product.price * qty
                 discount = Decimal('0')
                 if coupon:
@@ -486,12 +479,10 @@ class OrderCreateSerializer(serializers.Serializer):
 
                 item_total = total_base - discount
                 shipping = product.shipping_cost if not product.free_shipping else Decimal('0')
-                
-                # Dealnux Service Fee (8%)
                 service_fee = (item_total + shipping) * Decimal('0.08')
                 total_price = item_total + shipping + service_fee
 
-                # ২. প্রতিটি প্রোডাক্টের জন্য আলাদা অর্ডার তৈরি (যাতে আলাদা সেলার হ্যান্ডেল করতে পারে)
+                # অর্ডার তৈরি
                 order = Order.objects.create(
                     buyer=request.user,
                     seller=product.seller,
@@ -506,23 +497,24 @@ class OrderCreateSerializer(serializers.Serializer):
                     total_price=total_price,
                     coupon=coupon,
                     currency=product.currency,
-                    shipping_address=shipping_address,
-                    note=note,
+                    shipping_address=address,
                     status='PENDING'
                 )
 
-                # ৩. স্টক ও ওয়ালেট আপডেট
+                # ইনভেন্টরি ও সেলার ওয়ালেট আপডেট
                 product.quantity -= qty
                 product.save()
 
-                seller_profile = product.seller
-                seller_profile.pending_balance += (item_total + shipping)
-                seller_profile.total_orders += 1
-                seller_profile.save()
+                seller_prof = product.seller
+                seller_prof.pending_balance += (item_total + shipping)
+                seller_prof.total_orders += 1
+                seller_prof.save()
 
-                created_orders.append(order)
+                if not first_order:
+                    first_order = order
 
-        return created_orders[0] 
+        # রেসপন্স ফরম্যাট ঠিক রাখতে প্রথম অর্ডারটি রিটার্ন করছি
+        return first_order
 
 # ============================================================================
 # Coupon
