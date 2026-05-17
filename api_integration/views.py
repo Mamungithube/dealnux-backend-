@@ -42,6 +42,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from django.contrib.postgres.search import TrigramSimilarity
+from django.db.models import Q, Value, Case, When, FloatField, Min, Count
+from django.db.models import Value
+
 
 logger = logging.getLogger(__name__)
 
@@ -537,8 +541,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        category = self.request.query_params.get('category', '').strip()
-        search   = self.request.query_params.get('search', '').strip()
+        category_input = self.request.query_params.getlist('category')
+        search_query = self.request.query_params.get('search', '').strip()
         sort     = self.request.query_params.get('sort', 'newest').strip()
 
         queryset = queryset.filter(
@@ -552,22 +556,63 @@ class ProductViewSet(viewsets.ModelViewSet):
         )
 
         # Category Filter
-        if category:
-            try:
-                cat      = Category.objects.get(slug=category)
-                child_ids = list(cat.children.values_list('id', flat=True))
-                all_ids  = [cat.id] + child_ids
-                queryset = queryset.filter(category__id__in=all_ids)
-            except Category.DoesNotExist:
-                return queryset.none()
+        if category_input:
+            # কমা দিয়ে আলাদা করা স্লাগগুলোকে লিস্টে নেওয়া
+            slugs = []
+            for item in category_input:
+                slugs.extend([s.strip() for s in item.split(',') if s.strip()])
+            
+            if slugs:
+                matching_cats = Category.objects.filter(slug__in=slugs)
+                all_ids = set()
+                for cat in matching_cats:
+                    all_ids.add(cat.id)
+                    # চাইল্ড ক্যাটাগরি যোগ করা
+                    all_ids.update(cat.children.values_list('id', flat=True))
+                
+                if all_ids:
+                    queryset = queryset.filter(category__id__in=all_ids)
+                else:
+                    return queryset.none()
 
-        # Search Filter
-        if search:
-            queryset = queryset.filter(
-                Q(title__icontains=search) |
-                Q(description__icontains=search) |
-                Q(brand__icontains=search)
-            )
+        if search_query:
+            search_terms = [t for t in re.split(r'\s+', search_query.strip()) if len(t) > 1]
+
+            if not search_terms:
+                queryset = queryset.none()
+            else:
+                and_q = Q()
+                for term in search_terms:
+                    and_q &= Q(title__icontains=term)
+
+                strict_qs = queryset.filter(and_q)
+
+                if not strict_qs.exists():
+                    or_q = Q()
+                    for term in search_terms:
+                        or_q |= Q(title__icontains=term)
+                    strict_qs = queryset.filter(or_q)
+
+                sq = re.escape(search_query)
+
+                queryset = strict_qs.annotate(
+                    title_rank=Case(
+                        When(title__iregex=rf'(?i)\b{sq}\b', then=Value(5.0)),
+                        When(title__iregex=rf'(?i)^(apple\s+)?{sq}([\s,\-]|$)', then=Value(4.0)),
+                        When(title__iregex=rf'(?i)^[\w\s&\'\.]*{sq}([\s,\-]|$)', then=Value(3.0)),
+                        When(title__iregex=rf'(?i)(for|with|compatible|fits?)\s+{sq}', then=Value(1.0)),
+                        default=Value(2.0),
+                        output_field=FloatField(),
+                    ),
+                    trigram=TrigramSimilarity('title', search_query),
+                    word_count=Case(
+                        When(title__regex=r'^(\S+\s+){0,12}\S+$', then=Value(3.0)),   # ১-১৩ words → high
+                        When(title__regex=r'^(\S+\s+){13,18}\S+$', then=Value(2.0)),  # ১৪-১৯ words → mid  
+                        When(title__regex=r'^(\S+\s+){19,24}\S+$', then=Value(1.0)),  # ২০-২৫ words → low
+                        default=Value(0.0),                                             # ২৬+ words → সবার শেষ
+                        output_field=FloatField(),
+                    ),
+                ).order_by('-title_rank', '-trigram', '-word_count')
 
         # Sorting
         if sort == 'price_low':
@@ -584,6 +629,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             ).order_by('-total_listing')
         elif sort == 'oldest':
             queryset = queryset.order_by('created_at')
+        elif search_query:
+            queryset = queryset.order_by('-title_rank', '-trigram', '-word_count', '-created_at')
         else:
             queryset = queryset.order_by('-created_at')
 
