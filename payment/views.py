@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from django.db.models import F
+from django.db import transaction
 from .models import Payment, SellerPayout
 from store.models import SellerProduct, Order, Coupon
 
@@ -22,31 +23,34 @@ PLATFORM_FEE_PERCENT = Decimal('10')
 # Helper function to calculate amounts based on product price, quantity, and coupon code.
 # ================= ===========================================================
 
-def _calculate_amounts(seller_product, quantity, coupon_code=''):
-    """Calculate price and return dict"""
+def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
+    """ডক অনুযায়ী: আইটেম প্রাইস + শিপিং + ৮% সার্ভিস ফি হিসেব করা"""
     unit_price = seller_product.price
-    total_amount = unit_price * quantity
-    discount_amount = Decimal('0')
+    subtotal = unit_price * quantity
+    discount = Decimal('0')
 
+    # কুপন ডিসকাউন্ট
     if coupon_code:
         try:
-            coupon = Coupon.objects.get(
-                code=coupon_code.upper(), seller=seller_product.seller)
-            if coupon.is_valid and total_amount >= coupon.min_order_amount:
-                if coupon.discount_type == 'PERCENTAGE':
-                    discount_amount = total_amount * \
-                        (coupon.discount_value / 100)
-                else:
-                    discount_amount = min(coupon.discount_value, total_amount)
-        except Coupon.DoesNotExist:
-            pass
+            coupon = Coupon.objects.get(code=coupon_code.upper(), seller=seller_product.seller)
+            if coupon.is_valid and subtotal >= coupon.min_order_amount:
+                discount = (subtotal * (coupon.discount_value / 100)) if coupon.discount_type == 'PERCENTAGE' else min(coupon.discount_value, subtotal)
+        except Coupon.DoesNotExist: pass
 
-    final_amount = total_amount - discount_amount
+    item_total = subtotal - discount
+    shipping = seller_product.shipping_cost if not seller_product.free_shipping else Decimal('0')
+    
+    # Dealnux সার্ভিস ফি (বায়ার প্রোটেকশন ফি)
+    service_fee = (item_total + shipping) * Decimal('0.08') # ৮% ফি
+    final_amount = item_total + shipping + service_fee
+
     return {
-        'unit_price':       unit_price,
-        'total_amount':     total_amount,
-        'discount_amount':  discount_amount,
-        'final_amount':     final_amount,
+        'unit_price': unit_price,
+        'item_total': item_total,
+        'discount_amount': discount,
+        'shipping_fee': shipping,
+        'service_fee': service_fee,
+        'final_amount': final_amount,
     }
 
 
@@ -55,134 +59,81 @@ def _calculate_amounts(seller_product, quantity, coupon_code=''):
 # ============================================================================
 
 class CreateCheckoutSessionView(APIView):
-    """
-    Buyer will get client_secret for Stripe Embedded Checkout by POSTing here.
-    Frontend will show Stripe form on its page with this client_secret.
-
-    POST /api/v1/store/checkout/
-    {
-        "seller_product": 1,
-        "quantity": 2,
-        "shipping_address": "Dhaka, Bangladesh",
-        "coupon_code": "SAVE50",   (optional)
-        "note": "Handle carefully"  (optional)
-    }
-
-    Response:
-    {
-        "client_secret": "cs_test_xxx...", 
-        "payment_id": 1,
-        "amount": 500.00,
-        "discount": 50.00,
-        "currency": "usd"
-    }
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        seller_product_id = request.data.get('seller_product')
-        quantity = int(request.data.get('quantity', 1))
-        shipping_address = request.data.get('shipping_address', '')
-        coupon_code = request.data.get('coupon_code', '')
-        note = request.data.get('note', '')
-
-        # Validate
-        if not seller_product_id:
-            return Response({'error': 'seller_product is required.'}, status=400)
-
+        # ১. ডাটা কালেকশন ও ভ্যালিডেশন
+        p_id = request.data.get('seller_product')
+        qty = int(request.data.get('quantity', 1))
+        
         try:
-            seller_product = SellerProduct.objects.get(
-                id=seller_product_id, status='APPROVED')
+            seller_product = SellerProduct.objects.get(id=p_id, status='APPROVED')
         except SellerProduct.DoesNotExist:
-            return Response({'error': 'Product not found or not available.'}, status=404)
+            return Response({'error': 'Product not available.'}, status=404)
 
-        if seller_product.quantity < quantity:
-            return Response({'error': f'Only {seller_product.quantity} items available.'}, status=400)
+        # ২. ডক অনুযায়ী নতুন ক্যালকুলেশন
+        amounts = _calculate_order_amounts(seller_product, qty, request.data.get('coupon_code', ''))
 
-        if not shipping_address:
-            return Response({'error': 'shipping_address is required.'}, status=400)
-
-        # Amounts
-        amounts = _calculate_amounts(seller_product, quantity, coupon_code)
-
-        # Create payment record (PENDING)
+        # ৩. পেমেন্ট রেকর্ড তৈরি (মডেলের নতুন ফিল্ডসহ)
         payment = Payment.objects.create(
-            buyer=request.user,
-            seller_product=seller_product,
-            quantity=quantity,
-            shipping_address=shipping_address,
-            coupon_code=coupon_code,
-            note=note,
-            unit_price=amounts['unit_price'],
-            total_amount=amounts['total_amount'],
-            discount_amount=amounts['discount_amount'],
-            final_amount=amounts['final_amount'],
-            currency=seller_product.currency.lower(),
+            buyer=request.user, seller_product=seller_product, quantity=qty,
+            unit_price=amounts['unit_price'], item_total=amounts['item_total'],
+            shipping_fee=amounts['shipping_fee'], service_fee=amounts['service_fee'],
+            discount_amount=amounts['discount_amount'], final_amount=amounts['final_amount'],
+            currency=seller_product.currency.lower(), status='PENDING'
         )
 
-        # Creating a Stripe Embedded Checkout Session
         try:
+            # ৪. Embedded Mode Session তৈরি (ইউজার অ্যাপের ভেতরেই থাকবে)
             session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
-                line_items=[{
-                    'price_data': {
-                        'currency':     seller_product.currency.lower(),
-                        'unit_amount':  int(amounts['unit_price'] * 100),
-                        'product_data': {
-                            'name':         seller_product.title,
-                            'description':  seller_product.description[:500] if seller_product.description else '',
-                            'images':       [request.build_absolute_uri(seller_product.main_image.url)] if seller_product.main_image else [],
+                ui_mode='embedded', 
+                line_items=[
+                    {
+                        'price_data': {
+                            'currency': payment.currency,
+                            'unit_amount': int(amounts['item_total'] * 100),
+                            'product_data': {'name': seller_product.title},
                         },
+                        'quantity': 1,
                     },
-                    'quantity': quantity,
-                }],
-                discounts=[{
-                    'coupon': stripe.Coupon.create(
-                        amount_off=int(amounts['discount_amount'] * 100),
-                        currency=seller_product.currency.lower(),
-                        duration='once',
-                        name=coupon_code,
-                    ).id
-                }] if amounts['discount_amount'] > 0 else [],
-
-                # ============================================================
-                # 2 main changes from Hosted to Embedded:
-                # 1. ui_mode='embedded' — Stripe will know this is an embedded checkout
-                # 2. return_url — payment will go to this url (not success_url)
-                # cancel_url is not needed, buyer can close the form himself
-                # ============================================================
-                ui_mode='embedded',
-                return_url=settings.STRIPE_RETURN_URL +
-                '?session_id={CHECKOUT_SESSION_ID}',
-
+                    {
+                        'price_data': {
+                            'currency': payment.currency,
+                            'unit_amount': int(amounts['service_fee'] * 100),
+                            'product_data': {'name': 'Dealnux Service Fee (Buyer Protection)'},
+                        },
+                        'quantity': 1,
+                    }
+                ],
+                # ৫. শিপিং ফি আলাদাভাবে দেখানো
+                shipping_options=[{
+                    'shipping_rate_data': {
+                        'type': 'fixed_amount',
+                        'fixed_amount': {'amount': int(amounts['shipping_fee'] * 100), 'currency': payment.currency},
+                        'display_name': 'Standard Shipping',
+                    }
+                }] if amounts['shipping_fee'] > 0 else [],
                 mode='payment',
-                metadata={
-                    'payment_id':        payment.id,
-                    'buyer_id':          request.user.id,
-                    'seller_product_id': seller_product.id,
-                    'quantity':          quantity,
-                },
+                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                metadata={'payment_id': payment.id, 'type': 'store_payment'},
                 customer_email=request.user.email,
             )
 
-            # Save client_secret (instead of url)
             payment.stripe_checkout_session_id = session.id
-            payment.save(update_fields=['stripe_checkout_session_id'])
+            payment.save()
 
-        except stripe.error.StripeError as e:
-            payment.status = 'FAILED'
-            payment.save(update_fields=['status'])
+            return Response({
+                'client_secret': session.client_secret, # এটি দিয়ে অ্যাপের ভেতর ফর্ম খুলবে
+                'payment_id': payment.id,
+                'breakdown': {
+                    'item': float(amounts['item_total']),
+                    'shipping': float(amounts['shipping_fee']),
+                    'fee': float(amounts['service_fee']),
+                    'total': float(amounts['final_amount'])
+                }
+            })
+        except Exception as e:
             return Response({'error': str(e)}, status=500)
-
-        # Return client_secret —> Frontend will display Stripe form with this
-        return Response({
-            'client_secret':    session.client_secret,
-            'payment_id':       payment.id,
-            'amount':           amounts['final_amount'],
-            'discount':         amounts['discount_amount'],
-            'currency':         seller_product.currency,
-        }, status=201)
-
 
 # ============================================================================
 # 2. Session Status —> Frontend will call and confirm this after payment is complete.
@@ -343,34 +294,29 @@ class StripeWebhookView(APIView):
 # 4. Stripe Connect — Create a Seller's Stripe account (no changes)
 # ============================================================================
 
+# payment/views.py
+
 class SellerStripeConnectView(APIView):
-    """
-    The seller will provide the Stripe Connect onboarding URL.
-    POST /api/v1/store/seller/stripe-connect/
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
             seller = request.user.seller_profile
         except Exception:
-            return Response({'error': 'You are not an approved seller.'}, status=403)
+            return Response({"success": False, "message": "You are not an approved seller."}, status=403)
 
-        if not seller.is_active:
-            return Response({'error': 'Your seller account is inactive.'}, status=403)
-
+        # ১. যদি সেলারের আইডি না থাকে, নতুন এক্সপ্রেস একাউন্ট তৈরি করা
         if not seller.stripe_account_id:
             account = stripe.Account.create(
                 type='express',
                 email=request.user.email,
-                capabilities={
-                    'transfers': {'requested': True},
-                },
+                capabilities={'transfers': {'requested': True}},
                 metadata={'seller_id': seller.id}
             )
             seller.stripe_account_id = account.id
-            seller.save(update_fields=['stripe_account_id'])
-
+            seller.save()
+        
+        # ২. অনবোর্ডিং লিঙ্ক জেনারেট করা
         account_link = stripe.AccountLink.create(
             account=seller.stripe_account_id,
             refresh_url=settings.STRIPE_CONNECT_REFRESH_URL,
@@ -379,10 +325,53 @@ class SellerStripeConnectView(APIView):
         )
 
         return Response({
-            'onboarding_url':    account_link.url,
-            'stripe_account_id': seller.stripe_account_id,
+            "success": True,
+            "code": 200,
+            "message": "Onboarding link generated.",
+            "data": {
+                "onboarding_url": account_link.url,
+                "stripe_account_id": seller.stripe_account_id
+            }
         })
 
+
+class RequestPayoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        seller = request.user.seller_profile
+        amount = Decimal(request.data.get('amount', 0))
+
+        # ভ্যালিডেশন
+        if amount < Decimal('10.00'):
+            return Response({"success": False, "message": "Minimum payout is $10.00"}, status=400)
+        
+        if amount > seller.available_balance:
+            return Response({"success": False, "message": "Insufficient balance."}, status=400)
+
+        try:
+            # স্ট্রাইপ ড্যাশবোর্ড থেকে টাকা ব্যাংকে পাঠানোর জন্য পেমেন্ট ট্রিগার (Express account)
+            # নোট: সাধারণত এক্সপ্রেস একাউন্টে স্ট্রাইপ অটোমেটিক পে-আউট করে, 
+            # তবে আমরা এখানে ম্যানুয়ালি ট্রান্সফার রেকর্ড মেইনটেইন করছি।
+            
+            seller.available_balance -= amount
+            seller.total_withdrawn += amount
+            seller.save()
+
+            # এখানে একটি PayoutRecord তৈরি করবেন (আপনার ড্যাশবোর্ডে হিস্ট্রি দেখানোর জন্য)
+            return Response({
+                "success": True, 
+                "code": 200,
+                "message": "Payout request processed successfully.",
+                "data": {
+                    "withdrawn_amount": float(amount),
+                    "remaining_balance": float(seller.available_balance)
+                }
+            })
+        except Exception as e:
+            return Response({"success": False, "message": str(e)}, status=500)
+        
 
 class SellerStripeStatusView(APIView):
     """

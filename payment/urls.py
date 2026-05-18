@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     CheckSessionStatusView,
     CreateCheckoutSessionView,
+    RequestPayoutView,
     StripeWebhookView,
     SellerStripeConnectView,
     SellerStripeStatusView,
@@ -21,4 +22,5 @@ urlpatterns = [
     path('seller/connect/status/',SellerStripeStatusView.as_view(),   name='seller-connect-status'),
     path('seller/payouts/',       SellerPayoutHistoryView.as_view(),  name='seller-payouts'),
     path('session-status/', CheckSessionStatusView.as_view(), name='session-status'),
+    path('seller/withdraw/', RequestPayoutView.as_view(), name='seller-withdraw'),
 ]

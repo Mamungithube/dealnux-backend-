@@ -353,6 +353,18 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
             "payout_history": []  # This will be populated from the payment app later
         }
         return success_response(data)
+    
+    @action(detail=False, methods=['get'], url_path='me')
+    def me(self, request):
+        """সেলার নিজের প্রোফাইল ডাটা দেখার জন্য এটি ব্যবহার করবে"""
+        try:
+            seller = request.user.seller_profile
+            serializer = self.get_serializer(seller)
+            return success_response(serializer.data, message="Your seller profile fetched")
+        except AttributeError:
+            return error_response("User has no seller profile.", code=404)
+        except Exception as e:
+            return error_response(str(e), code=500)
 
 
 # ============================================================================
