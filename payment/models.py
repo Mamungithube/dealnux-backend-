@@ -134,3 +134,20 @@ class UserSubscription(models.Model):
             delta = self.trial_ends_at - timezone.now()
             return max(0, delta.days)
         return None
+
+
+# store/models.py
+
+class PayoutRecord(models.Model):
+    seller = models.ForeignKey(SellerProfile, on_delete=models.CASCADE, related_name='payout_records')
+    payout_id = models.CharField(max_length=20, unique=True) # PAY-XXXX
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    method = models.CharField(max_length=50, default="Stripe Transfer")
+    status = models.CharField(max_length=20, default="Paid")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.payout_id} - {self.amount}"

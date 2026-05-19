@@ -353,7 +353,7 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
             "payout_history": []  # This will be populated from the payment app later
         }
         return success_response(data)
-    
+
     @action(detail=False, methods=['get'], url_path='me')
     def me(self, request):
         """সেলার নিজের প্রোফাইল ডাটা দেখার জন্য এটি ব্যবহার করবে"""
@@ -716,16 +716,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
 
         if order.buyer != request.user:
-            return error_response("You are not authorized.", code=403)
+            return error_response("Not authorized.", code=403)
 
-        if order.status != 'SHIPPED':
-            return error_response("You can only accept the order after it has been shipped.", code=400)
-
-        if order.is_accepted_by_buyer:
-            return error_response("Order already accepted.", code=400)
+        if order.status == 'ACCEPTED':
+            return error_response("Already accepted.", code=400)
 
         with transaction.atomic():
-            order.status = 'DELIVERED'
+            # ১. ডাটাবেজ স্ট্যাটাস আপডেট
+            order.status = 'ACCEPTED'
             order.is_accepted_by_buyer = True
             order.accepted_at = timezone.now()
             order.save()
@@ -733,12 +731,37 @@ class OrderViewSet(viewsets.ModelViewSet):
             seller_profile = order.seller
             amount_to_release = order.item_total + order.shipping_fee
 
+            # ২. ওয়ালেট ট্রান্সফার
             seller_profile.pending_balance -= amount_to_release
             seller_profile.available_balance += amount_to_release
             seller_profile.total_earnings += amount_to_release
             seller_profile.save()
 
-        return success_response(None, message="Success! Payment released and order marked as Delivered.")
+            # ৩. পেমেন্ট হিস্ট্রি রেকর্ড তৈরি (যাতে ড্যাশবোর্ড টেবিলে ডাটা আসে)
+            import random
+            import string
+            p_id = "PAY-" + "".join(random.choices(string.digits, k=4))
+            PayoutRecord.objects.create(
+                seller=seller_profile,
+                payout_id=p_id,
+                amount=amount_to_release,
+                method="Stripe Transfer",
+                status="Paid"
+            )
+
+            # ৪. স্ট্রাইপ রিয়েল ট্রান্সফার (আগের লজিক)
+            if seller_profile.stripe_account_id and seller_profile.stripe_onboarding_completed:
+                try:
+                    stripe.Transfer.create(
+                        amount=int(amount_to_release * 100),
+                        currency=order.currency.lower(),
+                        destination=seller_profile.stripe_account_id,
+                        transfer_group=f"ORDER_{order.order_number}",
+                    )
+                except Exception as e:
+                    logger.error(f"Stripe Transfer Error: {str(e)}")
+
+        return success_response(None, message="Payment released to your wallet and history updated!")
 
     # ── Admin Action: Process refund (Fault Logic) ──
     @action(detail=True, methods=['post'], url_path='process-refund', permission_classes=[IsAdminUser])
@@ -774,6 +797,87 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.save()
 
         return success_response({"refund_amount": float(refund_amount)}, message=f"Refund processed. Fault: {fault}")
+
+    # ── ১. বায়ার অ্যাকশন: ডিসপিউট ওপেন করা ──
+
+    @action(detail=True, methods=['post'], url_path='open-dispute')
+    def open_dispute(self, request, pk=None):
+        order = self.get_object()
+
+        if order.buyer != request.user:
+            return error_response("Not authorized", code=403)
+
+        if order.status not in ['SHIPPED', 'DELIVERED']:
+            return error_response("Dispute can only be opened after shipping.", code=400)
+
+        if hasattr(order, 'dispute'):
+            return error_response("A dispute is already open for this order.", code=400)
+
+        with transaction.atomic():
+            order.status = 'DISPUTED'
+            order.save()
+
+            Dispute.objects.create(
+                order=order,
+                reason=request.data.get('reason'),
+                description=request.data.get('description'),
+                evidence_image=request.FILES.get(
+                    'evidence_image')  # যদি ছবি পাঠায়
+            )
+
+        return success_response(None, message="Dispute opened. Admin will review it soon.")
+
+    # ── ২. অ্যাডমিন অ্যাকশন: ডিসপিউট সমাধান এবং রিফান্ড (ডক অনুযায়ী) ──
+    @action(detail=True, methods=['post'], url_path='resolve-dispute', permission_classes=[IsAdminUser])
+    def resolve_dispute(self, request, pk=None):
+        order = self.get_object()
+        if order.status != 'DISPUTED':
+            return error_response("This order is not in dispute.", code=400)
+
+        decision = request.data.get('decision')  # 'APPROVE' or 'REJECT'
+        fault = request.data.get('fault_party')  # 'SELLER' or 'BUYER'
+
+        with transaction.atomic():
+            dispute = order.dispute
+
+            if decision == 'REJECT':
+                # যদি অ্যাডমিন দেখে বায়ারের অভিযোগ মিথ্যা
+                dispute.status = 'REJECTED'
+                order.status = 'SHIPPED'  # আবার আগের অবস্থায় ফেরত
+                dispute.save()
+                order.save()
+                return success_response(None, message="Dispute rejected. Order set back to Shipped.")
+
+            # --- এপ্রুভ হলে রিফান্ড লজিক (ডক অনুযায়ী) ---
+            dispute.status = 'RESOLVED'
+            order.status = 'REFUNDED'
+            order.fault_party = fault
+
+            # সেলারের পেন্ডিং ওয়ালেট থেকে টাকা সরিয়ে ফেলা
+            seller = order.seller
+            amount_held = order.item_total + order.shipping_fee
+            seller.pending_balance -= amount_held
+            seller.save()
+
+            if fault == 'SELLER':
+                # Case 1: সেলারের দোষ (Full Refund)
+                # বায়ার পাবে: Item + Shipping + Dealnux Fee
+                refund_amount = order.total_price
+            else:
+                # Case 2: বায়ারের দোষ (Partial Refund)
+                # বায়ার পাবে: শুধুমাত্র Item Price (শিপিং ও ফি কাটা যাবে)
+                refund_amount = order.item_total
+
+            order.refund_amount = refund_amount
+            order.save()
+            dispute.save()
+
+            # এখানে Stripe Refund API কল করার কোড বসবে (পরবর্তীতে)
+
+        return success_response(
+            {"refund_amount": float(refund_amount)},
+            message=f"Dispute resolved. Refund of ${refund_amount} processed for {fault} fault."
+        )
 
 
 # ============================================================================

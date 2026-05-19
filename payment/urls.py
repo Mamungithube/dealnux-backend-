@@ -9,6 +9,7 @@ from .views import (
     PaymentHistoryView,
     SellerPayoutHistoryView,
     CheckoutSessionStatusView,
+    SellerStripeLoginLinkView,
 )
 
 app_name = 'payment'
@@ -23,4 +24,5 @@ urlpatterns = [
     path('seller/payouts/',       SellerPayoutHistoryView.as_view(),  name='seller-payouts'),
     path('session-status/', CheckSessionStatusView.as_view(), name='session-status'),
     path('seller/withdraw/', RequestPayoutView.as_view(), name='seller-withdraw'),
+    path('seller/stripe-dashboard/', SellerStripeLoginLinkView.as_view(), name='seller-stripe-dashboard'),
 ]

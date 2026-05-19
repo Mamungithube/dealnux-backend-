@@ -383,34 +383,36 @@ class SellerStripeStatusView(APIView):
     def get(self, request):
         try:
             seller = request.user.seller_profile
-        except Exception:
-            return Response({'error': 'Not a seller.'}, status=403)
+        except AttributeError:
+            return Response({"success": False, "message": "Seller profile not found."}, status=404)
 
         if not seller.stripe_account_id:
             return Response({
-                'connected': False,
-                'verified':  False,
-                'message':   'No Stripe account connected. Please connect your Stripe account first.',
+                "success": True,
+                "data": {"connected": False, "verified": False}
             })
 
         try:
             account = stripe.Account.retrieve(seller.stripe_account_id)
-            verified = account.get('charges_enabled', False) and account.get(
-                'payouts_enabled', False)
+            
+            is_fully_verified = account.get('charges_enabled', False) and account.get('payouts_enabled', False)
 
-            if verified and not seller.stripe_account_verified:
-                seller.stripe_account_verified = True
-                seller.save(update_fields=['stripe_account_verified'])
+            if is_fully_verified and not seller.stripe_onboarding_completed:
+                seller.stripe_onboarding_completed = True
+                seller.save(update_fields=['stripe_onboarding_completed'])
 
             return Response({
-                'connected':         True,
-                'verified':          verified,
-                'charges_enabled':   account.get('charges_enabled'),
-                'payouts_enabled':   account.get('payouts_enabled'),
-                'stripe_account_id': seller.stripe_account_id,
+                "success": True,
+                "code": 200,
+                "data": {
+                    "connected": True,
+                    "verified": is_fully_verified,
+                    "stripe_account_id": seller.stripe_account_id,
+                    "details_submitted": account.get('details_submitted', False)
+                }
             })
-        except stripe.error.StripeError as e:
-            return Response({'error': str(e)}, status=500)
+        except Exception as e:
+            return Response({"success": False, "message": f"Stripe Error: {str(e)}"}, status=400)
 
 
 # ============================================================================
@@ -513,3 +515,46 @@ class CheckSessionStatusView(APIView):
             return Response({"success": False, "error": "An unexpected error occurred."}, status=500)
 
 
+# payment/views.py
+
+class SellerStripeLoginLinkView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            seller = request.user.seller_profile
+        except AttributeError:
+            return Response({
+                "success": False, 
+                "message": "Seller profile not found."
+            }, status=404)
+
+        if not seller.stripe_account_id or not seller.stripe_onboarding_completed:
+            return Response({
+                "success": False,
+                "message": "Please complete Stripe onboarding first before accessing the dashboard."
+            }, status=400)
+
+        try:
+
+            login_link = stripe.Account.create_login_link(seller.stripe_account_id)
+
+            return Response({
+                "success": True,
+                "code": 200,
+                "message": "Login link generated successfully.",
+                "data": {
+                    "url": login_link.url 
+                }
+            })
+        except stripe.error.StripeError as e:
+            return Response({
+                "success": False, 
+                "message": f"Stripe Error: {str(e)}"
+            }, status=400)
+        except Exception as e:
+            return Response({
+                "success": False, 
+                "message": "An unexpected error occurred."
+            }, status=500)

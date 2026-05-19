@@ -527,3 +527,20 @@ class Coupon(models.Model):
         if self.expires_at and timezone.now() > self.expires_at:
             return False
         return True
+
+class Dispute(models.Model):
+    STATUS_CHOICES = [
+        ('OPEN', 'Open'),
+        ('RESOLVED', 'Resolved'),
+        ('REJECTED', 'Rejected'),
+    ]
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='dispute')
+    reason = models.CharField(max_length=255) # যেমন: Wrong item, Damaged
+    description = models.TextField()
+    evidence_image = models.ImageField(upload_to='dispute_evidences/', blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OPEN')
+    admin_note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Dispute for Order {self.order.order_number}"
