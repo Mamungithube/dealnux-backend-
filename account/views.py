@@ -22,6 +22,12 @@ import json
 import time
 from custom_ads.models import AdvertiserRequest
 
+
+from payment.models import SubscriptionPlan, UserSubscription
+from django.utils import timezone
+from datetime import timedelta
+
+
 def generate_otp():
     return str(random.randint(1000, 9999))
 
@@ -829,3 +835,22 @@ class ProfileUpdateView(generics.UpdateAPIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+# ======================== Free Trial Logic (for payment/models.py) ========================
+
+def start_free_trial(user):
+    try:
+        free_plan = SubscriptionPlan.objects.get(plan_type='FREE')
+        # অ্যাডমিন ড্যাশবোর্ড থেকে সেট করা দিন (১৪, ৭ বা ৩ দিন)
+        trial_duration = free_plan.trial_days 
+        
+        UserSubscription.objects.create(
+            user=user,
+            plan=free_plan,
+            status='TRIAL',
+            trial_ends_at=timezone.now() + timedelta(days=trial_duration),
+            expires_at=timezone.now() + timedelta(days=trial_duration)
+        )
+    except SubscriptionPlan.DoesNotExist:
+        pass

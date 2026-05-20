@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 import stripe
 from decimal import Decimal
 
 from django.conf import settings
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.http import HttpResponse
@@ -12,13 +15,20 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from django.db.models import F
 from django.db import transaction
-from .models import Payment, SellerPayout
+from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 from store.models import SellerProduct, Order, Coupon
+from api_integration.models import ProductListing
+from account.models import User
+from . serializers import (
+    SubscriptionPlanSerializer,
+    
+)
 
+from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
 PLATFORM_FEE_PERCENT = Decimal('10')  
 
-
+import json
 # ============================================================================
 # Helper function to calculate amounts based on product price, quantity, and coupon code.
 # ================= ===========================================================
@@ -58,64 +68,108 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 # 1. Checkout — Create Embedded Checkout Session (returns client_secret)
 # ============================================================================
 
+# payment/views.py এর CreateCheckoutSessionView ক্লাসটি এভাবে আপডেট করুন
+
 class CreateCheckoutSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
-        # ১. ডাটা কালেকশন ও ভ্যালিডেশন
-        p_id = request.data.get('seller_product')
-        qty = int(request.data.get('quantity', 1))
-        
-        try:
-            seller_product = SellerProduct.objects.get(id=p_id, status='APPROVED')
-        except SellerProduct.DoesNotExist:
-            return Response({'error': 'Product not available.'}, status=404)
+        items_data = request.data.get('items', [])
+        shipping_address = request.data.get('shipping_address')
 
-        # ২. ডক অনুযায়ী নতুন ক্যালকুলেশন
-        amounts = _calculate_order_amounts(seller_product, qty, request.data.get('coupon_code', ''))
+        if not items_data:
+            return Response({'error': 'Items list is required.'}, status=400)
+        if not shipping_address:
+            return Response({'error': 'shipping_address is required.'}, status=400)
 
-        # ৩. পেমেন্ট রেকর্ড তৈরি (মডেলের নতুন ফিল্ডসহ)
+        total_item_price = Decimal('0')
+        total_shipping_fee = Decimal('0')
+        line_items = []
+        validated_items = []
+
+        # ১. সব আইটেম ভ্যালিডেশন এবং প্রাইস ক্যালকুলেশন
+        for item in items_data:
+            p_id = item.get('seller_product')
+            qty = int(item.get('quantity', 1))
+            c_code = item.get('coupon_code', '')
+
+            try:
+                product = SellerProduct.objects.get(id=p_id, status='APPROVED')
+            except SellerProduct.DoesNotExist:
+                return Response({'error': f'Product ID {p_id} not found or not approved.'}, status=404)
+
+            # ডিসকাউন্ট ও ফি ক্যালকুলেশন (আমাদের হেল্পার ফাংশন দিয়ে)
+            res = _calculate_order_amounts(product, qty, c_code)
+            
+            total_item_price += res['item_total']
+            total_shipping_fee += res['shipping_fee']
+
+            # স্ট্রাইপের জন্য লাইন আইটেম তৈরি
+            line_items.append({
+                'price_data': {
+                    'currency': 'usd',
+                    'unit_amount': int(res['item_total'] / qty * 100), # পার ইউনিট প্রাইস
+                    'product_data': {'name': product.title},
+                },
+                'quantity': qty,
+            })
+            
+            validated_items.append({
+                'id': p_id,
+                'qty': qty,
+                'c_code': c_code,
+                'shipping': float(res['shipping_fee']),
+                'item_total': float(res['item_total'])
+            })
+
+        # ২. ডক অনুযায়ী সার্ভিস ফি (৮%)
+        service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
+        final_grand_total = total_item_price + total_shipping_fee + service_fee
+
+        # ৩. মেইন পেমেন্ট রেকর্ড তৈরি (মাস্টার ট্রানজেকশন)
         payment = Payment.objects.create(
-            buyer=request.user, seller_product=seller_product, quantity=qty,
-            unit_price=amounts['unit_price'], item_total=amounts['item_total'],
-            shipping_fee=amounts['shipping_fee'], service_fee=amounts['service_fee'],
-            discount_amount=amounts['discount_amount'], final_amount=amounts['final_amount'],
-            currency=seller_product.currency.lower(), status='PENDING'
+            buyer=request.user,
+            payment_type='STORE',
+            shipping_address=shipping_address,
+            
+            # এই ৩টি ফিল্ড ডাটাবেজে বাধ্যতামূলক, তাই ভ্যালু পাস করতে হবে
+            unit_price=total_item_price,    # টোটাল আইটেম প্রাইস (কনস্ট্রেইন্ট ফিক্স করতে)
+            total_amount=total_item_price, 
+            quantity=len(items_data),       # মোট কত পদের প্রোডাক্ট
+            
+            # নতুন ব্রেকডাউন ফিল্ডগুলো
+            item_total=total_item_price,
+            shipping_fee=total_shipping_fee,
+            service_fee=service_fee,
+            final_amount=final_grand_total,
+            currency='usd',
+            status='PENDING'
         )
 
         try:
-            # ৪. Embedded Mode Session তৈরি (ইউজার অ্যাপের ভেতরেই থাকবে)
+            # সার্ভিস ফি-কে আলাদা লাইন আইটেম হিসেবে যোগ করা
+            line_items.append({
+                'price_data': {
+                    'currency': 'usd',
+                    'unit_amount': int(service_fee * 100),
+                    'product_data': {'name': 'Dealnux Service Fee (Buyer Protection)'},
+                },
+                'quantity': 1,
+            })
+
+            # ৪. স্ট্রাইপ সেশন তৈরি
             session = stripe.checkout.Session.create(
-                ui_mode='embedded', 
-                line_items=[
-                    {
-                        'price_data': {
-                            'currency': payment.currency,
-                            'unit_amount': int(amounts['item_total'] * 100),
-                            'product_data': {'name': seller_product.title},
-                        },
-                        'quantity': 1,
-                    },
-                    {
-                        'price_data': {
-                            'currency': payment.currency,
-                            'unit_amount': int(amounts['service_fee'] * 100),
-                            'product_data': {'name': 'Dealnux Service Fee (Buyer Protection)'},
-                        },
-                        'quantity': 1,
-                    }
-                ],
-                # ৫. শিপিং ফি আলাদাভাবে দেখানো
-                shipping_options=[{
-                    'shipping_rate_data': {
-                        'type': 'fixed_amount',
-                        'fixed_amount': {'amount': int(amounts['shipping_fee'] * 100), 'currency': payment.currency},
-                        'display_name': 'Standard Shipping',
-                    }
-                }] if amounts['shipping_fee'] > 0 else [],
+                ui_mode='embedded',
+                line_items=line_items,
                 mode='payment',
                 return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
-                metadata={'payment_id': payment.id, 'type': 'store_payment'},
+                metadata={
+                    'payment_id': payment.id,
+                    'type': 'store_payment',
+                    # মেটাডাটায় আইটেমগুলো কমা দিয়ে রাখছি যাতে ওয়েবহুক অর্ডার বানাতে পারে
+                    'items_json': json.dumps(validated_items) 
+                },
                 customer_email=request.user.email,
             )
 
@@ -123,13 +177,13 @@ class CreateCheckoutSessionView(APIView):
             payment.save()
 
             return Response({
-                'client_secret': session.client_secret, # এটি দিয়ে অ্যাপের ভেতর ফর্ম খুলবে
+                'client_secret': session.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
-                    'item': float(amounts['item_total']),
-                    'shipping': float(amounts['shipping_fee']),
-                    'fee': float(amounts['service_fee']),
-                    'total': float(amounts['final_amount'])
+                    'subtotal': float(total_item_price),
+                    'shipping': float(total_shipping_fee),
+                    'service_fee': float(service_fee),
+                    'grand_total': float(final_grand_total)
                 }
             })
         except Exception as e:
@@ -289,6 +343,30 @@ class StripeWebhookView(APIView):
             Payment.objects.filter(
                 id=payment_id, status='PENDING').update(status='CANCELLED')
 
+    def _handle_subscription_success(self, session):
+        user_id = session.get('metadata', {}).get('user_id')
+        plan_id = session.get('metadata', {}).get('plan_id')
+        stripe_sub_id = session.get('subscription') # স্ট্রাইপ থেকে আসা সাবস্ক্রিপশন আইডি
+
+        if not user_id or not plan_id:
+            return
+
+        user = User.objects.get(id=user_id)
+        plan = SubscriptionPlan.objects.get(id=plan_id)
+
+        # ডাটাবেজে সাবস্ক্রিপশন আপডেট বা তৈরি করা
+        expires_at = timezone.now() + timedelta(days=30) if 'MONTHLY' in plan.plan_type else timezone.now() + timedelta(days=365)
+        
+        UserSubscription.objects.update_or_create(
+            user=user,
+            defaults={
+                'plan': plan,
+                'status': 'ACTIVE',
+                'stripe_subscription_id': stripe_sub_id,
+                'expires_at': expires_at
+            }
+        )
+
 
 # ============================================================================
 # 4. Stripe Connect — Create a Seller's Stripe account (no changes)
@@ -436,8 +514,8 @@ class PaymentHistoryView(APIView):
                 'id':              p.id,
                 'product':         p.seller_product.title if p.seller_product else None,
                 'quantity':        p.quantity,
-                'final_amount':    p.final_amount,
-                'discount_amount': p.discount_amount,
+                'final_amount':    float(p.final_amount) if p.final_amount is not None else None,
+                'discount_amount': float(p.discount_amount) if p.discount_amount is not None else None,
                 'currency':        p.currency,
                 'status':          p.status,
                 'order_id':        p.order.id if p.order else None,
@@ -467,9 +545,9 @@ class SellerPayoutHistoryView(APIView):
             data.append({
                 'id':                 p.id,
                 'order_id':           p.order.id if p.order else None,
-                'gross_amount':       p.gross_amount,
-                'platform_fee':       p.platform_fee_amount,
-                'seller_amount':      p.seller_amount,
+                'gross_amount':       float(p.gross_amount) if p.gross_amount is not None else None,
+                'platform_fee':       float(p.platform_fee_amount) if p.platform_fee_amount is not None else None,
+                'seller_amount':      float(p.seller_amount) if p.seller_amount is not None else None,
                 'currency':           p.payment.currency,
                 'status':             p.status,
                 'stripe_transfer_id': p.stripe_transfer_id,
@@ -558,3 +636,182 @@ class SellerStripeLoginLinkView(APIView):
                 "success": False, 
                 "message": "An unexpected error occurred."
             }, status=500)
+
+
+class ProductClickTrackerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, listing_id):
+        user = request.user
+        sub = getattr(user, 'subscription', None)
+
+        # ১. সাবস্ক্রিপশন চেক
+        if not sub or not sub.is_valid:
+            return Response({"error": "Please subscribe to a plan."}, status=403)
+
+        plan = sub.plan
+        today = timezone.now().date()
+
+        # ২. দিন পরিবর্তন হলে ক্লিক রিসেট করা
+        if user.last_click_date != today:
+            user.daily_click_count = 0
+            user.last_click_date = today
+
+        # ৩. ক্লিক লিমিট চেক (৫, ৪০, ৬০ ইত্যাদি ডক অনুযায়ী)
+        if user.daily_click_count >= plan.clicks_per_day:
+            return Response({
+                "error": "Daily click limit reached!",
+                "limit": plan.clicks_per_day,
+                "message": "Upgrade your plan for more access."
+            }, status=429)
+
+        # ৪. ক্লিক কাউন্ট বাড়ানো
+        user.daily_click_count += 1
+        user.save(update_fields=['daily_click_count', 'last_click_date'])
+
+        # ৫. রিটেইল ইউআরএল এ পাঠিয়ে দেওয়া
+        listing = get_object_or_404(ProductListing, id=listing_id)
+        return Response({"redirect_url": listing.external_url})
+
+
+
+
+class SubscriptionPlanListView(APIView):
+    """ইউজারকে ৫টি প্ল্যান দেখানোর জন্য"""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        plans = SubscriptionPlan.objects.filter(is_active=True).order_by('price')
+        serializer = SubscriptionPlanSerializer(plans, many=True)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Subscription plans fetched.",
+            "data": serializer.data
+        })
+
+class CreateSubscriptionCheckoutView(APIView):
+    """ইউজার যখন কোনো প্ল্যান (Free বা Paid) একটিভ/কিনতে চাবে"""
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        plan_id = request.data.get('plan_id')
+        user = request.user
+        
+        try:
+            plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
+        except SubscriptionPlan.DoesNotExist:
+            return Response({"error": "Invalid Plan selected."}, status=404)
+
+        if plan.plan_type == 'FREE':
+
+            if UserSubscription.objects.filter(user=user).exists():
+                return Response({"error": "You have already used your free trial or have an active plan."}, status=400)
+
+            UserSubscription.objects.create(
+                user=user,
+                plan=plan,
+                status='TRIAL',
+                trial_ends_at=timezone.now() + timedelta(days=plan.trial_days),
+                expires_at=timezone.now() + timedelta(days=plan.trial_days)
+            )
+            return Response({
+                "success": True,
+                "message": f"Free trial activated for {plan.trial_days} days."
+            }, status=201)
+
+        try:
+            session = stripe.checkout.Session.create(
+                ui_mode='embedded',
+                payment_method_types=['card'],
+                line_items=[{'price': plan.stripe_price_id, 'quantity': 1}],
+                mode='subscription',
+                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                metadata={
+                    'user_id': user.id,
+                    'plan_id': plan.id,
+                    'type': 'subscription_payment'
+                },
+                customer_email=user.email,
+            )
+
+            return Response({
+                "client_secret": session.client_secret,
+                "plan_name": plan.name,
+                "amount": float(plan.price)
+            }, status=201)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+class UserSubscriptionStatusView(APIView):
+    """ইউজারের বর্তমান প্ল্যান চেক করা (ড্যাশবোর্ড এবং এক্সেস কন্ট্রোলের জন্য)"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        sub = getattr(user, 'subscription', None)
+        
+        # যদি সাবস্ক্রিপশন না থাকে (সে শুধু লোকাল প্রোডাক্ট দেখবে)
+        if not sub or not sub.is_active:
+            return Response({
+                "success": True,
+                "data": {"plan_name": "None", "is_active": False, "access": "Local Products Only"}
+            })
+
+        return Response({
+            "success": True,
+            "data": {
+                "plan_name": sub.plan.name,
+                "status": sub.status,
+                "is_active": sub.is_active,
+                "expires_at": sub.expires_at,
+                "clicks_left": sub.plan.clicks_per_day - sub.daily_click_count,
+                "days_remaining": sub.days_remaining
+            }
+        })
+
+
+class CreateSubscriptionCheckoutView(APIView):
+    """ইউজার যখন কোনো প্ল্যান সাবস্ক্রাইব করতে চাবে"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        plan_id = request.data.get('plan_id')
+        
+        try:
+            plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
+        except SubscriptionPlan.DoesNotExist:
+            return Response({"error": "Invalid Plan selected."}, status=404)
+
+        if plan.plan_type == 'FREE':
+            return Response({"error": "Free trial cannot be purchased."}, status=400)
+
+        # ১. স্ট্রাইপ সেশন তৈরি (Subscription Mode)
+        try:
+            session = stripe.checkout.Session.create(
+                ui_mode='embedded',
+                payment_method_types=['card'],
+                line_items=[{
+                    'price': plan.stripe_price_id, # স্ট্রাইপ ড্যাশবোর্ড থেকে পাওয়া Price ID
+                    'quantity': 1,
+                }],
+                mode='subscription', # ✅ এটি ওয়ান-টাইম পেমেন্ট থেকে আলাদা
+                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                metadata={
+                    'user_id': request.user.id,
+                    'plan_id': plan.id,
+                    'type': 'subscription_payment'
+                },
+                customer_email=request.user.email,
+            )
+
+            return Response({
+                "client_secret": session.client_secret,
+                "plan_name": plan.name,
+                "amount": float(plan.price)
+            }, status=201)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)

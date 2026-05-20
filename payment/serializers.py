@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Payment, SellerPayout
+from .models import Payment, SellerPayout, SubscriptionPlan
 from store.models import SellerProduct, Coupon
 from decimal import Decimal
 
@@ -150,3 +150,11 @@ class AdminSellerPayoutSerializer(serializers.ModelSerializer):
         model  = SellerPayout
         fields = '__all__'
 
+class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPlan
+        fields = [
+            'id', 'name', 'plan_type', 'price', 'trial_days', 
+            'clicks_per_day', 'price_alerts_limit', 'has_ai_optimization', 
+            'has_barcode_scanning'
+        ]

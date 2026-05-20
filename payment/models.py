@@ -76,26 +76,29 @@ class SellerPayout(models.Model):
 
 class SubscriptionPlan(models.Model):
     PLAN_CHOICES = [
-        ('FREE', 'Free'),
-        ('MONTHLY', 'Monthly'),
-        ('YEARLY', 'Yearly'),
+        ('FREE', 'Free Trial'),
+        ('PRO_MONTHLY', 'Dealnux PRO'),
+        ('PRO_MAX_YEARLY', 'Dealnux PRO MAX'),
+        ('ULTIMATE_MONTHLY', 'Dealnux ULTIMATE'),
+        ('ULTIMANIA_YEARLY', 'Dealnux ULTIMANIA'),
     ]
-    name                 = models.CharField(max_length=100)
-    plan_type            = models.CharField(max_length=20, choices=PLAN_CHOICES)
-    price                = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    name = models.CharField(max_length=100)
+    plan_type = models.CharField(max_length=20, choices=PLAN_CHOICES)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    trial_days = models.PositiveIntegerField(default=14, help_text="How long is the free trial?")
+    duration_months = models.PositiveIntegerField(default=1) # ১ মাস বা ১২ মাস
 
-    free_trial_days      = models.PositiveIntegerField(default=14)
-    is_trial_enabled     = models.BooleanField(default=True) 
+    # লিমিটেশন ফিল্ডস (ডক অনুযায়ী)
+    clicks_per_day = models.PositiveIntegerField(default=5)
+    price_alerts_limit = models.IntegerField(default=5) # -1 মানে Unlimited
+    has_ai_optimization = models.BooleanField(default=False)
+    has_barcode_scanning = models.BooleanField(default=True)
+    
+    stripe_price_id = models.CharField(max_length=200, blank=True) # Stripe Dashboard থেকে আসবে
+    is_active = models.BooleanField(default=True)
 
-    max_searches_per_day = models.PositiveIntegerField(default=10)
-    can_compare_prices   = models.BooleanField(default=True)
-    can_use_cart         = models.BooleanField(default=False)
-     
-    stripe_price_id      = models.CharField(max_length=200, blank=True) 
-    is_active            = models.BooleanField(default=True)
-     
-    created_at           = models.DateTimeField(auto_now_add=True)
-    updated_at           = models.DateTimeField(auto_now=True)
+    def __str__(self):
+        return f"{self.name} (${self.price})"
 
 
 class UserSubscription(models.Model):
@@ -110,6 +113,8 @@ class UserSubscription(models.Model):
     status           = models.CharField(max_length=20, choices=STATUS_CHOICES, default='TRIAL')
     trial_started_at = models.DateTimeField(auto_now_add=True)
     trial_ends_at    = models.DateTimeField()
+    daily_click_count = models.PositiveIntegerField(default=0)
+    last_click_date = models.DateField(null=True, blank=True)
     started_at       = models.DateTimeField(null=True, blank=True)
     expires_at       = models.DateTimeField(null=True, blank=True)
 

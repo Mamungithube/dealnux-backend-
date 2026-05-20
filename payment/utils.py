@@ -1,5 +1,5 @@
 import stripe
-
+from django.utils import timezone
 
 def release_funds_to_seller(order):
     """অর্ডার একসেপ্ট হলে এসক্রো থেকে টাকা সেলারের স্ট্রাইপ একাউন্টে পাঠানো"""
@@ -21,3 +21,25 @@ def release_funds_to_seller(order):
         return True, transfer.id
     except stripe.error.StripeError as e:
         return False, str(e)
+
+
+def can_user_click(user):
+    # ১. ইউজারের একটিভ সাবস্ক্রিপশন চেক
+    sub = getattr(user, 'subscription', None)
+    if not sub or not sub.is_active:
+        return False, "No active subscription found."
+
+    plan = sub.plan
+    today = timezone.now().date()
+
+    # ২. দিন পরিবর্তন হলে কাউন্টার রিসেট করা
+    if user.last_click_date != today:
+        user.daily_click_count = 0
+        user.last_click_date = today
+        user.save(update_fields=['daily_click_count', 'last_click_date'])
+
+    # ৩. লিমিট চেক
+    if user.daily_click_count >= plan.clicks_per_day:
+        return False, f"Daily limit of {plan.clicks_per_day} clicks reached. Upgrade your plan!"
+
+    return True, "Success"

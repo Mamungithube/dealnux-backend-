@@ -6,7 +6,7 @@ from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display, action
 from unfold.contrib.filters.admin import RangeDateFilter
 
-from .models import Payment, SellerPayout
+from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 
 
 # ============================================================================
@@ -261,3 +261,98 @@ class SellerPayoutAdmin(ModelAdmin):
         if obj.failure_reason:
             return format_html('<span style="color:#ef4444;font-size:11px">{}</span>', obj.failure_reason[:50])
         return '—'
+
+
+@admin.register(SubscriptionPlan)
+class SubscriptionPlanAdmin(ModelAdmin):
+    list_display = [
+        'name', 
+        'display_price', 
+        'plan_type', 
+        'display_trial_days', 
+        'display_limits', 
+        'is_active'
+    ]
+    list_filter = ['plan_type', 'is_active']
+    search_fields = ['name', 'stripe_price_id']
+    
+    fieldsets = (
+        ('General Information', {
+            'fields': ('name', 'plan_type', 'price', 'is_active')
+        }),
+        ('Trial & Limits', {
+            'fields': ('trial_days', 'clicks_per_day', 'price_alerts_limit')
+        }),
+        ('Stripe Integration', {
+            'fields': ('stripe_price_id',),
+            'description': 'Stripe ড্যাশবোর্ড থেকে Price ID কপি করে এখানে দিন।'
+        }),
+    )
+
+    @display(description='Price', ordering='price')
+    def display_price(self, obj):
+        if obj.price == 0:
+            return format_html('<span style="color: #10b981; font-weight: bold;">FREE</span>')
+        return f"${obj.price}"
+
+    @display(description='Trial Period')
+    def display_trial_days(self, obj):
+        return f"{obj.trial_days} Days"
+
+    @display(description='Daily Clicks / Alerts')
+    def display_limits(self, obj):
+        alerts = "∞" if obj.price_alerts_limit == -1 else obj.price_alerts_limit
+        return format_html(
+            'Clicks: <b>{}</b> | Alerts: <b>{}</b>',
+            obj.clicks_per_day, alerts
+        )
+
+
+@admin.register(UserSubscription)
+class UserSubscriptionAdmin(ModelAdmin):
+    list_display = [
+        'display_user', 
+        'display_plan', 
+        'display_status', 
+        'display_time_left', 
+        'expires_at'
+    ]
+    list_filter = ['status', 'plan']
+    search_fields = ['user__email', 'stripe_subscription_id']
+    readonly_fields = ['trial_started_at', 'expires_at'] # নিরাপত্তা নিশ্চিত করতে রিড-অনলি
+
+    @display(description='User', ordering='user__email')
+    def display_user(self, obj):
+        return format_html(
+            '<div><b>{}</b><br><small style="color: #6b7280;">{}</small></div>',
+            obj.user.name, obj.user.email
+        )
+
+    @display(description='Active Plan', label=True)
+    def display_plan(self, obj):
+        return obj.plan.name
+
+    @display(description='Status', label={
+        'ACTIVE': 'success',
+        'TRIAL': 'warning',
+        'EXPIRED': 'danger',
+        'CANCELLED': 'info',
+    })
+    def display_status(self, obj):
+        return obj.status
+
+    @display(description='Time Remaining')
+    def display_time_left(self, obj):
+        if not obj.is_active:
+            return format_html('<span style="color: #ef4444;">Expired</span>')
+        
+        diff = obj.expires_at - timezone.now()
+        days = diff.days
+        
+        if days > 0:
+            color = "#10b981" if days > 3 else "#f59e0b"
+            return format_html(
+                '<span style="color: {}; font-weight: bold;">{} Days left</span>',
+                color, days
+            )
+        return "Ending Today"

@@ -202,177 +202,177 @@ UNFOLD = {
         },
     },
 
-    "SIDEBAR": {
-        "show_search": True,
-        "show_all_applications": False,
-        "navigation": [
-            {
-                "title": "Dashboard",
-                "separator": False,
-                "items": [
-                    {
-                        "title": "Home",
-                        "icon": "home",
-                        "link": "/admin/",
-                    },
-                ],
-            },
-            {
-                "title": "👤 User Management",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Users",
-                        "icon": "people",
-                        "link": "/admin/account/user/",
-                    },
-                    {
-                        "title": "Profiles",
-                        "icon": "manage_accounts",
-                        "link": "/admin/account/profile/",
-                    },
-                ],
-            },
-            {
-                "title": "🛍️ Products",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Products",
-                        "icon": "inventory_2",
-                        "link": "/admin/api_integration/product/",
-                    },
-                    {
-                        "title": "Categories",
-                        "icon": "category",
-                        "link": "/admin/api_integration/category/",
-                    },
-                    {
-                        "title": "Platforms",
-                        "icon": "device_hub",
-                        "link": "/admin/api_integration/platform/",
-                    },
-                    {
-                        "title": "Product Listings",
-                        "icon": "list_alt",
-                        "link": "/admin/api_integration/productlisting/",
-                    },
-                    {
-                        "title": "Price Histories",
-                        "icon": "trending_down",
-                        "link": "/admin/api_integration/pricehistory/",
-                    },
-                    {
-                        "title": "Favorites",
-                        "icon": "favorite",
-                        "link": "/admin/api_integration/favorite/",
-                    },
-                ],
-            },
-            {
-                "title": "🏪 Seller Marketplace",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Seller Requests",
-                        "icon": "store",
-                        "link": "/admin/store/sellerrequest/",
-                        "badge": "store.admin.pending_seller_requests_count",
-                    },
-                    {
-                        "title": "Seller Profiles",
-                        "icon": "storefront",
-                        "link": "/admin/store/sellerprofile/",
-                    },
-                    {
-                        "title": "Seller Products",
-                        "icon": "shopping_bag",
-                        "link": "/admin/store/sellerproduct/",
-                        "badge": "store.admin.pending_products_count",
-                    },
-                    {
-                        "title": "Orders",
-                        "icon": "receipt_long",
-                        "link": "/admin/store/order/",
-                    },
-                    {
-                        "title": "Coupons",
-                        "icon": "local_offer",
-                        "link": "/admin/store/coupon/",
-                    },
-                ],
-            },
-            {
-                "title": "📢 Advertisements",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Custom Ads",
-                        "icon": "campaign",
-                        "link": "/admin/custom_ads/customad/",
-                    },
-                    {
-                        "title": "Advertiser Requests",
-                        "icon": "request_page",
-                        "link": "/admin/custom_ads/advertiserrequest/",
-                        "badge": "custom_ads.admin.pending_advertiser_requests_count",
-                    },
-                    {
-                        "title": "Ad Reviews",
-                        "icon": "rate_review",
-                        "link": "/admin/custom_ads/adreview/",
-                    },
-                    {
-                        "title": "Ad Settings",
-                        "icon": "tune",
-                        "link": "/admin/custom_ads/adsetting/",
-                    },
-                ],
-            },
-            {
-                "title": "💳 Payment",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Payments",
-                        "icon": "payments",
-                        "link": "/admin/payment/payment/",
-                    },
-                    {
-                        "title": "Seller Payouts",
-                        "icon": "account_balance_wallet",
-                        "link": "/admin/payment/sellerpayout/",
-                    },
-                ],
-            },
-            {
-                "title": "📋 Policy",
-                "separator": True,
-                "items": [
-                    {
-                        "title": "Privacy Policy",
-                        "icon": "privacy_tip",
-                        "link": "/admin/policy/privacy_policy/",
-                    },
-                    {
-                        "title": "Terms of Service",
-                        "icon": "gavel",
-                        "link": "/admin/policy/terms_of_service/",
-                    },
-                    {
-                        "title": "Cookie Policy",
-                        "icon": "cookie",
-                        "link": "/admin/policy/cookie_policy/",
-                    },
-                    {
-                        "title": "Reviews",
-                        "icon": "reviews",
-                        "link": "/admin/policy/review/",
-                    },
-                ],
-            },
-        ],
-    },
+    # "SIDEBAR": {
+    #     "show_search": True,
+    #     "show_all_applications": False,
+    #     "navigation": [
+    #         {
+    #             "title": "Dashboard",
+    #             "separator": False,
+    #             "items": [
+    #                 {
+    #                     "title": "Home",
+    #                     "icon": "home",
+    #                     "link": "/admin/",
+    #                 },
+    #             ],
+    #         },
+    #         {
+    #             "title": "👤 User Management",
+    #             "separator": True,
+    #             "items": [
+    #                 {
+    #                     "title": "Users",
+    #                     "icon": "people",
+    #                     "link": "/admin/account/user/",
+    #                 },
+    #                 {
+    #                     "title": "Profiles",
+    #                     "icon": "manage_accounts",
+    #                     "link": "/admin/account/profile/",
+    #                 },
+    #             ],
+    #         },
+    #         {
+    #             "title": "🛍️ Products",
+    #             "separator": True,
+    #             "items": [
+    #                 {
+    #                     "title": "Products",
+    #                     "icon": "inventory_2",
+    #                     "link": "/admin/api_integration/product/",
+    #                 },
+    #                 {
+    #                     "title": "Categories",
+    #                     "icon": "category",
+    #                     "link": "/admin/api_integration/category/",
+    #                 },
+    #                 {
+    #                     "title": "Platforms",
+    #                     "icon": "device_hub",
+    #                     "link": "/admin/api_integration/platform/",
+    #                 },
+    #                 {
+    #                     "title": "Product Listings",
+    #                     "icon": "list_alt",
+    #                     "link": "/admin/api_integration/productlisting/",
+    #                 },
+    #                 {
+    #                     "title": "Price Histories",
+    #                     "icon": "trending_down",
+    #                     "link": "/admin/api_integration/pricehistory/",
+    #                 },
+    #                 {
+    #                     "title": "Favorites",
+    #                     "icon": "favorite",
+    #                     "link": "/admin/api_integration/favorite/",
+    #                 },
+    #             ],
+    #         },
+    #         {
+    #             "title": "🏪 Seller Marketplace",
+    #             "separator": True,
+    #             "items": [
+    #                 {
+    #                     "title": "Seller Requests",
+    #                     "icon": "store",
+    #                     "link": "/admin/store/sellerrequest/",
+    #                     "badge": "store.admin.pending_seller_requests_count",
+    #                 },
+    #                 {
+    #                     "title": "Seller Profiles",
+    #                     "icon": "storefront",
+    #                     "link": "/admin/store/sellerprofile/",
+    #                 },
+    #                 {
+    #                     "title": "Seller Products",
+    #                     "icon": "shopping_bag",
+    #                     "link": "/admin/store/sellerproduct/",
+    #                     "badge": "store.admin.pending_products_count",
+    #                 },
+    #                 {
+    #                     "title": "Orders",
+    #                     "icon": "receipt_long",
+    #                     "link": "/admin/store/order/",
+    #                 },
+    #                 {
+    #                     "title": "Coupons",
+    #                     "icon": "local_offer",
+    #                     "link": "/admin/store/coupon/",
+    #                 },
+    #             ],
+    #         },
+    #         {
+    #             "title": "📢 Advertisements",
+    #             "separator": True,
+    #             "items": [
+    #                 {
+    #                     "title": "Custom Ads",
+    #                     "icon": "campaign",
+    #                     "link": "/admin/custom_ads/customad/",
+    #                 },
+    #                 {
+    #                     "title": "Advertiser Requests",
+    #                     "icon": "request_page",
+    #                     "link": "/admin/custom_ads/advertiserrequest/",
+    #                     "badge": "custom_ads.admin.pending_advertiser_requests_count",
+    #                 },
+    #                 {
+    #                     "title": "Ad Reviews",
+    #                     "icon": "rate_review",
+    #                     "link": "/admin/custom_ads/adreview/",
+    #                 },
+    #                 {
+    #                     "title": "Ad Settings",
+    #                     "icon": "tune",
+    #                     "link": "/admin/custom_ads/adsetting/",
+    #                 },
+    #             ],
+    #         },
+    #         {
+    #             "title": "💳 Payment",
+    #             "separator": True,
+    #             "items": [
+    #                 {
+    #                     "title": "Payments",
+    #                     "icon": "payments",
+    #                     "link": "/admin/payment/payment/",
+    #                 },
+    #                 {
+    #                     "title": "Seller Payouts",
+    #                     "icon": "account_balance_wallet",
+    #                     "link": "/admin/payment/sellerpayout/",
+    #                 },
+    #             ],
+    #         },
+    #         {
+    #             "title": "📋 Policy",
+    #             "separator": True,
+    #             "items": [
+    #                 {
+    #                     "title": "Privacy Policy",
+    #                     "icon": "privacy_tip",
+    #                     "link": "/admin/policy/privacy_policy/",
+    #                 },
+    #                 {
+    #                     "title": "Terms of Service",
+    #                     "icon": "gavel",
+    #                     "link": "/admin/policy/terms_of_service/",
+    #                 },
+    #                 {
+    #                     "title": "Cookie Policy",
+    #                     "icon": "cookie",
+    #                     "link": "/admin/policy/cookie_policy/",
+    #                 },
+    #                 {
+    #                     "title": "Reviews",
+    #                     "icon": "reviews",
+    #                     "link": "/admin/policy/review/",
+    #                 },
+    #             ],
+    #         },
+    #     ],
+    # },
 }
 
 # Add this to settings.py
