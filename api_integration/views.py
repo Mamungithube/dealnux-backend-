@@ -45,7 +45,7 @@ from rest_framework.response import Response
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
-
+from payment.utils import validate_and_increment_click
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +141,15 @@ def product_detail(request, pk):
 
     serializer = ProductDetailSerializer(product, context=context)
     data = serializer.data
+
+    if not seller_product_data: 
+        if not request.user.is_authenticated:
+             return error_response("Login required to view retailer details.", code=401)
+        
+        from payment.utils import validate_and_increment_click
+        success, message = validate_and_increment_click(request.user)
+        if not success:
+            return error_response(message, code=429)
 
     # ✅ Override with SellerProduct data
     if seller_product_data:
@@ -908,32 +917,38 @@ def product_match_score(title1: str, title2: str) -> float:
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
+    # ১. মেইন প্রোডাক্ট একবারই খুঁজুন
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
+    # ২. ক্লিক কাউন্টার চেক এবং ইনক্রিমেন্ট (হেল্পার থেকে)
+    from payment.utils import validate_and_increment_click
+    success, message = validate_and_increment_click(request.user)
+    if not success:
+        return error_response(message, code=429)
+
+    # ৩. ফিঙ্গারপ্রিন্ট এবং কিওয়ার্ড লজিক
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
     
-    # 1. Strict Matching (AND logic is used to prevent swing sets)
     keywords = target_fingerprint['core_name'].split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
         k_query = Q()
         for word in keywords:
             if len(word) > 2: 
-                k_query &= Q(title__icontains=word) 
+                k_query &= Q(title__icontains=word) # Strict Match
         q_filter &= k_query
-
 
     if product.category:
         q_filter &= Q(category=product.category)
 
     candidates = Product.objects.filter(q_filter)
 
-
+    # ৪. ম্যাচিং আইডি সংগ্রহ
     matched_ids = [product.id]
     THRESHOLD = 75 
 
@@ -943,7 +958,7 @@ def compare_prices_api(request, slug):
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # 3. Listing collection
+    # ৫. লিস্টিং সংগ্রহ
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
@@ -976,11 +991,21 @@ def compare_prices_api(request, slug):
             'seller': listing.seller_username or "Unknown Seller",
         })
 
-    analysis = {
-        'lowest_price': min(prices) if prices else 0,
-        'highest_price': max(prices) if prices else 0,
-        'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
-    }
+    # ৬. সেভিংস অ্যানালাইসিস (খালি লিস্ট চেকসহ)
+    if prices:
+        low = min(prices)
+        high = max(prices)
+        analysis = {
+            'lowest_price': low,
+            'highest_price': high,
+            'potential_savings': round(high - low, 2)
+        }
+    else:
+        analysis = {
+            'lowest_price': 0,
+            'highest_price': 0,
+            'potential_savings': 0
+        }
 
     return success_response({
         'product': {
