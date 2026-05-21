@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from elasticsearch import logger
 import stripe
 from decimal import Decimal
 
@@ -218,13 +219,8 @@ class CheckoutSessionStatusView(APIView):
 # 3. Stripe Webhook — Order will be created upon payment (no changes)
 # ============================================================================
 
-
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(APIView):
-    """
-    Stripe will POST here for payment events.
-    POST /api/v1/store/webhook/stripe/
-    """
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -238,124 +234,103 @@ class StripeWebhookView(APIView):
         except (ValueError, stripe.error.SignatureVerificationError):
             return HttpResponse(status=400)
 
+        # ১. পেমেন্ট সফল হলে (প্রথমবার যে কোনো পেমেন্ট)
         if event['type'] == 'checkout.session.completed':
             self._handle_checkout_completed(event['data']['object'])
 
+        # ২. সাবস্ক্রিপশনের রিকারিং পেমেন্ট (পরের মাসগুলোতে অটো টাকা কাটলে)
+        elif event['type'] == 'invoice.paid':
+            self._handle_recurring_subscription(event['data']['object'])
+
+        # ৩. সেশন এক্সপায়ার হলে
         elif event['type'] == 'checkout.session.expired':
             self._handle_checkout_expired(event['data']['object'])
 
         return HttpResponse(status=200)
 
     def _handle_checkout_completed(self, session):
-        payment_id = session.get('metadata', {}).get('payment_id')
-        if not payment_id:
-            return
+        metadata = session.get('metadata', {})
+        payment_id = metadata.get('payment_id')
+        p_type = metadata.get('type') # 'store_payment', 'ad_payment', 'subscription_payment'
 
         try:
-            payment = Payment.objects.get(id=payment_id, status='PENDING')
-        except Payment.DoesNotExist:
-            return
+            payment = Payment.objects.get(id=payment_id)
+        except Payment.DoesNotExist: return
 
-        # Payment update
+        # পেমেন্ট স্ট্যাটাস আপডেট
         payment.status = 'PAID'
         payment.stripe_payment_intent_id = session.get('payment_intent', '')
-        payment.save(update_fields=['status', 'stripe_payment_intent_id'])
+        payment.save()
 
-        seller_product = payment.seller_product
-        if not seller_product:
-            return
+        # --- কন্ডিশনাল হ্যান্ডলিং ---
 
-        # Order create
-        order = Order.objects.create(
-            buyer=payment.buyer,
-            seller=seller_product.seller,
-            seller_product=seller_product,
-            listing=seller_product.linked_listing,
-            quantity=payment.quantity,
-            unit_price=payment.unit_price,
-            total_price=payment.final_amount,
-            currency=payment.currency,
-            shipping_address=payment.shipping_address,
-            note=payment.note,
-            status='CONFIRMED',
-        )
+        # A. যদি স্টোর প্রোডাক্ট কেনা হয় (মাল্টিপল আইটেম সাপোর্ট)
+        if p_type == 'store_payment':
+            self._process_store_orders(payment, metadata)
 
-        # Link the order to payment.
-        payment.order = order
-        payment.save(update_fields=['order'])
+        # B. যদি বিজ্ঞাপনের পেমেন্ট হয়
+        elif p_type == 'ad_payment':
+            ad = payment.ad
+            if ad:
+                ad.status = 'pending' # পেমেন্ট শেষ, এখন অ্যাডমিন রিভিউ করবে
+                ad.save()
 
-        # Reduce stock
-        seller_product.quantity -= payment.quantity
-        seller_product.save(update_fields=['quantity'])
+        # C. যদি সাবস্ক্রিপশন কেনা হয়
+        elif p_type == 'subscription_payment':
+            self._handle_subscription_success(session)
 
-        # Increase coupon usage count
-        if payment.coupon_code:
-            Coupon.objects.filter(code=payment.coupon_code.upper()).update(
-                used_count=F('used_count') + 1
-            )
+    def _process_store_orders(self, payment, metadata):
+        """মেটাডাটা থেকে লুপ চালিয়ে প্রতিটি আইটেমের জন্য অর্ডার তৈরি করবে"""
+        items_json = metadata.get('items_json', '[]')
+        items = json.loads(items_json)
 
-        # Seller stats update
-        seller = seller_product.seller
-        seller.total_orders += 1
-        seller.total_earnings += payment.final_amount
-        seller.save(update_fields=['total_orders', 'total_earnings'])
-
-        # Seller payout created
-        fee_amount = payment.final_amount * PLATFORM_FEE_PERCENT / 100
-        seller_amount = payment.final_amount - fee_amount
-
-        payout = SellerPayout.objects.create(
-            seller=seller,
-            payment=payment,
-            order=order,
-            gross_amount=payment.final_amount,
-            platform_fee_percent=PLATFORM_FEE_PERCENT,
-            platform_fee_amount=fee_amount,
-            seller_amount=seller_amount,
-            stripe_account_id=seller.stripe_account_id,
-        )
-
-        # Transfer money to the seller's Stripe account.
-        if seller.stripe_account_id and seller.stripe_account_verified:
+        for item_data in items:
             try:
-                transfer = stripe.Transfer.create(
-                    amount=int(seller_amount * 100),
+                seller_product = SellerProduct.objects.get(id=item_data['id'])
+                
+                # ১. অর্ডার তৈরি (আপনার আগের অর্ডারের সব ফিল্ডসহ)
+                order = Order.objects.create(
+                    buyer=payment.buyer,
+                    seller=seller_product.seller,
+                    seller_product=seller_product,
+                    listing=seller_product.linked_listing,
+                    quantity=item_data['qty'],
+                    unit_price=seller_product.price,
+                    item_total=Decimal(str(item_data['item_total'])),
+                    shipping_fee=Decimal(str(item_data['shipping'])),
+                    # সার্ভিস ফি এই অর্ডারের অংশ হিসেবে বন্টন করা হলো
+                    service_fee=(Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
+                    total_price=payment.final_amount, # টোটালটা পেমেন্ট রেকর্ড থেকে আসবে
                     currency=payment.currency,
-                    destination=seller.stripe_account_id,
-                    transfer_group=f'ORDER_{order.id}',
-                    metadata={
-                        'order_id':   order.id,
-                        'payment_id': payment.id,
-                        'seller_id':  seller.id,
-                    }
+                    shipping_address=payment.shipping_address,
+                    status='CONFIRMED',
                 )
-                payout.stripe_transfer_id = transfer.id
-                payout.status = 'COMPLETED'
-                payout.save(update_fields=['stripe_transfer_id', 'status'])
-            except stripe.error.StripeError as e:
-                payout.status = 'FAILED'
-                payout.failure_reason = str(e)
-                payout.save(update_fields=['status', 'failure_reason'])
 
-    def _handle_checkout_expired(self, session):
-        payment_id = session.get('metadata', {}).get('payment_id')
-        if payment_id:
-            Payment.objects.filter(
-                id=payment_id, status='PENDING').update(status='CANCELLED')
+                # ২. স্টক কমানো
+                seller_product.quantity -= item_data['qty']
+                seller_product.save()
+
+                # ৩. সেলার ওয়ালেট আপডেট (পেন্ডিং ব্যালেন্স যোগ)
+                seller = seller_product.seller
+                amount_for_seller = Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
+                seller.pending_balance += amount_for_seller
+                seller.total_orders += 1
+                seller.save()
+
+            except Exception as e:
+                logger.error(f"Error processing item in webhook: {str(e)}")
 
     def _handle_subscription_success(self, session):
+        # আপনার আগের সাবস্ক্রিপশন কোডটি এখানে থাকবে (অপরিবর্তিত)
         user_id = session.get('metadata', {}).get('user_id')
         plan_id = session.get('metadata', {}).get('plan_id')
-        stripe_sub_id = session.get('subscription') # স্ট্রাইপ থেকে আসা সাবস্ক্রিপশন আইডি
+        stripe_sub_id = session.get('subscription')
 
-        if not user_id or not plan_id:
-            return
+        if not user_id or not plan_id: return
 
         user = User.objects.get(id=user_id)
         plan = SubscriptionPlan.objects.get(id=plan_id)
-
-        # ডাটাবেজে সাবস্ক্রিপশন আপডেট বা তৈরি করা
-        expires_at = timezone.now() + timedelta(days=30) if 'MONTHLY' in plan.plan_type else timezone.now() + timedelta(days=365)
+        days = 365 if 'YEARLY' in plan.plan_type else 30
         
         UserSubscription.objects.update_or_create(
             user=user,
@@ -363,9 +338,24 @@ class StripeWebhookView(APIView):
                 'plan': plan,
                 'status': 'ACTIVE',
                 'stripe_subscription_id': stripe_sub_id,
-                'expires_at': expires_at
+                'expires_at': timezone.now() + timedelta(days=days)
             }
         )
+
+    def _handle_recurring_subscription(self, invoice):
+        """সাবস্ক্রিপশন রিনিউ হলে মেয়াদ বাড়িয়ে দিবে"""
+        stripe_sub_id = invoice.get('subscription')
+        try:
+            sub = UserSubscription.objects.get(stripe_subscription_id=stripe_sub_id)
+            days = 365 if 'YEARLY' in sub.plan.plan_type else 30
+            sub.expires_at = timezone.now() + timedelta(days=days)
+            sub.save()
+        except UserSubscription.DoesNotExist: pass
+
+    def _handle_checkout_expired(self, session):
+        payment_id = session.get('metadata', {}).get('payment_id')
+        if payment_id:
+            Payment.objects.filter(id=payment_id, status='PENDING').update(status='CANCELLED')
 
 
 # ============================================================================

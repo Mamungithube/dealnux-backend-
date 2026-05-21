@@ -768,6 +768,28 @@ class ProfileDetailsView(generics.RetrieveAPIView):
             return data
         except SellerRequest.DoesNotExist:
             return {"status": "not_applied"}
+        
+    def get_subscription_status(self, user):
+        """ইউজারের বর্তমান সাবস্ক্রিপশন ডাটা নিয়ে আসবে"""
+        try:
+            from payment.models import UserSubscription
+            sub = UserSubscription.objects.get(user=user)
+            return {
+                "plan_name": sub.plan.name,
+                "status": sub.status,
+                "is_active": sub.is_active,
+                "expires_at": sub.expires_at,
+                "days_remaining": sub.days_remaining,
+                "clicks_left": sub.plan.clicks_per_day - sub.daily_click_count
+            }
+        except Exception:
+            # যদি কোনো সাবস্ক্রিপশন না থাকে (নতুন ইউজার)
+            return {
+                "plan_name": "None",
+                "status": "INACTIVE",
+                "is_active": False,
+                "message": "No active subscription. Subscribe to access global deals."
+            }
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -781,6 +803,7 @@ class ProfileDetailsView(generics.RetrieveAPIView):
                 "timestamp": int(time.time()),
                 "data": {
                     **serializer.data,
+                    "subscription": self.get_subscription_status(request.user),
                     "advertiser_status": self.get_advertiser_status(request.user),
                     "seller_status": self.get_seller_status(request.user),
                 }
