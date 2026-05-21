@@ -116,7 +116,7 @@ def sync_amazon_task(query, limit=10):
 
 
 @shared_task
-def sync_walmart_task(query, limit=10):
+def sync_walmart_task(query, limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='walmart',
@@ -145,7 +145,7 @@ def sync_walmart_task(query, limit=10):
 
 
 @shared_task
-def sync_sephora_task(query, limit=10):
+def sync_sephora_task(query, limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='sephora',
@@ -174,7 +174,7 @@ def sync_sephora_task(query, limit=10):
 
 
 @shared_task
-def sync_target_task(query, limit=10):
+def sync_target_task(query, limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='target',
@@ -203,7 +203,7 @@ def sync_target_task(query, limit=10):
 
 
 @shared_task
-def sync_wayfair_task(query, limit=10):
+def sync_wayfair_task(query, limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='wayfair',
@@ -232,7 +232,7 @@ def sync_wayfair_task(query, limit=10):
 
 
 @shared_task
-def sync_aliexpress_task(query, limit=10):
+def sync_aliexpress_task(query, limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='aliexpress',
@@ -261,7 +261,7 @@ def sync_aliexpress_task(query, limit=10):
 
 
 @shared_task
-def sync_bestbuy_task(query, limit=10):
+def sync_bestbuy_task(query, limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='bestbuy',
@@ -302,7 +302,7 @@ WAYFAIR_CATEGORIES = {
 
 
 @shared_task
-def sync_all_platforms_task(query, limit=50, category_slug=None):
+def sync_all_platforms_task(query, limit=100, category_slug=None):
     """Parallel sync across all active platforms."""
     tasks = [
         sync_amazon_task.s(query, limit),
@@ -347,7 +347,7 @@ def hourly_fixed_category_sync():
 
     for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category.name, 10, category.slug],
+            args=[category.name, 100, category.slug],
             countdown=index * 300  # ✅ 5 মিনিট পরপর একটা
         )
 
