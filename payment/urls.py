@@ -14,6 +14,7 @@ from .views import (
     SubscriptionPlanListView,
     UserSubscriptionStatusView, 
     ProductClickTrackerView,
+    ManageSubscriptionView,
 )
 
 app_name = 'payment'
@@ -34,7 +35,8 @@ urlpatterns = [
         # --- Subscription module ---
     path('plans/', SubscriptionPlanListView.as_view(), name='plan-list'), # প্ল্যান লিস্ট দেখাবে
     path('subscribe/', CreateSubscriptionCheckoutView.as_view(), name='subscribe'), # প্ল্যান কেনা
-    path('subscription/status/', UserSubscriptionStatusView.as_view(), name='sub-status'), # ইউজারের বর্তমান স্ট্যাটাস
+    path('subscription/status/', UserSubscriptionStatusView.as_view(), name='sub-status'), 
+    path('subscription/manage/', ManageSubscriptionView.as_view(), name='manage-subscription'),
 
     path('click-tracker/<int:listing_id>/', ProductClickTrackerView.as_view(), name='click-tracker'),
 ]

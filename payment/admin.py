@@ -266,6 +266,7 @@ class SellerPayoutAdmin(ModelAdmin):
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(ModelAdmin):
     list_display = [
+        'id', 
         'name', 
         'display_price', 
         'plan_type', 

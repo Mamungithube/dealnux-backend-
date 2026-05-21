@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from elasticsearch import logger
+from redis import event
 import stripe
 from decimal import Decimal
 
@@ -234,19 +235,37 @@ class StripeWebhookView(APIView):
         except (ValueError, stripe.error.SignatureVerificationError):
             return HttpResponse(status=400)
 
-        # ১. পেমেন্ট সফল হলে (প্রথমবার যে কোনো পেমেন্ট)
+
         if event['type'] == 'checkout.session.completed':
             self._handle_checkout_completed(event['data']['object'])
 
-        # ২. সাবস্ক্রিপশনের রিকারিং পেমেন্ট (পরের মাসগুলোতে অটো টাকা কাটলে)
+
         elif event['type'] == 'invoice.paid':
             self._handle_recurring_subscription(event['data']['object'])
 
-        # ৩. সেশন এক্সপায়ার হলে
         elif event['type'] == 'checkout.session.expired':
             self._handle_checkout_expired(event['data']['object'])
 
+        elif event['type'] == 'customer.subscription.deleted':
+            subscription = event['data']['object']
+            self._handle_subscription_cancellation(subscription)
+
         return HttpResponse(status=200)
+    
+    def _handle_subscription_cancellation(self, stripe_sub):
+        """
+        Updates the database when a subscription is cancelled in Stripe.
+        """
+        stripe_sub_id = stripe_sub.get('id')
+        from payment.models import UserSubscription
+        
+        # Update status to CANCELLED and set expiration to now
+        UserSubscription.objects.filter(
+            stripe_subscription_id=stripe_sub_id
+        ).update(status='CANCELLED')
+        
+        # Optional: Log the event
+        print(f"Subscription {stripe_sub_id} has been cancelled.")
 
     def _handle_checkout_completed(self, session):
         metadata = session.get('metadata', {})
@@ -805,3 +824,50 @@ class CreateSubscriptionCheckoutView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
+
+class ManageSubscriptionView(APIView):
+    """
+    Generates a Stripe Customer Portal link for the user.
+    Users can manage their billing, change plans, or cancel subscriptions here.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        # Retrieve user subscription details
+        sub = getattr(user, 'subscription', None)
+
+        # 1. Check if the user has a valid Stripe Customer ID
+        if not sub or not sub.stripe_customer_id:
+            return Response({
+                "success": False, 
+                "message": "No active paid subscription or customer record found."
+            }, status=404)
+
+        try:
+            # 2. Create a Billing Portal Session
+            # return_url is where the user will be redirected after closing the portal
+            session = stripe.billing_portal.Session.create(
+                customer=sub.stripe_customer_id,
+                return_url=settings.STRIPE_RETURN_URL, 
+            )
+
+            return Response({
+                "success": True,
+                "code": 200,
+                "message": "Portal link generated successfully.",
+                "data": {
+                    "portal_url": session.url # Frontend should redirect user to this URL
+                }
+            })
+        except stripe.error.StripeError as e:
+            return Response({
+                "success": False, 
+                "message": f"Stripe Portal Error: {str(e)}"
+            }, status=400)
+        except Exception:
+            return Response({
+                "success": False, 
+                "message": "An unexpected error occurred while accessing the portal."
+            }, status=500)
