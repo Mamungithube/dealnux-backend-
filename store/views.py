@@ -269,62 +269,55 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
     # --- Detailed Shipping Page (GET & PATCH) ---
     @action(detail=False, methods=['get', 'patch'], url_path='dashboard/shipping')
     def dashboard_shipping(self, request):
-        seller = request.user.seller_profile
-
+        try:
+            seller = request.user.seller_profile
+        except SellerProfile.DoesNotExist:
+            return error_response("Seller profile not found.", code=404)
+        
+        # --- ১. Update Logic (PATCH) ---
         if request.method == 'PATCH':
-            # Local Pickup Update
-            seller.local_pickup_active = request.data.get(
-                'local_pickup_active', seller.local_pickup_active)
-            seller.pickup_address_street = request.data.get(
-                'pickup_address_street', seller.pickup_address_street)
-            seller.pickup_address_city = request.data.get(
-                'pickup_address_city', seller.pickup_address_city)
-            seller.pickup_address_state = request.data.get(
-                'pickup_address_state', seller.pickup_address_state)
-            seller.pickup_address_zip = request.data.get(
-                'pickup_address_zip', seller.pickup_address_zip)
-            seller.pickup_hours_start = request.data.get(
-                'pickup_hours_start', seller.pickup_hours_start)
-            seller.pickup_hours_end = request.data.get(
-                'pickup_hours_end', seller.pickup_hours_end)
-            seller.pickup_available_days = request.data.get(
-                'pickup_available_days', seller.pickup_available_days)
+            data = request.data
+            
+            # Local Pickup Section
+            pickup_data = data.get('local_pickup', {})
+            if pickup_data:
+                seller.local_pickup_active = pickup_data.get('active', seller.local_pickup_active)
+                seller.pickup_address_street = pickup_data.get('address_street', seller.pickup_address_street)
+                seller.pickup_address_city = pickup_data.get('address_city', seller.pickup_address_city)
+                seller.pickup_address_state = pickup_data.get('address_state', seller.pickup_address_state)
+                seller.pickup_address_zip = pickup_data.get('address_zip', seller.pickup_address_zip)
+                seller.pickup_hours_start = pickup_data.get('hours_start', seller.pickup_hours_start)
+                seller.pickup_hours_end = pickup_data.get('hours_end', seller.pickup_hours_end)
+                seller.pickup_available_days = pickup_data.get('available_days', seller.pickup_available_days)
 
-            # Local Delivery Update
-            seller.local_delivery_active = request.data.get(
-                'local_delivery_active', seller.local_delivery_active)
-            seller.delivery_radius = request.data.get(
-                'delivery_radius', seller.delivery_radius)
-            seller.delivery_fee = request.data.get(
-                'delivery_fee', seller.delivery_fee)
-            seller.delivery_timeframe = request.data.get(
-                'delivery_timeframe', seller.delivery_timeframe)
+            # Local Delivery Section
+            delivery_data = data.get('local_delivery', {})
+            if delivery_data:
+                seller.local_delivery_active = delivery_data.get('active', seller.local_delivery_active)
+                seller.delivery_radius = delivery_data.get('radius', seller.delivery_radius)
+                seller.delivery_fee = delivery_data.get('fee', seller.delivery_fee)
+                seller.delivery_timeframe = delivery_data.get('timeframe', seller.delivery_timeframe)
 
-            # Standard Shipping Update
-            seller.standard_shipping_active = request.data.get(
-                'standard_shipping_active', seller.standard_shipping_active)
-            seller.order_processing_time = request.data.get(
-                'order_processing_time', seller.order_processing_time)
-            seller.preferred_couriers = request.data.get(
-                'preferred_couriers', seller.preferred_couriers)
-
+            # Standard Shipping Section
+            standard_data = data.get('standard_shipping', {})
+            if standard_data:
+                seller.standard_shipping_active = standard_data.get('active', seller.standard_shipping_active)
+                seller.order_processing_time = standard_data.get('processing_time', seller.order_processing_time)
+                seller.preferred_couriers = standard_data.get('preferred_couriers', seller.preferred_couriers)
+            
             seller.save()
-            return success_response(None, message="All shipping settings updated")
+            return success_response(None, message="Shipping settings updated successfully.")
 
-        # GET Response
-        data = {
+        # --- ২. Response Data (GET) ---
+        response_data = {
             "local_pickup": {
                 "active": seller.local_pickup_active,
-                "address": {
-                    "street": seller.pickup_address_street,
-                    "city": seller.pickup_address_city,
-                    "state": seller.pickup_address_state,
-                    "zip": seller.pickup_address_zip,
-                },
-                "hours": {
-                    "start": seller.pickup_hours_start.strftime("%I:%M %p") if seller.pickup_hours_start else None,
-                    "end": seller.pickup_hours_end.strftime("%I:%M %p") if seller.pickup_hours_end else None,
-                },
+                "address_street": seller.pickup_address_street,
+                "address_city": seller.pickup_address_city,
+                "address_state": seller.pickup_address_state,
+                "address_zip": seller.pickup_address_zip,
+                "hours_start": seller.pickup_hours_start.strftime("%H:%M:%S") if seller.pickup_hours_start else None,
+                "hours_end": seller.pickup_hours_end.strftime("%H:%M:%S") if seller.pickup_hours_end else None,
                 "available_days": seller.pickup_available_days
             },
             "local_delivery": {
@@ -339,7 +332,7 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
                 "preferred_couriers": seller.preferred_couriers
             }
         }
-        return success_response(data)
+        return success_response(response_data, message="Detailed shipping settings fetched.")
 
     # --- Payouts/Wallet Page ---
     @action(detail=False, methods=['get'], url_path='dashboard/payouts')
