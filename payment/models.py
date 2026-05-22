@@ -112,7 +112,7 @@ class UserSubscription(models.Model):
     plan             = models.ForeignKey(SubscriptionPlan, on_delete=models.SET_NULL, null=True)
     status           = models.CharField(max_length=20, choices=STATUS_CHOICES, default='TRIAL')
     trial_started_at = models.DateTimeField(auto_now_add=True)
-    trial_ends_at    = models.DateTimeField()
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
     daily_click_count = models.PositiveIntegerField(default=0)
     last_click_date = models.DateField(null=True, blank=True)
     started_at       = models.DateTimeField(null=True, blank=True)

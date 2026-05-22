@@ -338,7 +338,7 @@ class StripeWebhookView(APIView):
                 logger.error(f"Error processing item in webhook: {str(e)}")
 
     def _handle_subscription_success(self, session):
-        """ডাটাবেজে ইউজারের সাবস্ক্রিপশন এক্টিভ করার মেইন লজিক"""
+        """Activates the paid subscription plan for the user in the database."""
         metadata = session.get('metadata', {})
         user_id = metadata.get('user_id')
         plan_id = metadata.get('plan_id')
@@ -356,21 +356,23 @@ class StripeWebhookView(APIView):
             user = User.objects.get(id=user_id)
             plan = SubscriptionPlan.objects.get(id=plan_id)
 
-            # মেয়াদ সেট করা
+            # Define duration based on plan type
             days = 365 if 'YEARLY' in plan.plan_type else 30
+            now = timezone.now()
             
-            # ডাটাবেজ আপডেট বা তৈরি
+            # Update or create the subscription record
             UserSubscription.objects.update_or_create(
                 user=user,
                 defaults={
                     'plan': plan,
                     'status': 'ACTIVE',
                     'stripe_subscription_id': stripe_sub_id,
-                    'expires_at': timezone.now() + timedelta(days=days),
-                    'started_at': timezone.now()
+                    'started_at': now,
+                    'expires_at': now + timedelta(days=days),
+                    'trial_ends_at': now # ✅ পেইড মেম্বারদের জন্য বর্তমান সময় দিয়ে দিন
                 }
             )
-            print(f"✅ Subscription activated for user: {user.email}")
+            print(f"✅ Payment success! Subscription activated for: {user.email}")
             
         except Exception as e:
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
