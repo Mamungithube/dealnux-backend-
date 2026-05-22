@@ -147,7 +147,7 @@ def product_detail(request, pk):
              return error_response("Login required to view retailer details.", code=401)
         
         from payment.utils import validate_and_increment_click
-        success, message = validate_and_increment_click(request.user)
+        success, message = validate_and_increment_click(request.user, product_id=product.id)
         if not success:
             return error_response(message, code=429)
 
@@ -926,7 +926,7 @@ def compare_prices_api(request, slug):
 
     # ২. ক্লিক কাউন্টার চেক এবং ইনক্রিমেন্ট (হেল্পার থেকে)
     from payment.utils import validate_and_increment_click
-    success, message = validate_and_increment_click(request.user)
+    success, message = validate_and_increment_click(request.user, product_id=product.id)
     if not success:
         return error_response(message, code=429)
 

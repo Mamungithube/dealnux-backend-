@@ -44,33 +44,32 @@ def can_user_click(user):
 
     return True, "Success"
 
+
+from django.core.cache import cache
 from django.utils import timezone
 
-def validate_and_increment_click(user):
-    """
-    ১. সাবস্ক্রিপশন চেক করবে।
-    ২. দিন পরিবর্তন হলে কাউন্টার রিসেট করবে।
-    ৩. লিমিট শেষ হলে False দিবে।
-    ৪. সব ঠিক থাকলে ক্লিক ১ বাড়াবে এবং True দিবে।
-    """
+def validate_and_increment_click(user, product_id=None):
     sub = getattr(user, 'subscription', None)
-    
-    # সাবস্ক্রিপশন না থাকলে বা ইন-একটিভ থাকলে (লোকাল বাদে গ্লোবাল এক্সেস ব্লক)
     if not sub or not sub.is_active:
-        return False, "Active subscription required for global retailer data."
+        return False, "Active subscription required."
 
     today = timezone.now().date()
-
-    # দিন পরিবর্তন হলে ক্লিক রিসেট করা
+    if product_id:
+        cache_key = f"user_click_{user.id}_{product_id}_{today}"
+        if cache.get(cache_key):
+            return True, "Already counted for today"
+        
     if sub.last_click_date != today:
         sub.daily_click_count = 0
         sub.last_click_date = today
 
-    # লিমিট চেক (ডক অনুযায়ী ৫, ৪০, ৬০ ইত্যাদি)
     if sub.daily_click_count >= sub.plan.clicks_per_day:
-        return False, f"Daily limit of {sub.plan.clicks_per_day} clicks reached. Upgrade your plan!"
+        return False, "Daily limit reached!"
 
-    # সব ঠিক থাকলে ক্লিক ১ বাড়ানো
     sub.daily_click_count += 1
     sub.save(update_fields=['daily_click_count', 'last_click_date'])
+    
+    if product_id:
+        cache.set(cache_key, True, 86400) 
+
     return True, "Success"
