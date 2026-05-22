@@ -14,7 +14,7 @@ from stripe.climate import Product
 
 from .models import (
     ProductReview, SellerRequest, SellerProfile,
-    SellerProduct, Order, Coupon,
+    SellerProduct, Order, Coupon,Dispute  
 )
 from .serializers import (
     SellerProductReviewSerializer, SellerRequestSerializer, AdminSellerRequestSerializer,

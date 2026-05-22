@@ -615,10 +615,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                     ),
                     trigram=TrigramSimilarity('title', search_query),
                     word_count=Case(
-                        When(title__regex=r'^(\S+\s+){0,12}\S+$', then=Value(3.0)),   # ১-১৩ words → high
-                        When(title__regex=r'^(\S+\s+){13,18}\S+$', then=Value(2.0)),  # ১৪-১৯ words → mid  
-                        When(title__regex=r'^(\S+\s+){19,24}\S+$', then=Value(1.0)),  # ২০-২৫ words → low
-                        default=Value(0.0),                                             # ২৬+ words → সবার শেষ
+                        When(title__regex=r'^(\S+\s+){0,12}\S+$', then=Value(3.0)),
+                        When(title__regex=r'^(\S+\s+){13,18}\S+$', then=Value(2.0)), 
+                        When(title__regex=r'^(\S+\s+){19,24}\S+$', then=Value(1.0)), 
+                        default=Value(0.0), 
                         output_field=FloatField(),
                     ),
                 ).order_by('-title_rank', '-trigram', '-word_count')
@@ -653,7 +653,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(page, many=True)
             paginated = self.get_paginated_response(serializer.data)
 
-            # ── Validation filter ──────────────────────────────────
+            # ── Validation filter ──────────────────────────────
             valid_results = [
                 item for item in serializer.data
                 if item.get('title')
@@ -919,18 +919,17 @@ def product_match_score(title1: str, title2: str) -> float:
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    # ১. মেইন প্রোডাক্ট একবারই খুঁজুন
+
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
-    # ২. ক্লিক কাউন্টার চেক এবং ইনক্রিমেন্ট (হেল্পার থেকে)
+
     from payment.utils import validate_and_increment_click
     success, message = validate_and_increment_click(request.user, product_id=product.id)
     if not success:
         return error_response(message, code=429)
 
-    # ৩. ফিঙ্গারপ্রিন্ট এবং কিওয়ার্ড লজিক
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
     
@@ -948,7 +947,6 @@ def compare_prices_api(request, slug):
 
     candidates = Product.objects.filter(q_filter)
 
-    # ৪. ম্যাচিং আইডি সংগ্রহ
     matched_ids = [product.id]
     THRESHOLD = 75 
 
@@ -958,7 +956,6 @@ def compare_prices_api(request, slug):
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # ৫. লিস্টিং সংগ্রহ
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
@@ -991,7 +988,6 @@ def compare_prices_api(request, slug):
             'seller': listing.seller_username or "Unknown Seller",
         })
 
-    # ৬. সেভিংস অ্যানালাইসিস (খালি লিস্ট চেকসহ)
     if prices:
         low = min(prices)
         high = max(prices)
