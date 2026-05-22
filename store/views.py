@@ -644,29 +644,33 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return success_response(serializer.data, message="Seller shop orders fetched")
     
-    @action(detail=True, methods=['post'], url_path='seller-accept')
-    def seller_accept(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='update-status')
+    def update_status(self, request, pk=None):
         """
-        Seller accepts a PENDING order → status becomes ACCEPTED
-        URL: POST /api/v1/store/orders/{id}/seller-accept/
+        সেলার এটি কল করবে অর্ডারটি গ্রহণ করার জন্য।
+        এটি স্ট্যাটাসকে PENDING থেকে PROCESSING এ নিয়ে যাবে।
         """
         order = self.get_object()
 
-        if order.seller.user != request.user:
-            return error_response("You are not the seller of this order.", code=403)
+        # ১. সিকিউরিটি চেক: শুধুমাত্র অর্ডারের আসল সেলার এটি করতে পারবে
+        if not request.user.is_staff and order.seller.user != request.user:
+            return error_response("Access denied. You are not the seller of this order.", code=403)
 
-        if order.status != 'PENDING':
-            return error_response(
-                f"Only PENDING orders can be accepted. Current status: {order.status}",
-                code=400
-            )
+        # ২. স্ট্যাটাস পরিবর্তন
+        # সেলার যখন একসেপ্ট করবে তখন আমরা ডিফল্টভাবে PROCESSING সেট করে দিচ্ছি
+        new_status = request.data.get('status', 'PROCESSING').upper()
 
-        order.status = 'ACCEPTED'
-        order.save(update_fields=['status'])
+        # ভ্যালিডেশন: স্ট্যাটাস কি আমাদের চয়েস লিস্টে আছে?
+        allowed_statuses = [s[0] for s in Order.STATUS_CHOICES]
+        if new_status not in allowed_statuses:
+            return error_response(f"Invalid status. Choose from: {allowed_statuses}", code=400)
+
+        order.status = new_status
+        order.save(update_fields=['status', 'updated_at'])
 
         return success_response(
-            OrderSerializer(order).data,
-            message="Order accepted successfully."
+            {"order_number": order.order_number, "new_status": order.status}, 
+            message=f"Order has been accepted and is now in {order.status} state."
         )
 
     # ── Seller Action: Adding Tracking Number ──

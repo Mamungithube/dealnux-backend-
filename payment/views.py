@@ -269,34 +269,32 @@ class StripeWebhookView(APIView):
 
     def _handle_checkout_completed(self, session):
         metadata = session.get('metadata', {})
-        payment_id = metadata.get('payment_id')
         p_type = metadata.get('type') # 'store_payment', 'ad_payment', 'subscription_payment'
+        payment_id = metadata.get('payment_id')
 
-        try:
-            payment = Payment.objects.get(id=payment_id)
-        except Payment.DoesNotExist: return
-
-        # পেমেন্ট স্ট্যাটাস আপডেট
-        payment.status = 'PAID'
-        payment.stripe_payment_intent_id = session.get('payment_intent', '')
-        payment.save()
-
-        # --- কন্ডিশনাল হ্যান্ডলিং ---
-
-        # A. যদি স্টোর প্রোডাক্ট কেনা হয় (মাল্টিপল আইটেম সাপোর্ট)
-        if p_type == 'store_payment':
-            self._process_store_orders(payment, metadata)
-
-        # B. যদি বিজ্ঞাপনের পেমেন্ট হয়
-        elif p_type == 'ad_payment':
-            ad = payment.ad
-            if ad:
-                ad.status = 'pending' # পেমেন্ট শেষ, এখন অ্যাডমিন রিভিউ করবে
-                ad.save()
-
-        # C. যদি সাবস্ক্রিপশন কেনা হয়
-        elif p_type == 'subscription_payment':
+        # --- ১. সাবস্ক্রিপশন হ্যান্ডেলিং (এটির জন্য আলাদা পেমেন্ট আইডি লাগে না) ---
+        if p_type == 'subscription_payment':
             self._handle_subscription_success(session)
+            return # সাবস্ক্রিপশন হলে এখানেই কাজ শেষ
+
+        # --- ২. স্টোর এবং অ্যাড পেমেন্ট হ্যান্ডেলিং (এগুলোর জন্য পেমেন্ট আইডি লাগে) ---
+        if payment_id:
+            try:
+                from .models import Payment
+                payment = Payment.objects.get(id=payment_id)
+                payment.status = 'PAID'
+                payment.stripe_payment_intent_id = session.get('payment_intent', '')
+                payment.save()
+
+                if p_type == 'store_payment':
+                    self._process_store_orders(payment, metadata)
+                elif p_type == 'ad_payment':
+                    ad = payment.ad
+                    if ad:
+                        ad.status = 'pending'
+                        ad.save()
+            except Payment.DoesNotExist:
+                print(f"Error: Payment ID {payment_id} not found in database.")
 
     def _process_store_orders(self, payment, metadata):
         """মেটাডাটা থেকে লুপ চালিয়ে প্রতিটি আইটেমের জন্য অর্ডার তৈরি করবে"""
@@ -340,26 +338,42 @@ class StripeWebhookView(APIView):
                 logger.error(f"Error processing item in webhook: {str(e)}")
 
     def _handle_subscription_success(self, session):
-        # আপনার আগের সাবস্ক্রিপশন কোডটি এখানে থাকবে (অপরিবর্তিত)
-        user_id = session.get('metadata', {}).get('user_id')
-        plan_id = session.get('metadata', {}).get('plan_id')
+        """ডাটাবেজে ইউজারের সাবস্ক্রিপশন এক্টিভ করার মেইন লজিক"""
+        metadata = session.get('metadata', {})
+        user_id = metadata.get('user_id')
+        plan_id = metadata.get('plan_id')
         stripe_sub_id = session.get('subscription')
 
-        if not user_id or not plan_id: return
+        if not user_id or not plan_id:
+            return
 
-        user = User.objects.get(id=user_id)
-        plan = SubscriptionPlan.objects.get(id=plan_id)
-        days = 365 if 'YEARLY' in plan.plan_type else 30
-        
-        UserSubscription.objects.update_or_create(
-            user=user,
-            defaults={
-                'plan': plan,
-                'status': 'ACTIVE',
-                'stripe_subscription_id': stripe_sub_id,
-                'expires_at': timezone.now() + timedelta(days=days)
-            }
-        )
+        try:
+            from account.models import User
+            from payment.models import SubscriptionPlan, UserSubscription
+            from django.utils import timezone
+            from datetime import timedelta
+
+            user = User.objects.get(id=user_id)
+            plan = SubscriptionPlan.objects.get(id=plan_id)
+
+            # মেয়াদ সেট করা
+            days = 365 if 'YEARLY' in plan.plan_type else 30
+            
+            # ডাটাবেজ আপডেট বা তৈরি
+            UserSubscription.objects.update_or_create(
+                user=user,
+                defaults={
+                    'plan': plan,
+                    'status': 'ACTIVE',
+                    'stripe_subscription_id': stripe_sub_id,
+                    'expires_at': timezone.now() + timedelta(days=days),
+                    'started_at': timezone.now()
+                }
+            )
+            print(f"✅ Subscription activated for user: {user.email}")
+            
+        except Exception as e:
+            print(f"❌ Error in _handle_subscription_success: {str(e)}")
 
     def _handle_recurring_subscription(self, invoice):
         """সাবস্ক্রিপশন রিনিউ হলে মেয়াদ বাড়িয়ে দিবে"""
