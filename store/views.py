@@ -713,57 +713,81 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='accept-order')
     def accept_order(self, request, pk=None):
+        """
+        Buyer clicks 'Confirm Receipt' or 'Accept Order':
+        1. Order status changes from SHIPPED to DELIVERED.
+        2. Funds move from seller's pending_balance to available_balance.
+        3. A PayoutRecord is created for dashboard history.
+        4. Actual Stripe Transfer is triggered to the connected account.
+        """
         order = self.get_object()
 
+        # 1. Validation: Only the actual buyer can accept the delivery
         if order.buyer != request.user:
-            return error_response("Not authorized.", code=403)
+            return error_response("Access denied. You are not the buyer of this order.", code=403)
 
-        if order.status == 'ACCEPTED':
-            return error_response("Already accepted.", code=400)
+        # 2. Logic Check: Order must be shipped before it can be delivered/accepted
+        if order.status != 'SHIPPED':
+            return error_response("Invalid action. You can only accept orders that are currently 'Shipped'.", code=400)
 
-        from payment.models import PayoutRecord 
+        if order.is_accepted_by_buyer:
+            return error_response("This order has already been confirmed and completed.", code=400)
 
-        with transaction.atomic():
-            # ১. ডাটাবেজ স্ট্যাটাস আপডেট
-            order.status = 'ACCEPTED'
-            order.is_accepted_by_buyer = True
-            order.accepted_at = timezone.now()
-            order.save()
+        # Lazy import to prevent circular dependency
+        from payment.models import PayoutRecord
 
-            seller_profile = order.seller
-            amount_to_release = order.item_total + order.shipping_fee
+        try:
+            with transaction.atomic():
+                # --- Step A: Update Order Status ---
+                order.status = 'DELIVERED'  # Updated from ACCEPTED to DELIVERED to match UI
+                order.is_accepted_by_buyer = True
+                order.accepted_at = timezone.now()
+                order.save()
 
-            # ২. ওয়ালেট ট্রান্সফার
-            seller_profile.pending_balance -= amount_to_release
-            seller_profile.available_balance += amount_to_release
-            seller_profile.total_earnings += amount_to_release
-            seller_profile.save()
+                # --- Step B: Wallet Balance Transfer ---
+                seller_profile = order.seller
+                amount_to_release = order.item_total + order.shipping_fee
 
-            # ৩. পেমেন্ট হিস্ট্রি রেকর্ড তৈরি (যাতে ড্যাশবোর্ড টেবিলে ডাটা আসে)
-            import random
-            import string
-            p_id = "PAY-" + "".join(random.choices(string.digits, k=4))
-            PayoutRecord.objects.create(
-                seller=seller_profile,
-                payout_id=p_id,
-                amount=amount_to_release,
-                method="Stripe Transfer",
-                status="Paid"
-            )
+                # Decrease from escrow (pending) and increase for withdrawal (available)
+                seller_profile.pending_balance -= amount_to_release
+                seller_profile.available_balance += amount_to_release
+                seller_profile.total_earnings += amount_to_release
+                seller_profile.save()
 
-            # ৪. স্ট্রাইপ রিয়েল ট্রান্সফার (আগের লজিক)
-            if seller_profile.stripe_account_id and seller_profile.stripe_onboarding_completed:
-                try:
-                    stripe.Transfer.create(
-                        amount=int(amount_to_release * 100),
-                        currency=order.currency.lower(),
-                        destination=seller_profile.stripe_account_id,
-                        transfer_group=f"ORDER_{order.order_number}",
-                    )
-                except Exception as e:
-                    logger.error(f"Stripe Transfer Error: {str(e)}")
+                # --- Step C: Log Payout History (For Dashboard Table) ---
+                import random
+                import string
+                p_id = "PAY-" + "".join(random.choices(string.digits, k=4))
 
-        return success_response(None, message="Payment released to your wallet and history updated!")
+                PayoutRecord.objects.create(
+                    seller=seller_profile,
+                    payout_id=p_id,
+                    amount=amount_to_release,
+                    method="Stripe Transfer",
+                    status="Paid"
+                )
+
+                # --- Step D: Execute Real-time Stripe Transfer ---
+                if seller_profile.stripe_account_id and seller_profile.stripe_onboarding_completed:
+                    try:
+                        import stripe
+                        stripe.Transfer.create(
+                            # Convert to cents
+                            amount=int(amount_to_release * 100),
+                            currency=order.currency.lower(),
+                            destination=seller_profile.stripe_account_id,
+                            transfer_group=f"ORDER_{order.order_number}",
+                            metadata={'order_id': order.id}
+                        )
+                    except Exception as stripe_err:
+                        # Log error but don't rollback the database transaction
+                        logger.error(
+                            f"Stripe Direct Transfer Error: {str(stripe_err)}")
+
+            return success_response(None, message="Success! Order completed and funds released to seller.")
+
+        except Exception as e:
+            return error_response(f"Internal server error: {str(e)}", code=500)
 
     # ── Admin Action: Process refund (Fault Logic) ──
     @action(detail=True, methods=['post'], url_path='process-refund', permission_classes=[IsAdminUser])
