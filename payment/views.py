@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from elasticsearch import logger
@@ -23,42 +24,55 @@ from api_integration.models import ProductListing
 from account.models import User
 from . serializers import (
     SubscriptionPlanSerializer,
-    
+
 )
 
 from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
-PLATFORM_FEE_PERCENT = Decimal('10')  
+PLATFORM_FEE_PERCENT = Decimal('10')
 
-import json
 # ============================================================================
 # Helper function to calculate amounts based on product price, quantity, and coupon code.
 # ================= ===========================================================
 
+# payment/views.py
+
+
 def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
-    """ডক অনুযায়ী: আইটেম প্রাইস + শিপিং + ৮% সার্ভিস ফি হিসেব করা"""
     unit_price = seller_product.price
     subtotal = unit_price * quantity
     discount = Decimal('0')
 
-    # কুপন ডিসকাউন্ট
+    # কুপন থাকলে ডিসকাউন্ট হিসেব করা
     if coupon_code:
         try:
-            coupon = Coupon.objects.get(code=coupon_code.upper(), seller=seller_product.seller)
+            # কুপন কোড এবং সেলার ফিল্টার করা হচ্ছে
+            coupon = Coupon.objects.get(
+                code=coupon_code.upper().strip(), seller=seller_product.seller)
             if coupon.is_valid and subtotal >= coupon.min_order_amount:
-                discount = (subtotal * (coupon.discount_value / 100)) if coupon.discount_type == 'PERCENTAGE' else min(coupon.discount_value, subtotal)
-        except Coupon.DoesNotExist: pass
+                if coupon.discount_type == 'PERCENTAGE':
+                    discount = subtotal * (coupon.discount_value / 100)
+                else:
+                    discount = min(coupon.discount_value, subtotal)
+                print(
+                    f"✅ Discount Applied: {discount} for coupon {coupon_code}")
+            else:
+                print(f"⚠️ Coupon invalid or min amount not met.")
+        except Coupon.DoesNotExist:
+            print(
+                f"❌ Coupon {coupon_code} not found for seller {seller_product.seller.shop_name}")
 
     item_total = subtotal - discount
-    shipping = seller_product.shipping_cost if not seller_product.free_shipping else Decimal('0')
-    
-    # Dealnux সার্ভিস ফি (বায়ার প্রোটেকশন ফি)
-    service_fee = (item_total + shipping) * Decimal('0.08') # ৮% ফি
+    shipping = seller_product.shipping_cost if not seller_product.free_shipping else Decimal(
+        '0')
+
+    # সার্ভিস ফি (৮%) ডিসকাউন্টেড দামের ওপর
+    service_fee = (item_total + shipping) * Decimal('0.08')
     final_amount = item_total + shipping + service_fee
 
     return {
         'unit_price': unit_price,
-        'item_total': item_total,
+        'item_total': item_total,  # এটি এখন ডিসকাউন্ট করা দাম
         'discount_amount': discount,
         'shipping_fee': shipping,
         'service_fee': service_fee,
@@ -103,20 +117,22 @@ class CreateCheckoutSessionView(APIView):
 
             # ডিসকাউন্ট ও ফি ক্যালকুলেশন (আমাদের হেল্পার ফাংশন দিয়ে)
             res = _calculate_order_amounts(product, qty, c_code)
-            
+
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
+            total_discount += res['discount_amount']
 
             # স্ট্রাইপের জন্য লাইন আইটেম তৈরি
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int(res['item_total'] / qty * 100), # পার ইউনিট প্রাইস
+                    # পার ইউনিট প্রাইস
+                    'unit_amount': int(res['item_total'] / qty * 100),
                     'product_data': {'name': product.title},
                 },
                 'quantity': qty,
             })
-            
+
             validated_items.append({
                 'id': p_id,
                 'qty': qty,
@@ -134,17 +150,13 @@ class CreateCheckoutSessionView(APIView):
             buyer=request.user,
             payment_type='STORE',
             shipping_address=shipping_address,
-            
-            # এই ৩টি ফিল্ড ডাটাবেজে বাধ্যতামূলক, তাই ভ্যালু পাস করতে হবে
-            unit_price=total_item_price,    # টোটাল আইটেম প্রাইস (কনস্ট্রেইন্ট ফিক্স করতে)
-            total_amount=total_item_price, 
-            quantity=len(items_data),       # মোট কত পদের প্রোডাক্ট
-            
-            # নতুন ব্রেকডাউন ফিল্ডগুলো
+            unit_price=total_item_price,
+            total_amount=total_item_price + total_shipping_fee,  
             item_total=total_item_price,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            final_amount=final_grand_total,
+            discount_amount=total_discount,  
+            final_amount=final_grand_total, 
             currency='usd',
             status='PENDING'
         )
@@ -165,12 +177,13 @@ class CreateCheckoutSessionView(APIView):
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                return_url=settings.STRIPE_RETURN_URL +
+                '?session_id={CHECKOUT_SESSION_ID}',
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
                     # মেটাডাটায় আইটেমগুলো কমা দিয়ে রাখছি যাতে ওয়েবহুক অর্ডার বানাতে পারে
-                    'items_json': json.dumps(validated_items) 
+                    'items_json': json.dumps(validated_items)
                 },
                 customer_email=request.user.email,
             )
@@ -194,6 +207,7 @@ class CreateCheckoutSessionView(APIView):
 # ============================================================================
 # 2. Session Status —> Frontend will call and confirm this after payment is complete.
 # ============================================================================
+
 
 class CheckoutSessionStatusView(APIView):
     permission_classes = [IsAuthenticated]
@@ -220,6 +234,7 @@ class CheckoutSessionStatusView(APIView):
 # 3. Stripe Webhook — Order will be created upon payment (no changes)
 # ============================================================================
 
+
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(APIView):
     permission_classes = [AllowAny]
@@ -235,10 +250,8 @@ class StripeWebhookView(APIView):
         except (ValueError, stripe.error.SignatureVerificationError):
             return HttpResponse(status=400)
 
-
         if event['type'] == 'checkout.session.completed':
             self._handle_checkout_completed(event['data']['object'])
-
 
         elif event['type'] == 'invoice.paid':
             self._handle_recurring_subscription(event['data']['object'])
@@ -251,31 +264,32 @@ class StripeWebhookView(APIView):
             self._handle_subscription_cancellation(subscription)
 
         return HttpResponse(status=200)
-    
+
     def _handle_subscription_cancellation(self, stripe_sub):
         """
         Updates the database when a subscription is cancelled in Stripe.
         """
         stripe_sub_id = stripe_sub.get('id')
         from payment.models import UserSubscription
-        
+
         # Update status to CANCELLED and set expiration to now
         UserSubscription.objects.filter(
             stripe_subscription_id=stripe_sub_id
         ).update(status='CANCELLED')
-        
+
         # Optional: Log the event
         print(f"Subscription {stripe_sub_id} has been cancelled.")
 
     def _handle_checkout_completed(self, session):
         metadata = session.get('metadata', {})
-        p_type = metadata.get('type') # 'store_payment', 'ad_payment', 'subscription_payment'
+        # 'store_payment', 'ad_payment', 'subscription_payment'
+        p_type = metadata.get('type')
         payment_id = metadata.get('payment_id')
 
         # --- ১. সাবস্ক্রিপশন হ্যান্ডেলিং (এটির জন্য আলাদা পেমেন্ট আইডি লাগে না) ---
         if p_type == 'subscription_payment':
             self._handle_subscription_success(session)
-            return # সাবস্ক্রিপশন হলে এখানেই কাজ শেষ
+            return  # সাবস্ক্রিপশন হলে এখানেই কাজ শেষ
 
         # --- ২. স্টোর এবং অ্যাড পেমেন্ট হ্যান্ডেলিং (এগুলোর জন্য পেমেন্ট আইডি লাগে) ---
         if payment_id:
@@ -283,7 +297,8 @@ class StripeWebhookView(APIView):
                 from .models import Payment
                 payment = Payment.objects.get(id=payment_id)
                 payment.status = 'PAID'
-                payment.stripe_payment_intent_id = session.get('payment_intent', '')
+                payment.stripe_payment_intent_id = session.get(
+                    'payment_intent', '')
                 payment.save()
 
                 if p_type == 'store_payment':
@@ -304,7 +319,7 @@ class StripeWebhookView(APIView):
         for item_data in items:
             try:
                 seller_product = SellerProduct.objects.get(id=item_data['id'])
-                
+
                 # ১. অর্ডার তৈরি (আপনার আগের অর্ডারের সব ফিল্ডসহ)
                 order = Order.objects.create(
                     buyer=payment.buyer,
@@ -316,8 +331,9 @@ class StripeWebhookView(APIView):
                     item_total=Decimal(str(item_data['item_total'])),
                     shipping_fee=Decimal(str(item_data['shipping'])),
                     # সার্ভিস ফি এই অর্ডারের অংশ হিসেবে বন্টন করা হলো
-                    service_fee=(Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
-                    total_price=payment.final_amount, # টোটালটা পেমেন্ট রেকর্ড থেকে আসবে
+                    service_fee=(Decimal(str(
+                        item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
+                    total_price=payment.final_amount,  # টোটালটা পেমেন্ট রেকর্ড থেকে আসবে
                     currency=payment.currency,
                     shipping_address=payment.shipping_address,
                     status='CONFIRMED',
@@ -329,7 +345,8 @@ class StripeWebhookView(APIView):
 
                 # ৩. সেলার ওয়ালেট আপডেট (পেন্ডিং ব্যালেন্স যোগ)
                 seller = seller_product.seller
-                amount_for_seller = Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
+                amount_for_seller = Decimal(
+                    str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
                 seller.pending_balance += amount_for_seller
                 seller.total_orders += 1
                 seller.save()
@@ -359,7 +376,7 @@ class StripeWebhookView(APIView):
             # Define duration based on plan type
             days = 365 if 'YEARLY' in plan.plan_type else 30
             now = timezone.now()
-            
+
             # Update or create the subscription record
             UserSubscription.objects.update_or_create(
                 user=user,
@@ -369,11 +386,12 @@ class StripeWebhookView(APIView):
                     'stripe_subscription_id': stripe_sub_id,
                     'started_at': now,
                     'expires_at': now + timedelta(days=days),
-                    'trial_ends_at': now # ✅ পেইড মেম্বারদের জন্য বর্তমান সময় দিয়ে দিন
+                    'trial_ends_at': now  # ✅ পেইড মেম্বারদের জন্য বর্তমান সময় দিয়ে দিন
                 }
             )
-            print(f"✅ Payment success! Subscription activated for: {user.email}")
-            
+            print(
+                f"✅ Payment success! Subscription activated for: {user.email}")
+
         except Exception as e:
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
 
@@ -381,16 +399,19 @@ class StripeWebhookView(APIView):
         """সাবস্ক্রিপশন রিনিউ হলে মেয়াদ বাড়িয়ে দিবে"""
         stripe_sub_id = invoice.get('subscription')
         try:
-            sub = UserSubscription.objects.get(stripe_subscription_id=stripe_sub_id)
+            sub = UserSubscription.objects.get(
+                stripe_subscription_id=stripe_sub_id)
             days = 365 if 'YEARLY' in sub.plan.plan_type else 30
             sub.expires_at = timezone.now() + timedelta(days=days)
             sub.save()
-        except UserSubscription.DoesNotExist: pass
+        except UserSubscription.DoesNotExist:
+            pass
 
     def _handle_checkout_expired(self, session):
         payment_id = session.get('metadata', {}).get('payment_id')
         if payment_id:
-            Payment.objects.filter(id=payment_id, status='PENDING').update(status='CANCELLED')
+            Payment.objects.filter(
+                id=payment_id, status='PENDING').update(status='CANCELLED')
 
 
 # ============================================================================
@@ -418,7 +439,7 @@ class SellerStripeConnectView(APIView):
             )
             seller.stripe_account_id = account.id
             seller.save()
-        
+
         # ২. অনবোর্ডিং লিঙ্ক জেনারেট করা
         account_link = stripe.AccountLink.create(
             account=seller.stripe_account_id,
@@ -449,22 +470,22 @@ class RequestPayoutView(APIView):
         # ভ্যালিডেশন
         if amount < Decimal('10.00'):
             return Response({"success": False, "message": "Minimum payout is $10.00"}, status=400)
-        
+
         if amount > seller.available_balance:
             return Response({"success": False, "message": "Insufficient balance."}, status=400)
 
         try:
             # স্ট্রাইপ ড্যাশবোর্ড থেকে টাকা ব্যাংকে পাঠানোর জন্য পেমেন্ট ট্রিগার (Express account)
-            # নোট: সাধারণত এক্সপ্রেস একাউন্টে স্ট্রাইপ অটোমেটিক পে-আউট করে, 
+            # নোট: সাধারণত এক্সপ্রেস একাউন্টে স্ট্রাইপ অটোমেটিক পে-আউট করে,
             # তবে আমরা এখানে ম্যানুয়ালি ট্রান্সফার রেকর্ড মেইনটেইন করছি।
-            
+
             seller.available_balance -= amount
             seller.total_withdrawn += amount
             seller.save()
 
             # এখানে একটি PayoutRecord তৈরি করবেন (আপনার ড্যাশবোর্ডে হিস্ট্রি দেখানোর জন্য)
             return Response({
-                "success": True, 
+                "success": True,
                 "code": 200,
                 "message": "Payout request processed successfully.",
                 "data": {
@@ -474,7 +495,7 @@ class RequestPayoutView(APIView):
             })
         except Exception as e:
             return Response({"success": False, "message": str(e)}, status=500)
-        
+
 
 class SellerStripeStatusView(APIView):
     """
@@ -497,8 +518,9 @@ class SellerStripeStatusView(APIView):
 
         try:
             account = stripe.Account.retrieve(seller.stripe_account_id)
-            
-            is_fully_verified = account.get('charges_enabled', False) and account.get('payouts_enabled', False)
+
+            is_fully_verified = account.get(
+                'charges_enabled', False) and account.get('payouts_enabled', False)
 
             if is_fully_verified and not seller.stripe_onboarding_completed:
                 seller.stripe_onboarding_completed = True
@@ -629,7 +651,7 @@ class SellerStripeLoginLinkView(APIView):
             seller = request.user.seller_profile
         except AttributeError:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": "Seller profile not found."
             }, status=404)
 
@@ -641,24 +663,25 @@ class SellerStripeLoginLinkView(APIView):
 
         try:
 
-            login_link = stripe.Account.create_login_link(seller.stripe_account_id)
+            login_link = stripe.Account.create_login_link(
+                seller.stripe_account_id)
 
             return Response({
                 "success": True,
                 "code": 200,
                 "message": "Login link generated successfully.",
                 "data": {
-                    "url": login_link.url 
+                    "url": login_link.url
                 }
             })
         except stripe.error.StripeError as e:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": f"Stripe Error: {str(e)}"
             }, status=400)
         except Exception as e:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": "An unexpected error occurred."
             }, status=500)
 
@@ -699,14 +722,13 @@ class ProductClickTrackerView(APIView):
         return Response({"redirect_url": listing.external_url})
 
 
-
-
 class SubscriptionPlanListView(APIView):
     """ইউজারকে ৫টি প্ল্যান দেখানোর জন্য"""
     permission_classes = [AllowAny]
 
     def get(self, request):
-        plans = SubscriptionPlan.objects.filter(is_active=True).order_by('price')
+        plans = SubscriptionPlan.objects.filter(
+            is_active=True).order_by('price')
         serializer = SubscriptionPlanSerializer(plans, many=True)
         return Response({
             "success": True,
@@ -714,6 +736,7 @@ class SubscriptionPlanListView(APIView):
             "message": "Subscription plans fetched.",
             "data": serializer.data
         })
+
 
 class CreateSubscriptionCheckoutView(APIView):
     """ইউজার যখন কোনো প্ল্যান (Free বা Paid) একটিভ/কিনতে চাবে"""
@@ -723,7 +746,7 @@ class CreateSubscriptionCheckoutView(APIView):
     def post(self, request):
         plan_id = request.data.get('plan_id')
         user = request.user
-        
+
         try:
             plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
         except SubscriptionPlan.DoesNotExist:
@@ -752,7 +775,8 @@ class CreateSubscriptionCheckoutView(APIView):
                 payment_method_types=['card'],
                 line_items=[{'price': plan.stripe_price_id, 'quantity': 1}],
                 mode='subscription',
-                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                return_url=settings.STRIPE_RETURN_URL +
+                '?session_id={CHECKOUT_SESSION_ID}',
                 metadata={
                     'user_id': user.id,
                     'plan_id': plan.id,
@@ -770,6 +794,7 @@ class CreateSubscriptionCheckoutView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
+
 class UserSubscriptionStatusView(APIView):
     """ইউজারের বর্তমান প্ল্যান চেক করা (ড্যাশবোর্ড এবং এক্সেস কন্ট্রোলের জন্য)"""
     permission_classes = [IsAuthenticated]
@@ -777,7 +802,7 @@ class UserSubscriptionStatusView(APIView):
     def get(self, request):
         user = request.user
         sub = getattr(user, 'subscription', None)
-        
+
         # যদি সাবস্ক্রিপশন না থাকে (সে শুধু লোকাল প্রোডাক্ট দেখবে)
         if not sub or not sub.is_active:
             return Response({
@@ -804,7 +829,7 @@ class CreateSubscriptionCheckoutView(APIView):
 
     def post(self, request):
         plan_id = request.data.get('plan_id')
-        
+
         try:
             plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
         except SubscriptionPlan.DoesNotExist:
@@ -819,11 +844,12 @@ class CreateSubscriptionCheckoutView(APIView):
                 ui_mode='embedded',
                 payment_method_types=['card'],
                 line_items=[{
-                    'price': plan.stripe_price_id, # স্ট্রাইপ ড্যাশবোর্ড থেকে পাওয়া Price ID
+                    'price': plan.stripe_price_id,  # স্ট্রাইপ ড্যাশবোর্ড থেকে পাওয়া Price ID
                     'quantity': 1,
                 }],
-                mode='subscription', # ✅ এটি ওয়ান-টাইম পেমেন্ট থেকে আলাদা
-                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                mode='subscription',  # ✅ এটি ওয়ান-টাইম পেমেন্ট থেকে আলাদা
+                return_url=settings.STRIPE_RETURN_URL +
+                '?session_id={CHECKOUT_SESSION_ID}',
                 metadata={
                     'user_id': request.user.id,
                     'plan_id': plan.id,
@@ -857,7 +883,7 @@ class ManageSubscriptionView(APIView):
         # 1. Check if the user has a valid Stripe Customer ID
         if not sub or not sub.stripe_customer_id:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": "No active paid subscription or customer record found."
             }, status=404)
 
@@ -866,7 +892,7 @@ class ManageSubscriptionView(APIView):
             # return_url is where the user will be redirected after closing the portal
             session = stripe.billing_portal.Session.create(
                 customer=sub.stripe_customer_id,
-                return_url=settings.STRIPE_RETURN_URL, 
+                return_url=settings.STRIPE_RETURN_URL,
             )
 
             return Response({
@@ -874,16 +900,16 @@ class ManageSubscriptionView(APIView):
                 "code": 200,
                 "message": "Portal link generated successfully.",
                 "data": {
-                    "portal_url": session.url # Frontend should redirect user to this URL
+                    "portal_url": session.url  # Frontend should redirect user to this URL
                 }
             })
         except stripe.error.StripeError as e:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": f"Stripe Portal Error: {str(e)}"
             }, status=400)
         except Exception:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": "An unexpected error occurred while accessing the portal."
             }, status=500)
