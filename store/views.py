@@ -721,6 +721,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         if order.status == 'ACCEPTED':
             return error_response("Already accepted.", code=400)
 
+        from payment.models import PayoutRecord 
+
         with transaction.atomic():
             # ১. ডাটাবেজ স্ট্যাটাস আপডেট
             order.status = 'ACCEPTED'
