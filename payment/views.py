@@ -286,12 +286,10 @@ class StripeWebhookView(APIView):
         p_type = metadata.get('type')
         payment_id = metadata.get('payment_id')
 
-        # --- ১. সাবস্ক্রিপশন হ্যান্ডেলিং (এটির জন্য আলাদা পেমেন্ট আইডি লাগে না) ---
         if p_type == 'subscription_payment':
             self._handle_subscription_success(session)
-            return  # সাবস্ক্রিপশন হলে এখানেই কাজ শেষ
+            return 
 
-        # --- ২. স্টোর এবং অ্যাড পেমেন্ট হ্যান্ডেলিং (এগুলোর জন্য পেমেন্ট আইডি লাগে) ---
         if payment_id:
             try:
                 from .models import Payment
@@ -315,44 +313,46 @@ class StripeWebhookView(APIView):
         """মেটাডাটা থেকে লুপ চালিয়ে প্রতিটি আইটেমের জন্য অর্ডার তৈরি করবে"""
         items_json = metadata.get('items_json', '[]')
         items = json.loads(items_json)
+        
+        # বায়ারের অবজেক্টটি আগে থেকে নিয়ে রাখছি
+        buyer = payment.buyer
 
-        for item_data in items:
-            try:
-                seller_product = SellerProduct.objects.get(id=item_data['id'])
+        with transaction.atomic():
+            for item_data in items:
+                try:
+                    seller_product = SellerProduct.objects.get(id=item_data['id'])
+                    
+                    Order.objects.create(
+                        buyer=buyer,
+                        seller=seller_product.seller,
+                        seller_product=seller_product,
+                        listing=seller_product.linked_listing,
+                        quantity=item_data['qty'],
+                        unit_price=seller_product.price,
+                        item_total=Decimal(str(item_data['item_total'])),
+                        shipping_fee=Decimal(str(item_data['shipping'])),
+                        service_fee=(Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
+                        total_price=payment.final_amount,
+                        currency=payment.currency,
+                        shipping_address=payment.shipping_address,
+                        status='CONFIRMED',
+                    )
 
-                # ১. অর্ডার তৈরি (আপনার আগের অর্ডারের সব ফিল্ডসহ)
-                order = Order.objects.create(
-                    buyer=payment.buyer,
-                    seller=seller_product.seller,
-                    seller_product=seller_product,
-                    listing=seller_product.linked_listing,
-                    quantity=item_data['qty'],
-                    unit_price=seller_product.price,
-                    item_total=Decimal(str(item_data['item_total'])),
-                    shipping_fee=Decimal(str(item_data['shipping'])),
-                    # সার্ভিস ফি এই অর্ডারের অংশ হিসেবে বন্টন করা হলো
-                    service_fee=(Decimal(str(
-                        item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
-                    total_price=payment.final_amount,  # টোটালটা পেমেন্ট রেকর্ড থেকে আসবে
-                    currency=payment.currency,
-                    shipping_address=payment.shipping_address,
-                    status='CONFIRMED',
-                )
+                    seller_product.quantity -= item_data['qty']
+                    seller_product.save()
 
-                # ২. স্টক কমানো
-                seller_product.quantity -= item_data['qty']
-                seller_product.save()
+                    seller = seller_product.seller
+                    amount_for_seller = Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
+                    seller.pending_balance += amount_for_seller
+                    seller.total_orders += 1
+                    seller.save()
 
-                # ৩. সেলার ওয়ালেট আপডেট (পেন্ডিং ব্যালেন্স যোগ)
-                seller = seller_product.seller
-                amount_for_seller = Decimal(
-                    str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
-                seller.pending_balance += amount_for_seller
-                seller.total_orders += 1
-                seller.save()
+                except Exception as e:
+                    logger.error(f"Error processing item in webhook: {str(e)}")
 
-            except Exception as e:
-                logger.error(f"Error processing item in webhook: {str(e)}")
+            from api_integration.models import CartItem
+            CartItem.objects.filter(user=buyer).delete()
+            print(f"✅ Cart cleared for user: {buyer.email}")
 
     def _handle_subscription_success(self, session):
         """Activates the paid subscription plan for the user in the database."""
@@ -360,6 +360,7 @@ class StripeWebhookView(APIView):
         user_id = metadata.get('user_id')
         plan_id = metadata.get('plan_id')
         stripe_sub_id = session.get('subscription')
+        stripe_cust_id = session.get('customer')
 
         if not user_id or not plan_id:
             return
@@ -384,6 +385,7 @@ class StripeWebhookView(APIView):
                     'plan': plan,
                     'status': 'ACTIVE',
                     'stripe_subscription_id': stripe_sub_id,
+                    'stripe_customer_id': stripe_cust_id,
                     'started_at': now,
                     'expires_at': now + timedelta(days=days),
                     'trial_ends_at': now  # ✅ পেইড মেম্বারদের জন্য বর্তমান সময় দিয়ে দিন
@@ -796,14 +798,12 @@ class CreateSubscriptionCheckoutView(APIView):
 
 
 class UserSubscriptionStatusView(APIView):
-    """ইউজারের বর্তমান প্ল্যান চেক করা (ড্যাশবোর্ড এবং এক্সেস কন্ট্রোলের জন্য)"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        sub = getattr(user, 'subscription', None)
-
-        # যদি সাবস্ক্রিপশন না থাকে (সে শুধু লোকাল প্রোডাক্ট দেখবে)
+        from payment.models import UserSubscription
+        sub = UserSubscription.objects.filter(user=request.user).first()
+        
         if not sub or not sub.is_active:
             return Response({
                 "success": True,
@@ -869,47 +869,28 @@ class CreateSubscriptionCheckoutView(APIView):
 
 
 class ManageSubscriptionView(APIView):
-    """
-    Generates a Stripe Customer Portal link for the user.
-    Users can manage their billing, change plans, or cancel subscriptions here.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        # Retrieve user subscription details
-        sub = getattr(user, 'subscription', None)
+        from payment.models import UserSubscription
+        # সরাসরি কুয়েরি করা হচ্ছে যাতে লেটেস্ট ডাটা পাওয়া যায়
+        sub = UserSubscription.objects.filter(user=request.user).first()
 
-        # 1. Check if the user has a valid Stripe Customer ID
         if not sub or not sub.stripe_customer_id:
             return Response({
-                "success": False,
-                "message": "No active paid subscription or customer record found."
+                "success": False, 
+                "message": "No active paid subscription or billing record found."
             }, status=404)
 
         try:
-            # 2. Create a Billing Portal Session
-            # return_url is where the user will be redirected after closing the portal
             session = stripe.billing_portal.Session.create(
                 customer=sub.stripe_customer_id,
-                return_url=settings.STRIPE_RETURN_URL,
+                return_url=settings.STRIPE_RETURN_URL, 
             )
-
             return Response({
                 "success": True,
                 "code": 200,
-                "message": "Portal link generated successfully.",
-                "data": {
-                    "portal_url": session.url  # Frontend should redirect user to this URL
-                }
+                "data": {"portal_url": session.url}
             })
-        except stripe.error.StripeError as e:
-            return Response({
-                "success": False,
-                "message": f"Stripe Portal Error: {str(e)}"
-            }, status=400)
-        except Exception:
-            return Response({
-                "success": False,
-                "message": "An unexpected error occurred while accessing the portal."
-            }, status=500)
+        except Exception as e:
+            return Response({"success": False, "message": str(e)}, status=500)
