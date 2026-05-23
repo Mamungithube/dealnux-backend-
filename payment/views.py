@@ -803,11 +803,17 @@ class UserSubscriptionStatusView(APIView):
     def get(self, request):
         from payment.models import UserSubscription
         sub = UserSubscription.objects.filter(user=request.user).first()
-        
+        has_used_trial = UserSubscription.objects.filter(user=request.user).exists()
         if not sub or not sub.is_active:
             return Response({
                 "success": True,
-                "data": {"plan_name": "None", "is_active": False, "access": "Local Products Only"}
+                "data": {
+                    "plan_name": sub.plan.name if sub else "None",
+                    "is_active": False,
+                    "status": sub.status if sub else "INACTIVE",
+                    "has_used_trial": has_used_trial, 
+                    "access": "Local Products Only"
+                }
             })
 
         return Response({
@@ -838,16 +844,15 @@ class CreateSubscriptionCheckoutView(APIView):
         if plan.plan_type == 'FREE':
             return Response({"error": "Free trial cannot be purchased."}, status=400)
 
-        # ১. স্ট্রাইপ সেশন তৈরি (Subscription Mode)
         try:
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 payment_method_types=['card'],
                 line_items=[{
-                    'price': plan.stripe_price_id,  # স্ট্রাইপ ড্যাশবোর্ড থেকে পাওয়া Price ID
+                    'price': plan.stripe_price_id,  
                     'quantity': 1,
                 }],
-                mode='subscription',  # ✅ এটি ওয়ান-টাইম পেমেন্ট থেকে আলাদা
+                mode='subscription',  
                 return_url=settings.STRIPE_RETURN_URL +
                 '?session_id={CHECKOUT_SESSION_ID}',
                 metadata={
