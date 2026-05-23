@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from .models import (
     ProductReview, SellerRequest, SellerProfile,
@@ -538,42 +540,45 @@ class CouponSerializer(serializers.ModelSerializer):
         return value.upper().strip()
 
 
+# store/serializers.py
 
 class CouponValidateSerializer(serializers.Serializer):
-    """Individual product coupon validation"""
-    code              = serializers.CharField(max_length=50)
-    seller_product_id = serializers.IntegerField()
-    quantity          = serializers.IntegerField(min_value=1, default=1)
+    """চেকআউট ফরম্যাট অনুযায়ী মাল্টিপল আইটেম কুপন ভ্যালিডেশন"""
+    items = serializers.ListField(child=serializers.DictField(), required=True)
+    coupon_code = serializers.CharField(max_length=50, required=True)
 
     def validate(self, attrs):
-        code = attrs['code'].upper().strip()
-        product_id = attrs['seller_product_id']
+        items_data = attrs.get('items', [])
+        code = attrs.get('coupon_code', '').upper().strip()
         
-        # Check the product
-        try:
-            from .models import SellerProduct
-            product = SellerProduct.objects.get(id=product_id, status='APPROVED')
-        except SellerProduct.DoesNotExist:
-            raise serializers.ValidationError({"seller_product_id": ["Product not found or not approved."]})
+        total_discount = Decimal('0')
+        total_original = Decimal('0')
+        seller_name = ""
 
-        # Check if the coupon is from that specific seller
-        try:
-            from .models import Coupon
-            coupon = Coupon.objects.get(code=code, seller=product.seller)
-        except Coupon.DoesNotExist:
-            raise serializers.ValidationError({"code": ["This coupon is not valid for this seller's product."]})
+        for item in items_data:
+            p_id = item.get('seller_product')
+            qty = int(item.get('quantity', 1))
 
-        if not coupon.is_valid:
-            raise serializers.ValidationError({"code": ["This coupon is expired or inactive."]})
+            try:
+                product = SellerProduct.objects.get(id=p_id, status='APPROVED')
+                seller_name = product.seller.shop_name
+                
+                # কুপন চেক
+                coupon = Coupon.objects.get(code=code, seller=product.seller)
+                
+                item_subtotal = product.price * qty
+                total_original += item_subtotal
 
-        # Calculate the product's total cost and check the coupon's minimum amount
-        item_total = product.price * attrs['quantity']
-        if item_total < coupon.min_order_amount:
-            raise serializers.ValidationError({
-                "code": [f"Minimum order amount for this coupon is {coupon.min_order_amount} USD."]
-            })
+                if coupon.is_valid and item_subtotal >= coupon.min_order_amount:
+                    if coupon.discount_type == 'PERCENTAGE':
+                        total_discount += (item_subtotal * coupon.discount_value) / 100
+                    else:
+                        total_discount += min(coupon.discount_value, item_subtotal)
+            except (SellerProduct.DoesNotExist, Coupon.DoesNotExist):
+                continue # কোনো আইটেমে কুপন না মিললে শুধু ওই আইটেম বাদ যাবে
 
-        attrs['coupon'] = coupon
-        attrs['product'] = product
-        attrs['item_total'] = item_total
+        attrs['total_discount'] = total_discount
+        attrs['total_original'] = total_original
+        attrs['seller_shop'] = seller_name
+        attrs['code'] = code
         return attrs

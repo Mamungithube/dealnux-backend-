@@ -43,10 +43,8 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     subtotal = unit_price * quantity
     discount = Decimal('0')
 
-    # কুপন থাকলে ডিসকাউন্ট হিসেব করা
     if coupon_code:
         try:
-            # কুপন কোড এবং সেলার ফিল্টার করা হচ্ছে
             coupon = Coupon.objects.get(
                 code=coupon_code.upper().strip(), seller=seller_product.seller)
             if coupon.is_valid and subtotal >= coupon.min_order_amount:
@@ -72,7 +70,7 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 
     return {
         'unit_price': unit_price,
-        'item_total': item_total,  # এটি এখন ডিসকাউন্ট করা দাম
+        'item_total': item_total,  
         'discount_amount': discount,
         'shipping_fee': shipping,
         'service_fee': service_fee,
@@ -86,6 +84,8 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 
 # payment/views.py এর CreateCheckoutSessionView ক্লাসটি এভাবে আপডেট করুন
 
+# payment/views.py
+
 class CreateCheckoutSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -93,6 +93,9 @@ class CreateCheckoutSessionView(APIView):
     def post(self, request):
         items_data = request.data.get('items', [])
         shipping_address = request.data.get('shipping_address')
+        
+        # ১. মেইন বডি (Root) থেকে কুপন কোডটি নেওয়া হচ্ছে
+        root_coupon_code = request.data.get('coupon_code', '').strip()
 
         if not items_data:
             return Response({'error': 'Items list is required.'}, status=400)
@@ -106,27 +109,31 @@ class CreateCheckoutSessionView(APIView):
         line_items = []
         validated_items = []
 
-        # ১. সব আইটেম ভ্যালিডেশন এবং প্রাইস ক্যালকুলেশন
+        # ২. সব আইটেম লুপ চালিয়ে প্রসেস করা
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            c_code = item.get('coupon_code', '')
+            
+            # ৩. আইটেমের ভেতরে কুপন কোড না থাকলে মেইন (Root) কুপন কোডটি ব্যবহার করবে
+            c_code = item.get('coupon_code', '') or root_coupon_code
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found or not approved.'}, status=404)
 
+            # ডিসকাউন্ট ও ফি ক্যালকুলেশন কল
             res = _calculate_order_amounts(product, qty, c_code)
 
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
             total_discount += res['discount_amount']
 
+            # ৪. স্ট্রাইপ লাইন আইটেম তৈরি
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int(res['item_total'] / qty * 100),
+                    'unit_amount': int((res['item_total'] / qty) * 100),
                     'product_data': {'name': product.title},
                 },
                 'quantity': qty,
@@ -140,16 +147,17 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(res['item_total'])
             })
 
-        # ডক অনুযায়ী সার্ভিস ফি (৮%)
+        # ৫. সার্ভিস ফি ক্যালকুলেশন (৮%)
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
         final_grand_total = total_item_price + total_shipping_fee + service_fee
 
+        # ৬. পেমেন্ট রেকর্ড তৈরি
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
             shipping_address=shipping_address,
             unit_price=total_item_price,
-            total_amount=total_item_price + total_shipping_fee,  
+            total_amount=total_item_price + total_shipping_fee + total_discount,  
             item_total=total_item_price,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
@@ -173,8 +181,7 @@ class CreateCheckoutSessionView(APIView):
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                return_url=settings.STRIPE_RETURN_URL +
-                '?session_id={CHECKOUT_SESSION_ID}',
+                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
@@ -186,6 +193,7 @@ class CreateCheckoutSessionView(APIView):
             payment.stripe_checkout_session_id = session.id
             payment.save()
 
+            # ৭. আপনার অরিজিনাল রেসপন্স ফরম্যাট
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,

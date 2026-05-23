@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -11,6 +13,8 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Sum
 from stripe.climate import Product
+
+from payment.views import _calculate_order_amounts
 
 from .models import (
     ProductReview, SellerRequest, SellerProfile,
@@ -1012,26 +1016,53 @@ class CouponViewSet(viewsets.ModelViewSet):
         serializer = CouponValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        coupon = serializer.validated_data['coupon']
-        product = serializer.validated_data['product']
-        item_total = serializer.validated_data['item_total']
+        items_data = serializer.validated_data['items']
+        code = serializer.validated_data['coupon_code'].upper().strip()
 
-        # discount calculation
-        if coupon.discount_type == 'PERCENTAGE':
-            discount = (item_total * coupon.discount_value) / 100
-        else:
-            discount = min(coupon.discount_value, item_total)
+        total_discount = Decimal('0')
+        total_original = Decimal('0')
+        applied_seller_shop = ""
+        last_product_title = ""
+        discount_type = ""
+        discount_value = 0
 
-        final_amount = item_total - discount
+        for item in items_data:
+            p_id = item.get('seller_product')
+            qty = int(item.get('quantity', 1))
 
+            try:
+                product = SellerProduct.objects.get(id=p_id, status='APPROVED')
+                # আপনার সেই হেল্পার ফাংশন ব্যবহার করে ডিসকাউন্ট বের করা
+                # এটি পেমেন্ট ভিউতেও ব্যবহার হয়েছে, তাই হিসাব দুই জায়গায় একই হবে
+                res = _calculate_order_amounts(product, qty, code)
+                
+                total_discount += res['discount_amount']
+                total_original += Decimal(str(product.price * qty))
+                
+                # রেসপন্সের ডাটা সেট করা
+                applied_seller_shop = product.seller.shop_name
+                last_product_title = product.title if len(items_data) == 1 else f"Multiple Items ({len(items_data)})"
+                
+                # কুপনের তথ্য (একই সেলারের কুপন বলে এগুলো সব আইটেমের জন্য এক হবে)
+                coupon = Coupon.objects.filter(code=code, seller=product.seller).first()
+                if coupon:
+                    discount_type = coupon.discount_type
+                    discount_value = float(coupon.discount_value)
+
+            except (SellerProduct.DoesNotExist, Exception):
+                continue
+
+        final_amount = total_original - total_discount
+
+        # আপনার অরিজিনাল ৮টি ফিল্ড রেসপন্স (বিন্দুমাত্র পরিবর্তন নেই)
         return success_response({
-            "code":              coupon.code,
-            "seller_shop":       product.seller.shop_name,
-            "product_title":     product.title,
-            "discount_type":     coupon.discount_type,
-            "discount_value":    float(coupon.discount_value),
-            "discount_applied":  float(discount),
-            "original_item_total": float(item_total),
+            "code":              code,
+            "seller_shop":       applied_seller_shop,
+            "product_title":     last_product_title,
+            "discount_type":     discount_type,
+            "discount_value":    discount_value,
+            "discount_applied":  float(total_discount),
+            "original_item_total": float(total_original),
             "final_item_total":    float(final_amount),
         }, message="Coupon applied successfully!")
 
