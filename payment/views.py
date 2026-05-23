@@ -102,7 +102,7 @@ class CreateCheckoutSessionView(APIView):
         total_item_price = Decimal('0')
         total_shipping_fee = Decimal('0')
         total_discount = Decimal('0')
-        
+
         line_items = []
         validated_items = []
 
@@ -117,18 +117,15 @@ class CreateCheckoutSessionView(APIView):
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found or not approved.'}, status=404)
 
-            # ডিসকাউন্ট ও ফি ক্যালকুলেশন (আমাদের হেল্পার ফাংশন দিয়ে)
             res = _calculate_order_amounts(product, qty, c_code)
 
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
             total_discount += res['discount_amount']
 
-            # স্ট্রাইপের জন্য লাইন আইটেম তৈরি
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    # পার ইউনিট প্রাইস
                     'unit_amount': int(res['item_total'] / qty * 100),
                     'product_data': {'name': product.title},
                 },
@@ -143,11 +140,10 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(res['item_total'])
             })
 
-        # ২. ডক অনুযায়ী সার্ভিস ফি (৮%)
+        # ডক অনুযায়ী সার্ভিস ফি (৮%)
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
         final_grand_total = total_item_price + total_shipping_fee + service_fee
 
-        # ৩. মেইন পেমেন্ট রেকর্ড তৈরি (মাস্টার ট্রানজেকশন)
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
@@ -164,7 +160,6 @@ class CreateCheckoutSessionView(APIView):
         )
 
         try:
-            # সার্ভিস ফি-কে আলাদা লাইন আইটেম হিসেবে যোগ করা
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
@@ -174,7 +169,6 @@ class CreateCheckoutSessionView(APIView):
                 'quantity': 1,
             })
 
-            # ৪. স্ট্রাইপ সেশন তৈরি
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 line_items=line_items,
@@ -184,7 +178,6 @@ class CreateCheckoutSessionView(APIView):
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
-                    # মেটাডাটায় আইটেমগুলো কমা দিয়ে রাখছি যাতে ওয়েবহুক অর্ডার বানাতে পারে
                     'items_json': json.dumps(validated_items)
                 },
                 customer_email=request.user.email,
@@ -216,7 +209,7 @@ class CheckoutSessionStatusView(APIView):
 
     def get(self, request):
         payment_id = request.query_params.get(
-            'payment_id')  # Instead of session_id
+            'payment_id') 
 
         if not payment_id:
             return Response({'error': 'payment_id is required.'}, status=400)
@@ -316,7 +309,6 @@ class StripeWebhookView(APIView):
         items_json = metadata.get('items_json', '[]')
         items = json.loads(items_json)
         
-        # বায়ারের অবজেক্টটি আগে থেকে নিয়ে রাখছি
         buyer = payment.buyer
 
         with transaction.atomic():
@@ -337,7 +329,7 @@ class StripeWebhookView(APIView):
                         total_price=payment.final_amount,
                         currency=payment.currency,
                         shipping_address=payment.shipping_address,
-                        status='CONFIRMED',
+                        status='PENDING',
                     )
 
                     seller_product.quantity -= item_data['qty']
@@ -390,7 +382,7 @@ class StripeWebhookView(APIView):
                     'stripe_customer_id': stripe_cust_id,
                     'started_at': now,
                     'expires_at': now + timedelta(days=days),
-                    'trial_ends_at': now  # ✅ পেইড মেম্বারদের জন্য বর্তমান সময় দিয়ে দিন
+                    'trial_ends_at': now 
                 }
             )
             print(
