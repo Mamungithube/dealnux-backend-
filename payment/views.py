@@ -101,6 +101,8 @@ class CreateCheckoutSessionView(APIView):
 
         total_item_price = Decimal('0')
         total_shipping_fee = Decimal('0')
+        total_discount = Decimal('0')
+        
         line_items = []
         validated_items = []
 
