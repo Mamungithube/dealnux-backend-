@@ -810,23 +810,29 @@ class UserSubscriptionStatusView(APIView):
             return Response({
                 "success": True,
                 "data": {
-                    "plan_name": sub.plan.name if sub else "None",
+                    "plan_name": "None",
+                    "price": 0.0,
+                    "status": "INACTIVE",
                     "is_active": False,
-                    "status": sub.status if sub else "INACTIVE",
-                    "has_used_trial": has_used_trial, 
-                    "access": "Local Products Only"
+                    "has_used_trial": has_used_trial,
+                    "access": "Local Products Only",
+                    "features": [] 
                 }
             })
 
+        # কেইস ২: ইউজার প্রো বা অন্য কোনো একটিভ প্ল্যানে আছে (স্ক্রিনশট অনুযায়ী ডাটা)
         return Response({
             "success": True,
             "data": {
                 "plan_name": sub.plan.name,
+                "price": float(sub.plan.price),    
+                "renews_at": sub.expires_at,  
                 "status": sub.status,
                 "is_active": sub.is_active,
-                "expires_at": sub.expires_at,
+                "has_used_trial": True,
+                "days_remaining": sub.days_remaining,
                 "clicks_left": sub.plan.clicks_per_day - sub.daily_click_count,
-                "days_remaining": sub.days_remaining
+                "features": sub.plan.features        # ✅ নতুন: ডিজাইন অনুযায়ী টিক মার্কের লিস্ট
             }
         })
 

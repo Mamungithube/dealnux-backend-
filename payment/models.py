@@ -87,6 +87,7 @@ class SubscriptionPlan(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     trial_days = models.PositiveIntegerField(default=14, help_text="How long is the free trial?")
     duration_months = models.PositiveIntegerField(default=1) # ১ মাস বা ১২ মাস
+    features = models.JSONField(default=list, blank=True) # ["Price Alerts", "Priority Support"]
 
     # লিমিটেশন ফিল্ডস (ডক অনুযায়ী)
     clicks_per_day = models.PositiveIntegerField(default=5)
