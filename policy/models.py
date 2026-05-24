@@ -33,6 +33,69 @@ class Cookie_Policy(models.Model):
         return f"Cookie Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
     
 
+class EMI_Payment_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"EMI & Payment Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Warranty_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Warranty Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Exchange_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Exchange Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Delivery_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Delivery Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class PreOrder_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Pre-Order Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Refund_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Refund Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Return_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Return Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
 class Review(models.Model):
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='reviews')
