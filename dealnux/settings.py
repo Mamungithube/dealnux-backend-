@@ -98,6 +98,8 @@ INSTALLED_APPS = [
     'api_integration',
     'store',
     'payment',
+    'blog',
+    'career',
     
 
     # Third-party apps
@@ -490,6 +492,8 @@ EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER')
 
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL')
+SITE_URL = os.environ.get('SITE_URL')
 
 GOOGLE_OAUTH2_CLIENT_ID     = os.getenv('GOOGLE_OAUTH2_CLIENT_ID')
 GOOGLE_OAUTH2_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH2_CLIENT_SECRET')
