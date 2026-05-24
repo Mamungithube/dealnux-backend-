@@ -7,11 +7,15 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y gcc libpq-dev \
-    && apt-get clean
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/
+
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 COPY . /app/
 

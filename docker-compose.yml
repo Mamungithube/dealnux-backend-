@@ -1,6 +1,10 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      cache_from:
+        - dealnux-backend
+    image: dealnux-backend
     container_name: dealnux_web
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
@@ -11,8 +15,6 @@ services:
       - .env
     depends_on:
       - db
-      - redis
-    links:
       - redis
 
   db:
@@ -36,7 +38,7 @@ services:
       - "6379:6379"
 
   celery_worker:
-    build: .
+    image: dealnux-backend
     container_name: dealnux_celery_worker
     restart: always
     command: celery -A dealnux worker -l info --concurrency=2
@@ -47,9 +49,10 @@ services:
     depends_on:
       - db
       - redis
+      - web
 
   celery_beat:
-    build: .
+    image: dealnux-backend
     container_name: dealnux_celery_beat
     restart: always
     command: celery -A dealnux beat -l info
@@ -60,7 +63,7 @@ services:
     depends_on:
       - db
       - redis
-
+      - web
 
 volumes:
   postgres_data:

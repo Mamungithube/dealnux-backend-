@@ -1,12 +1,18 @@
-# api_integration/firebase_utils.py
+
+import os
 import firebase_admin
 from firebase_admin import credentials, messaging
 from django.conf import settings
 
-# Initialize Firebase App
+certificate_path = os.path.join(settings.BASE_DIR, 'firebase-key.json')
+
 if not firebase_admin._apps:
-    cred = credentials.Certificate("path/to/your/firebase-key.json")
-    firebase_admin.initialize_app(cred)
+    try:
+        cred = credentials.Certificate(certificate_path)
+        firebase_admin.initialize_app(cred)
+        print("✅ Firebase initialized successfully using root key.")
+    except Exception as e:
+        print(f"❌ Firebase Error: {str(e)}")
 
 def send_push_notification(user, title, body, data=None):
     """

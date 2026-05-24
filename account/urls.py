@@ -1,3 +1,5 @@
+from api_integration.views import DeviceTokenView, NotificationListView
+
 from .views import (
     UserAPIView,
     RegisterApiView,
@@ -36,5 +38,10 @@ urlpatterns = [
          ProfileDetailsView.as_view(), name='profile'),
     path('profile/update/',
          ProfileUpdateView.as_view(), name='profile-detail'),
+
+     path('profile/delete/', DeleteAccountView.as_view(), name='delete-account'),
+
+     path('device-token/', DeviceTokenView.as_view(), name='device-token'),
+     path('notifications/', NotificationListView.as_view(), name='notifications'),
 
 ]

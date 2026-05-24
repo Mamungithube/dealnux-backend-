@@ -1,6 +1,6 @@
 import time
 import logging
-from rest_framework import viewsets
+from rest_framework import viewsets, generics
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
@@ -33,7 +33,7 @@ from .serializers import (
     ProductSerializer, ProductDetailSerializer,
     ProductListingSerializer, PlatformSerializer,
     CategorySerializer, PriceHistorySerializer,
-    CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer
+    CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer , PriceAlertSerializer, NotificationSerializer
 )
 from store.serializers import SellerProductSerializer
 from rest_framework.exceptions import ValidationError
@@ -45,9 +45,7 @@ from rest_framework.response import Response
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
-from payment.utils import validate_and_increment_click
-from account.models import DeviceToken
-from .firebase_utils import send_push_notification
+
 logger = logging.getLogger(__name__)
 
 
@@ -2143,6 +2141,7 @@ class DeviceTokenView(APIView):
 class PriceAlertViewSet(viewsets.ModelViewSet):
     """User can set up to 5 alerts (Free) or Unlimited (Paid)"""
     permission_classes = [IsAuthenticated]
+    serializer_class = PriceAlertSerializer
     
     def get_queryset(self):
         return PriceAlert.objects.filter(user=self.request.user)
@@ -2161,13 +2160,30 @@ class PriceAlertViewSet(viewsets.ModelViewSet):
                 "message": f"Alert limit reached. You can only set {limit} alerts."
             }, status=400)
 
-        # ২. এলার্ট তৈরি
-        # এখানে সিরিয়ালাইজার ব্যবহার করবেন (আগের অর্ডারের মতো)
         return super().create(request, *args, **kwargs)
 
 class NotificationListView(generics.ListAPIView):
     """Show notification history for the user"""
     permission_classes = [IsAuthenticated]
-    # Pagination যোগ করে দিবেন যাতে সার্ভার লোড না হয়
+    serializer_class = NotificationSerializer
+
     def list(self, request):
-        notifications = Notification.objects.filter(user=request.user).order_by('-created_at')[:20]
+        notifications = Notification.objects.filter(
+            user=request.user
+        ).order_by('-created_at')[:20]
+
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Notifications fetched successfully.",
+            "timestamp": int(time.time()),
+            "data": [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "body": n.body,
+                    "is_read": n.is_read,
+                    "created_at": n.created_at,
+                } for n in notifications
+            ]
+        }, status=200)
