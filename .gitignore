@@ -124,3 +124,4 @@ logs/
 cloudflared-linux-amd64.deb
 "celerybeat-schedule" 
 celerybeat-schedule
+firebase-key.json

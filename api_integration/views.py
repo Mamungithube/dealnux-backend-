@@ -27,7 +27,7 @@ from difflib import SequenceMatcher
 import re
 from .models import (
     Product, ProductListing, Platform, Category,
-    CartItem, SavingsActivity, Favorite
+    CartItem, SavingsActivity, Favorite , PriceAlert, Notification
 )
 from .serializers import (
     ProductSerializer, ProductDetailSerializer,
@@ -46,7 +46,8 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
 from payment.utils import validate_and_increment_click
-
+from account.models import DeviceToken
+from .firebase_utils import send_push_notification
 logger = logging.getLogger(__name__)
 
 
@@ -2124,3 +2125,49 @@ def amazon_promo_details(request):
         return error_response('Promo code not found or expired', code=404)
 
     return success_response(data, message="Promo code details fetched")
+
+
+class DeviceTokenView(APIView):
+    """Save user device token for FCM"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get('fcm_token')
+        if not token:
+            return Response({"error": "fcm_token is required"}, status=400)
+            
+        from account.models import DeviceToken
+        DeviceToken.objects.get_or_create(user=request.user, fcm_token=token)
+        return success_response(None, message="FCM token saved.")
+
+class PriceAlertViewSet(viewsets.ModelViewSet):
+    """User can set up to 5 alerts (Free) or Unlimited (Paid)"""
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return PriceAlert.objects.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        sub = getattr(user, 'subscription', None)
+        
+        # ১. সাবস্ক্রিপশন লিমিট চেক (ডক অনুযায়ী)
+        alert_count = PriceAlert.objects.filter(user=user, is_active=True).count()
+        limit = sub.plan.price_alerts_limit if sub and sub.is_active else 5
+        
+        if limit != -1 and alert_count >= limit:
+            return Response({
+                "success": False,
+                "message": f"Alert limit reached. You can only set {limit} alerts."
+            }, status=400)
+
+        # ২. এলার্ট তৈরি
+        # এখানে সিরিয়ালাইজার ব্যবহার করবেন (আগের অর্ডারের মতো)
+        return super().create(request, *args, **kwargs)
+
+class NotificationListView(generics.ListAPIView):
+    """Show notification history for the user"""
+    permission_classes = [IsAuthenticated]
+    # Pagination যোগ করে দিবেন যাতে সার্ভার লোড না হয়
+    def list(self, request):
+        notifications = Notification.objects.filter(user=request.user).order_by('-created_at')[:20]

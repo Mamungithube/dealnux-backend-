@@ -701,4 +701,38 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                     defaults={'value': str(value)}
                 )
 
+    try:
+        from .models import PriceAlert, Notification
+        from .firebase_utils import send_push_notification
+
+        # এই প্রোডাক্টের জন্য যে ইউজাররা এলার্ট সেট করে রেখেছে তাদের লিস্ট নিন
+        # লজিক: নতুন দাম যদি ইউজারের টার্গেট প্রাইসের সমান বা কম হয়
+        active_alerts = PriceAlert.objects.filter(
+            product=product, 
+            is_active=True, 
+            target_price__gte=price_val
+        ).select_related('user')
+
+        for alert in active_alerts:
+            title = "Price Drop Alert! 📉"
+            body = f"Good news! {product.title} is now ${price_val} on {platform.name}. Buy it before the price goes up!"
+            
+            # ১. ফায়ারবেস পুশ নোটিফিকেশন পাঠানো
+            send_push_notification(user=alert.user, title=title, body=body)
+
+            # ২. নোটিফিকেশন হিস্ট্রিতে সেভ করা
+            Notification.objects.create(
+                user=alert.user,
+                title=title,
+                body=body,
+                notification_type='PRICE_DROP'
+            )
+
+            # ৩. একই নোটিফিকেশন বারবার পাঠানো বন্ধ করতে এলার্টটি ইন-একটিভ করে দেওয়া (অপশনাল)
+            # alert.is_active = False
+            # alert.save()
+
+    except Exception as e:
+        logger.error(f"Error processing price alerts for product {product.id}: {str(e)}") 
+
     return product, listing, created

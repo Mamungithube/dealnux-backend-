@@ -79,3 +79,9 @@ class Profile(models.Model):
         return f"Profile of {self.user.name}"
 
 
+# account/models.py এ ইউজারের সাথে FCM টোকেন রাখার জন্য একটি মডেল
+class DeviceToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fcm_tokens')
+    fcm_token = models.TextField(unique=True)
+    device_type = models.CharField(max_length=20, blank=True) # android, ios, web
+    created_at = models.DateTimeField(auto_now_add=True)
