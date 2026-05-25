@@ -36,7 +36,11 @@ def api_response(*, success: bool, code: int, message: str, data=None):
 # Privacy Policy View
 # ==========================
 class PrivacyPolicyView(APIView):
-    # permission_classes = [IsAdminUser]  
+    def get_permissions(self):
+        # Allow anyone to read (GET); only admins can create/update/delete
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [IsAdminUser()]
 
     def get(self, request):
         policy = Privacy_Policy.objects.first()
@@ -118,7 +122,11 @@ class PrivacyPolicyView(APIView):
 # Cookie Policy View
 # ==========================
 class CookiePolicyView(APIView):
-    # permission_classes = [IsAdminUser]  
+    def get_permissions(self):
+        # Allow anyone to read (GET); only admins can create/update/delete
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [IsAdminUser()]
 
     def get(self, request):
         policy = Cookie_Policy.objects.first()
@@ -200,7 +208,11 @@ class CookiePolicyView(APIView):
 # Terms Of Service View
 # ==========================
 class TermsOfServiceView(APIView):
-    # permission_classes = [IsAdminUser]  
+    def get_permissions(self):
+        # Allow anyone to read (GET); only admins can create/update/delete
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [IsAdminUser()]
 
     def get(self, request):
         policy = Terms_Of_Service.objects.first()
@@ -291,6 +303,8 @@ class PolicyGetBaseView(APIView):
     model            = None
     serializer_class = None
     policy_name      = "Policy"
+
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         policy = self.model.objects.first()
