@@ -1,3 +1,8 @@
+from .serializers import ContactMessageSerializer
+from .models import ContactMessage
+from django.conf import settings
+from django.core.mail import send_mail
+from rest_framework import generics, permissions, status
 import time
 from rest_framework.views import APIView
 from rest_framework import permissions, status
@@ -19,6 +24,8 @@ from policy.serializers import (
 )
 
 # 🔹 Common API Response
+
+
 def api_response(*, success: bool, code: int, message: str, data=None):
     return Response(
         {
@@ -290,8 +297,6 @@ class TermsOfServiceView(APIView):
         )
 
 
-
-
 # ==========================
 # Reusable GET-Only Base View
 # ==========================
@@ -300,9 +305,9 @@ class PolicyGetBaseView(APIView):
     Reusable base view for GET-only policy endpoints.
     Subclasses must define: model, serializer_class, policy_name
     """
-    model            = None
+    model = None
     serializer_class = None
-    policy_name      = "Policy"
+    policy_name = "Policy"
 
     permission_classes = [permissions.AllowAny]
 
@@ -328,63 +333,64 @@ class PolicyGetBaseView(APIView):
 # EMI & Payment Policy View
 # ==========================
 class EMIPaymentPolicyView(PolicyGetBaseView):
-    model            = EMI_Payment_Policy
+    model = EMI_Payment_Policy
     serializer_class = EMIPaymentPolicySerializer
-    policy_name      = "EMI & Payment Policy"
+    policy_name = "EMI & Payment Policy"
 
 
 # ==========================
 # Warranty Policy View
 # ==========================
 class WarrantyPolicyView(PolicyGetBaseView):
-    model            = Warranty_Policy
+    model = Warranty_Policy
     serializer_class = WarrantyPolicySerializer
-    policy_name      = "Warranty Policy"
+    policy_name = "Warranty Policy"
 
 
 # ==========================
 # Exchange Policy View
 # ==========================
 class ExchangePolicyView(PolicyGetBaseView):
-    model            = Exchange_Policy
+    model = Exchange_Policy
     serializer_class = ExchangePolicySerializer
-    policy_name      = "Exchange Policy"
+    policy_name = "Exchange Policy"
 
 
 # ==========================
 # Delivery Policy View
 # ==========================
 class DeliveryPolicyView(PolicyGetBaseView):
-    model            = Delivery_Policy
+    model = Delivery_Policy
     serializer_class = DeliveryPolicySerializer
-    policy_name      = "Delivery Policy"
+    policy_name = "Delivery Policy"
 
 
 # ==========================
 # Pre-Order Policy View
 # ==========================
 class PreOrderPolicyView(PolicyGetBaseView):
-    model            = PreOrder_Policy
+    model = PreOrder_Policy
     serializer_class = PreOrderPolicySerializer
-    policy_name      = "Pre-Order Policy"
+    policy_name = "Pre-Order Policy"
 
 
 # ==========================
 # Refund Policy View
 # ==========================
 class RefundPolicyView(PolicyGetBaseView):
-    model            = Refund_Policy
+    model = Refund_Policy
     serializer_class = RefundPolicySerializer
-    policy_name      = "Refund Policy"
+    policy_name = "Refund Policy"
 
 
 # ==========================
 # Return Policy View
 # ==========================
 class ReturnPolicyView(PolicyGetBaseView):
-    model            = Return_Policy
+    model = Return_Policy
     serializer_class = ReturnPolicySerializer
-    policy_name      = "Return Policy"
+    policy_name = "Return Policy"
+
 
 class ReviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -397,8 +403,8 @@ class ReviewView(APIView):
             code=status.HTTP_200_OK,
             message="Reviews retrieved successfully.",
             data=serializer.data
-        ) 
-    
+        )
+
     def post(self, request):
         serializer = ReviewSerializer(data=request.data)
         if serializer.is_valid():
@@ -416,3 +422,46 @@ class ReviewView(APIView):
             message="Validation error.",
             data=serializer.errors
         )
+
+
+class ContactMessageCreateView(generics.CreateAPIView):
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        contact = serializer.save()
+
+        try:
+            send_mail(
+                subject=f"[Dealnux] Contact: {contact.subject}",
+                message=f"""
+                            New contact message received!
+                            
+                            Name    : {contact.full_name}
+                            Email   : {contact.email}
+                            Subject : {contact.subject}
+                            
+                            Message:
+                            {contact.message}
+                            
+                            Received At: {contact.created_at}
+                                            """,
+                                            from_email=settings.DEFAULT_FROM_EMAIL,
+                                            recipient_list=[settings.ADMIN_EMAIL],
+                                            fail_silently=True,
+                                        )
+        except Exception:
+            pass
+
+        return Response(
+            {"detail": "Message sent successfully. We'll reply within one business day."},
+            status=status.HTTP_201_CREATED
+        )
+
+
+class ContactMessageListView(generics.ListAPIView):
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.IsAdminUser]
+    queryset = ContactMessage.objects.all()

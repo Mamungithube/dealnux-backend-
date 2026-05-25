@@ -1,5 +1,7 @@
 from django.urls import path
 from .views import (
+    ContactMessageCreateView,
+    ContactMessageListView,
     PrivacyPolicyView,
     CookiePolicyView,
     TermsOfServiceView,
@@ -19,6 +21,8 @@ urlpatterns = [
     path('cookie-policy/',    CookiePolicyView.as_view(),   name='cookie-policy'),
     path('terms-of-service/', TermsOfServiceView.as_view(), name='terms-of-service'),
     path('review/',           ReviewView.as_view(),        name='review'),
+    path('contact/send/', ContactMessageCreateView.as_view(), name='contact-send'),
+    path('messages/', ContactMessageListView.as_view(), name='contact-messages'),
 
     # New GET-only policies
     path('emi-payment-policy/', EMIPaymentPolicyView.as_view(), name='emi-payment-policy'),
