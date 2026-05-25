@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'payment',
     'blog',
     'career',
+    'pages',
     
 
     # Third-party apps
