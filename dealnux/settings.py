@@ -438,6 +438,8 @@ CELERY_ACCEPT_CONTENT    = ['json']
 CELERY_TASK_SERIALIZER   = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE          = 'UTC'
+CELERY_TASK_TIME_LIMIT = 300  # 5 minutes max per task
+CELERY_TASK_SOFT_TIME_LIMIT = 240  # 4 minutes soft limit
 
 CHANNEL_LAYERS = {
     "default": {
@@ -515,7 +517,7 @@ STRIPE_SUCCESS_URL         = os.getenv('STRIPE_SUCCESS_URL')
 STRIPE_CANCEL_URL          = os.getenv('STRIPE_CANCEL_URL')
 STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
 STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
-STRIPE_RETURN_URL = 'https://yoursite.com/checkout/complete'
+STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
 
 # HTTPS Fix for Nginx Reverse Proxy
 USE_X_FORWARDED_HOST = True
