@@ -517,29 +517,14 @@ STRIPE_SUCCESS_URL         = os.getenv('STRIPE_SUCCESS_URL')
 STRIPE_CANCEL_URL          = os.getenv('STRIPE_CANCEL_URL')
 STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
 STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
+<<<<<<< Updated upstream
 STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
+=======
+STRIPE_RETURN_URL = 'https://dealnux.netlify.app/payment/success'
+>>>>>>> Stashed changes
 
 # HTTPS Fix for Nginx Reverse Proxy
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# eBay API Configuration
-# EBAY_ENV = config('EBAY_ENV', default='SANDBOX')      
-# EBAY_APP_ID = config('EBAY_APP_ID')
-# EBAY_CERT_ID = config('EBAY_CERT_ID')
-# EBAY_DEV_ID = config('EBAY_DEV_ID', default='')
-
-# if EBAY_ENV == 'SANDBOX':
-#     EBAY_BASE_URL = 'https://api.sandbox.ebay.com'
-# else:
-#     EBAY_BASE_URL = 'https://api.ebay.com'
-
-
-# RapidAPI and Walmart API Configuration (future)
-# WALMART_CLIENT_ID = os.getenv('WALMART_CLIENT_ID')
-# WALMART_CLIENT_SECRET = os.getenv('WALMART_CLIENT_SECRET')
-
-# # AliExpress API Configuration (future)
-# ALIEXPRESS_APP_KEY = config('ALIEXPRESS_APP_KEY', default='')
-# ALIEXPRESS_APP_SECRET = config('ALIEXPRESS_APP_SECRET', default='')
 
