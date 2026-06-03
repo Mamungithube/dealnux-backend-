@@ -38,6 +38,8 @@ class User(AbstractUser):
     username        = None
     email           = models.EmailField(unique=True)
     name            = models.CharField(max_length=255)
+    first_name      = models.CharField(max_length=100, blank=True) 
+    last_name       = models.CharField(max_length=100, blank=True)
     address         = models.TextField(blank=True, null=True)
     referral_code   = models.CharField(max_length=12, unique=True, blank=True, null=True)
     has_claimed_referral = models.BooleanField(default=False)
@@ -71,15 +73,18 @@ class User(AbstractUser):
 
 class Profile(models.Model):
     user            = models.OneToOneField(User, on_delete=models.CASCADE)
-    address         = models.TextField(blank=True, null=True)
+    
+    address          = models.CharField(max_length=255, blank=True)   # Address Line 1
+    address_2        = models.CharField(max_length=255, blank=True)   # Address Line 2 (Apt/Suite)
+    city             = models.CharField(max_length=100, blank=True)
+    state            = models.CharField(max_length=100, blank=True)
+    zip_code         = models.CharField(max_length=20, blank=True)
+    country          = models.CharField(max_length=100, blank=True)
+
     interests       = models.TextField(default=list, blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
 
-    def __str__(self):
-        return f"Profile of {self.user.name}"
 
-
-# account/models.py এ ইউজারের সাথে FCM টোকেন রাখার জন্য একটি মডেল
 class DeviceToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fcm_tokens')
     fcm_token = models.TextField(unique=True)

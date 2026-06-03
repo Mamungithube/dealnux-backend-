@@ -127,20 +127,26 @@ class UserLoginSerializer(serializers.ModelSerializer):
 
 
 # ==================== Profile Serializer (Read-Only/Response) ====================
-
 class ProfileSerializer(serializers.ModelSerializer):
-    name = serializers.SerializerMethodField()
-    email = serializers.SerializerMethodField()
-    refaradal_code = serializers.SerializerMethodField()
-    interests = serializers.SerializerMethodField()
-    balance = serializers.SerializerMethodField()
+    name                 = serializers.SerializerMethodField()
+    email                = serializers.SerializerMethodField()
+    first_name           = serializers.SerializerMethodField()  # ← নতুন
+    last_name            = serializers.SerializerMethodField()  # ← নতুন
+    refaradal_code       = serializers.SerializerMethodField()
+    interests            = serializers.SerializerMethodField()
+    balance              = serializers.SerializerMethodField()
     has_claimed_referral = serializers.SerializerMethodField()
-    referred_by = serializers.SerializerMethodField()
+    referred_by          = serializers.SerializerMethodField()
 
     class Meta:
-        model = Profile
-        fields = ['name', 'email', 'profile_picture', 'address', 'interests', 
-                  'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by']
+        model  = Profile
+        fields = [
+            'name', 'first_name', 'last_name', 'email',  # ← নতুন
+            'profile_picture',
+            'address', 'address_2', 'city', 'state', 'zip_code', 'country',  # ← নতুন
+            'interests',
+            'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by',
+        ]
 
     def get_name(self, obj):
         return getattr(obj.user, 'name', '') if obj.user else ''
@@ -148,20 +154,26 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_email(self, obj):
         return getattr(obj.user, 'email', '') if obj.user else ''
 
+    def get_first_name(self, obj):  # ← নতুন
+        return getattr(obj.user, 'first_name', '') if obj.user else ''
+
+    def get_last_name(self, obj):   # ← নতুন
+        return getattr(obj.user, 'last_name', '') if obj.user else ''
+
     def get_refaradal_code(self, obj):
         return getattr(obj.user, 'referral_code', '') if obj.user else ''
-    
+
     def get_balance(self, obj):
         return float(getattr(obj.user, 'balance', 0)) if obj.user else 0
-    
+
     def get_has_claimed_referral(self, obj):
         return getattr(obj.user, 'has_claimed_referral', False) if obj.user else False
-    
+
     def get_referred_by(self, obj):
         if obj.user and obj.user.referred_by:
             return {
-                'name': obj.user.referred_by.name,
-                'email': obj.user.referred_by.email,
+                'name':          obj.user.referred_by.name,
+                'email':         obj.user.referred_by.email,
                 'referral_code': obj.user.referred_by.referral_code
             }
         return None
@@ -169,72 +181,82 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_interests(self, obj):
         if not obj.interests:
             return []
-
         data = obj.interests
-
-        # If the data is a string, load it as JSON.
         if isinstance(data, str):
             try:
                 data = json.loads(data)
             except (ValueError, TypeError):
                 return []
-
         if isinstance(data, list) and len(data) > 0:
             if isinstance(data[0], str) and data[0].startswith('['):
                 try:
                     return json.loads(data[0])
                 except:
                     return data
-
         return data if isinstance(data, list) else []
 
 
 """==================== Profile Setup Serializer (Write) ===================="""
 
 
+class AddressSerializer(serializers.Serializer):
+    address   = serializers.CharField(max_length=255)
+    address_2 = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    city      = serializers.CharField(max_length=100)
+    state     = serializers.CharField(max_length=100)
+    zip_code  = serializers.CharField(max_length=20)
+    country   = serializers.CharField(max_length=100)
+
+
 class ProfileSetupSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=True)
-    address = serializers.CharField(required=False, allow_blank=True)
-    interests = serializers.ListField(
-        child=serializers.CharField(),
-        required=False,
-        allow_empty=True
-    )
-    profile_picture = serializers.ImageField(required=False, allow_null=True)
-    referred_by_code = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        allow_null=True
-    )
+    email            = serializers.EmailField(required=True)
+    address          = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    address_2        = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    city             = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    state            = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    zip_code         = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    country          = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    interests        = serializers.ListField(
+                           child=serializers.CharField(),
+                           required=False, allow_empty=True)
+    profile_picture  = serializers.ImageField(required=False, allow_null=True)
+    referred_by_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
-# ==================== Profile Update Serializer (Write) ====================
 class ProfileUpdateSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(source='user.name', required=False)
-    interests = serializers.ListField(
-        child=serializers.CharField(), 
-        required=False,
-        allow_empty=True
-    )
+    name         = serializers.CharField(source='user.name', required=False)
+    first_name   = serializers.CharField(source='user.first_name', required=False)
+    last_name    = serializers.CharField(source='user.last_name', required=False)
+    address      = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    address_2    = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    city         = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    state        = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    zip_code     = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    country      = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    interests    = serializers.ListField(
+                       child=serializers.CharField(),
+                       required=False, allow_empty=True)
 
     class Meta:
-        model = Profile
-        fields = ['name', 'profile_picture', 'address', 'interests']
+        model  = Profile
+        fields = [
+            'name', 'first_name', 'last_name',
+            'profile_picture',
+            'address', 'address_2', 'city', 'state', 'zip_code', 'country',
+            'interests',
+        ]
 
     def update(self, instance, validated_data):
-    # Handling Interests
         interests_list = validated_data.pop('interests', None)
-
         if interests_list is not None:
             instance.interests = json.dumps(interests_list)
 
-        # Update user name (as per your previous code)
         user_data = validated_data.pop('user', {})
-        if user_data and 'name' in user_data:
-            instance.user.name = user_data.get('name')
+        if user_data:
+            for attr, value in user_data.items():
+                setattr(instance.user, attr, value)
             instance.user.save()
 
-        # All other fields updated
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
