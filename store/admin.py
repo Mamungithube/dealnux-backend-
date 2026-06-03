@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +20,7 @@ from django.http import HttpResponseRedirect
 # Inline
 # ============================================================================
 
+
 class SellerProductImageInline(TabularInline):
     model = SellerProductImage
     extra = 0
@@ -31,6 +33,7 @@ class SellerProductImageInline(TabularInline):
 # ============================================================================
 # Seller Request Admin
 # ============================================================================
+
 
 @admin.register(SellerRequest)
 class SellerRequestAdmin(ModelAdmin):
@@ -52,16 +55,17 @@ class SellerRequestAdmin(ModelAdmin):
     ]
 
     list_filter = ['status', 'legal_business_type', 'created_at']
-    search_fields = ['trade_name', 'user__email', 'contact_full_name', 'contact_phone']
-    
+    search_fields = ['trade_name', 'user__email',
+                     'contact_full_name', 'contact_phone']
+
     # Most fields are kept read-only so that admins cannot change the legal data submitted by users.
     # readonly_fields = [
     #     'user', 'trade_name', 'legal_business_type', 'business_reg_number',
     #     'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
     #     'display_categories_list', 'estimated_sku_count', 'min_price', 'max_price',
     #     'product_conditions', 'owns_inventory', 'fulfillment_methods', 'shipping_regions',
-    #     'return_policy_description', 'return_policy_document', 'government_id', 
-    #     'business_license', 'utility_bill', 'has_prior_experience', 
+    #     'return_policy_description', 'return_policy_document', 'government_id',
+    #     'business_license', 'utility_bill', 'has_prior_experience',
     #     'experience_description', 'digital_signature', 'reviewed_at', 'created_at'
     # ]
 
@@ -131,15 +135,16 @@ class SellerRequestAdmin(ModelAdmin):
         variant=ActionVariant.SUCCESS,
     )
     def action_approve_row(self, request, object_id):
-        
+
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
             # The logic in views.py will be called as a model method.
-            
+
             try:
                 with transaction.atomic():
                     obj.approve(admin_user=request.user)
-                self.message_user(request, f'✓ {obj.user.email} approved as seller.', messages.SUCCESS)
+                self.message_user(
+                    request, f'✓ {obj.user.email} approved as seller.', messages.SUCCESS)
             except Exception as e:
                 self.message_user(request, f'Error: {str(e)}', messages.ERROR)
         return HttpResponseRedirect('../..')
@@ -151,14 +156,16 @@ class SellerRequestAdmin(ModelAdmin):
         variant=ActionVariant.DANGER,
     )
     def action_reject_row(self, request, object_id):
-        
+
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
-            note = request.POST.get('admin_note', 'Rejected by admin via panel.')
+            note = request.POST.get(
+                'admin_note', 'Rejected by admin via panel.')
             obj.status = 'REJECTED'
             obj.admin_note = note
             obj.save()
-            self.message_user(request, f'✗ {obj.user.email} application rejected.', messages.WARNING)
+            self.message_user(
+                request, f'✗ {obj.user.email} application rejected.', messages.WARNING)
         return HttpResponseRedirect('../..')
 
 
@@ -172,17 +179,40 @@ class SellerProfileAdmin(ModelAdmin):
     list_display = [
         'display_shop',
         'display_user',
-        'display_balances', 
+        'display_balances',
         'total_products',
         'display_active',
         'created_at',
     ]
+    actions_row = ['suspend_seller', 'pause_payout']
+
+    @display(description='Risk Level', label={
+        'High Risk': 'danger',
+        'Medium': 'warning',
+        'Healthy': 'success'
+    })
+    def display_risk_level(self, obj):
+        if obj.seller_score < 30:
+            return "High Risk"
+        if obj.seller_score < 60:
+            return "Medium"
+        return "Healthy"
+
+    @action(description="Suspend Seller", url_path="suspend", variant=ActionVariant.DANGER)
+    def suspend_seller(self, request, object_id):
+        SellerProfile.objects.filter(pk=object_id).update(is_active=False)
+
+    @action(description="Pause Payout", url_path="pause", variant=ActionVariant.WARNING)
+    def pause_payout(self, request, object_id):
+        # পেমেন্ট পজ করার লজিক
+        pass
+
     list_filter = ['is_active', 'created_at']
     search_fields = ['shop_name', 'user__email']
-    
+
     # Wallet and stats admin cannot change manually
     readonly_fields = [
-        'user', 'shop_name', 'pending_balance', 'available_balance', 
+        'user', 'shop_name', 'pending_balance', 'available_balance',
         'total_earnings', 'total_products', 'total_orders', 'created_at', 'updated_at'
     ]
 
@@ -227,6 +257,7 @@ class SellerProfileAdmin(ModelAdmin):
 # Seller Product Admin
 # ============================================================================
 
+
 @admin.register(SellerProduct)
 class SellerProductAdmin(ModelAdmin):
     compressed_fields = True
@@ -234,7 +265,6 @@ class SellerProductAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
     list_per_page = 20
-
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
@@ -380,7 +410,7 @@ class SellerProductAdmin(ModelAdmin):
         variant=ActionVariant.SUCCESS,
     )
     def action_approve_product(self, request, object_id):
-        
+
         obj = SellerProduct.objects.get(pk=object_id)
         if obj.status != 'APPROVED':
             obj.approve(admin_user=request.user)
@@ -395,7 +425,7 @@ class SellerProductAdmin(ModelAdmin):
         variant=ActionVariant.DANGER,
     )
     def action_reject_product(self, request, object_id):
-        
+
         obj = SellerProduct.objects.get(pk=object_id)
         if obj.status != 'REJECTED':
             obj.reject(admin_user=request.user, note='Rejected by admin.')
@@ -414,19 +444,21 @@ class OrderAdmin(ModelAdmin):
         'order_number',
         'display_buyer',
         'display_seller',
-        'display_price_breakdown', 
+        'display_price_breakdown',
         'display_total',
         'display_status',
         'is_accepted_by_buyer',
         'created_at',
     ]
-    list_filter = ['status', 'is_accepted_by_buyer', 'fault_party', 'created_at']
-    search_fields = ['order_number', 'buyer__email', 'seller__shop_name', 'tracking_number']
+    list_filter = ['status', 'is_accepted_by_buyer',
+                   'fault_party', 'created_at']
+    search_fields = ['order_number', 'buyer__email',
+                     'seller__shop_name', 'tracking_number']
 
     # Payment data is protected.
     readonly_fields = [
         'buyer', 'seller', 'seller_product', 'listing',
-        'unit_price', 'quantity', 'discount_amount', 'item_total', 
+        'unit_price', 'quantity', 'discount_amount', 'item_total',
         'shipping_fee', 'service_fee', 'total_price', 'currency',
         'is_accepted_by_buyer', 'accepted_at', 'refund_amount', 'created_at', 'updated_at'
     ]
@@ -437,7 +469,7 @@ class OrderAdmin(ModelAdmin):
         }),
         (_('💰 Pricing Breakdown'), {
             'fields': (
-                'quantity', 'unit_price', 'discount_amount', 
+                'quantity', 'unit_price', 'discount_amount',
                 'item_total', 'shipping_fee', 'service_fee', 'total_price', 'currency'
             ),
             'description': _('Detailed breakdown of payments and fees.')
@@ -517,7 +549,7 @@ class CouponAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('seller')
-    
+
     list_filter = ['discount_type', 'is_active', 'created_at']
     search_fields = ['code', 'seller__shop_name']
     readonly_fields = [
@@ -587,7 +619,6 @@ class CouponAdmin(ModelAdmin):
 # Sidebar Badge Functions
 # ============================================================================
 
-from django.core.cache import cache
 
 def pending_seller_requests_count(request):
     count = cache.get('pending_seller_requests_count')

@@ -20,7 +20,18 @@ class Payment(models.Model):
     order               = models.OneToOneField(Order, on_delete=models.SET_NULL, null=True, 
                             blank=True, related_name='payment')
     quantity            = models.PositiveIntegerField(default=1)
+
+    # Shipping details (for store products)
     shipping_address    = models.TextField(blank=True)
+    shipping_first_name = models.CharField(max_length=100, blank=True)
+    shipping_last_name  = models.CharField(max_length=100, blank=True)
+    shipping_address_line1 = models.CharField(max_length=255, blank=True)
+    shipping_address_line2 = models.CharField(max_length=255, blank=True)  # Apt/Suite, optional
+    shipping_city       = models.CharField(max_length=100, blank=True)
+    shipping_state      = models.CharField(max_length=100, blank=True)
+    shipping_zip_code   = models.CharField(max_length=20, blank=True)
+    shipping_country    = models.CharField(max_length=100, blank=True)
+    
     coupon_code         = models.CharField(max_length=50, blank=True)
     note                = models.TextField(blank=True)
     unit_price          = models.DecimalField(max_digits=10, decimal_places=2)

@@ -23,7 +23,7 @@ from store.models import SellerProduct, Order, Coupon
 from api_integration.models import ProductListing
 from account.models import User
 from . serializers import (
-    SubscriptionPlanSerializer,
+    SubscriptionPlanSerializer, CheckoutSerializer, ShippingAddressSerializer
 
 )
 
@@ -82,9 +82,6 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 # 1. Checkout — Create Embedded Checkout Session (returns client_secret)
 # ============================================================================
 
-# payment/views.py এর CreateCheckoutSessionView ক্লাসটি এভাবে আপডেট করুন
-
-# payment/views.py
 
 class CreateCheckoutSessionView(APIView):
     permission_classes = [IsAuthenticated]
@@ -92,15 +89,19 @@ class CreateCheckoutSessionView(APIView):
     @transaction.atomic
     def post(self, request):
         items_data = request.data.get('items', [])
-        shipping_address = request.data.get('shipping_address')
-        
-        # ১. মেইন বডি (Root) থেকে কুপন কোডটি নেওয়া হচ্ছে
+        shipping_address_data = request.data.get('shipping_address')
         root_coupon_code = request.data.get('coupon_code', '').strip()
 
         if not items_data:
             return Response({'error': 'Items list is required.'}, status=400)
-        if not shipping_address:
+        if not shipping_address_data:
             return Response({'error': 'shipping_address is required.'}, status=400)
+
+        # Validate structured shipping address
+        address_serializer = ShippingAddressSerializer(data=shipping_address_data)
+        if not address_serializer.is_valid():
+            return Response({'error': address_serializer.errors}, status=400)
+        addr = address_serializer.validated_data
 
         total_item_price = Decimal('0')
         total_shipping_fee = Decimal('0')
@@ -109,12 +110,9 @@ class CreateCheckoutSessionView(APIView):
         line_items = []
         validated_items = []
 
-        # ২. সব আইটেম লুপ চালিয়ে প্রসেস করা
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            
-            # ৩. আইটেমের ভেতরে কুপন কোড না থাকলে মেইন (Root) কুপন কোডটি ব্যবহার করবে
             c_code = item.get('coupon_code', '') or root_coupon_code
 
             try:
@@ -122,14 +120,12 @@ class CreateCheckoutSessionView(APIView):
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found or not approved.'}, status=404)
 
-            # ডিসকাউন্ট ও ফি ক্যালকুলেশন কল
             res = _calculate_order_amounts(product, qty, c_code)
 
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
             total_discount += res['discount_amount']
 
-            # ৪. স্ট্রাইপ লাইন আইটেম তৈরি
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
@@ -147,22 +143,44 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(res['item_total'])
             })
 
-        # ৫. সার্ভিস ফি ক্যালকুলেশন (৮%)
+        # Service fee calculation (8% of item total + shipping)
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
         final_grand_total = total_item_price + total_shipping_fee + service_fee
 
-        # ৬. পেমেন্ট রেকর্ড তৈরি
+        # Build human-readable address string for legacy field
+        address_line2_part = f", {addr['address_line2']}" if addr.get('address_line2') else ''
+        shipping_address_str = (
+            f"{addr['first_name']} {addr['last_name']}, "
+            f"{addr['address_line1']}{address_line2_part}, "
+            f"{addr['city']}, {addr['state']} {addr['zip_code']}, "
+            f"{addr['country']}"
+        )
+
+        # Create payment record
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
-            shipping_address=shipping_address,
+
+            # Legacy plain-text field
+            shipping_address=shipping_address_str,
+
+            # Structured address fields
+            shipping_first_name=addr['first_name'],
+            shipping_last_name=addr['last_name'],
+            shipping_address_line1=addr['address_line1'],
+            shipping_address_line2=addr.get('address_line2', ''),
+            shipping_city=addr['city'],
+            shipping_state=addr['state'],
+            shipping_zip_code=addr['zip_code'],
+            shipping_country=addr['country'],
+
             unit_price=total_item_price,
-            total_amount=total_item_price + total_shipping_fee + total_discount,  
+            total_amount=total_item_price + total_shipping_fee + total_discount,
             item_total=total_item_price,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            discount_amount=total_discount,  
-            final_amount=final_grand_total, 
+            discount_amount=total_discount,
+            final_amount=final_grand_total,
             currency='usd',
             status='PENDING'
         )
@@ -193,7 +211,6 @@ class CreateCheckoutSessionView(APIView):
             payment.stripe_checkout_session_id = session.id
             payment.save()
 
-            # ৭. আপনার অরিজিনাল রেসপন্স ফরম্যাট
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
@@ -422,8 +439,6 @@ class StripeWebhookView(APIView):
 # 4. Stripe Connect — Create a Seller's Stripe account (no changes)
 # ============================================================================
 
-# payment/views.py
-
 class SellerStripeConnectView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -433,7 +448,6 @@ class SellerStripeConnectView(APIView):
         except Exception:
             return Response({"success": False, "message": "You are not an approved seller."}, status=403)
 
-        # ১. যদি সেলারের আইডি না থাকে, নতুন এক্সপ্রেস একাউন্ট তৈরি করা
         if not seller.stripe_account_id:
             account = stripe.Account.create(
                 type='express',
@@ -444,7 +458,6 @@ class SellerStripeConnectView(APIView):
             seller.stripe_account_id = account.id
             seller.save()
 
-        # ২. অনবোর্ডিং লিঙ্ক জেনারেট করা
         account_link = stripe.AccountLink.create(
             account=seller.stripe_account_id,
             refresh_url=settings.STRIPE_CONNECT_REFRESH_URL,
@@ -471,7 +484,6 @@ class RequestPayoutView(APIView):
         seller = request.user.seller_profile
         amount = Decimal(request.data.get('amount', 0))
 
-        # ভ্যালিডেশন
         if amount < Decimal('10.00'):
             return Response({"success": False, "message": "Minimum payout is $10.00"}, status=400)
 
@@ -479,15 +491,11 @@ class RequestPayoutView(APIView):
             return Response({"success": False, "message": "Insufficient balance."}, status=400)
 
         try:
-            # স্ট্রাইপ ড্যাশবোর্ড থেকে টাকা ব্যাংকে পাঠানোর জন্য পেমেন্ট ট্রিগার (Express account)
-            # নোট: সাধারণত এক্সপ্রেস একাউন্টে স্ট্রাইপ অটোমেটিক পে-আউট করে,
-            # তবে আমরা এখানে ম্যানুয়ালি ট্রান্সফার রেকর্ড মেইনটেইন করছি।
 
             seller.available_balance -= amount
             seller.total_withdrawn += amount
             seller.save()
 
-            # এখানে একটি PayoutRecord তৈরি করবেন (আপনার ড্যাশবোর্ডে হিস্ট্রি দেখানোর জন্য)
             return Response({
                 "success": True,
                 "code": 200,
@@ -704,12 +712,10 @@ class ProductClickTrackerView(APIView):
         plan = sub.plan
         today = timezone.now().date()
 
-        # ২. দিন পরিবর্তন হলে ক্লিক রিসেট করা
         if user.last_click_date != today:
             user.daily_click_count = 0
             user.last_click_date = today
 
-        # ৩. ক্লিক লিমিট চেক (৫, ৪০, ৬০ ইত্যাদি ডক অনুযায়ী)
         if user.daily_click_count >= plan.clicks_per_day:
             return Response({
                 "error": "Daily click limit reached!",
@@ -717,17 +723,14 @@ class ProductClickTrackerView(APIView):
                 "message": "Upgrade your plan for more access."
             }, status=429)
 
-        # ৪. ক্লিক কাউন্ট বাড়ানো
         user.daily_click_count += 1
         user.save(update_fields=['daily_click_count', 'last_click_date'])
 
-        # ৫. রিটেইল ইউআরএল এ পাঠিয়ে দেওয়া
         listing = get_object_or_404(ProductListing, id=listing_id)
         return Response({"redirect_url": listing.external_url})
 
 
 class SubscriptionPlanListView(APIView):
-    """ইউজারকে ৫টি প্ল্যান দেখানোর জন্য"""
     permission_classes = [AllowAny]
 
     def get(self, request):
@@ -743,7 +746,6 @@ class SubscriptionPlanListView(APIView):
 
 
 class CreateSubscriptionCheckoutView(APIView):
-    """ইউজার যখন কোনো প্ল্যান (Free বা Paid) একটিভ/কিনতে চাবে"""
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
@@ -820,7 +822,6 @@ class UserSubscriptionStatusView(APIView):
                 }
             })
 
-        # কেইস ২: ইউজার প্রো বা অন্য কোনো একটিভ প্ল্যানে আছে (স্ক্রিনশট অনুযায়ী ডাটা)
         return Response({
             "success": True,
             "data": {
@@ -832,13 +833,12 @@ class UserSubscriptionStatusView(APIView):
                 "has_used_trial": True,
                 "days_remaining": sub.days_remaining,
                 "clicks_left": sub.plan.clicks_per_day - sub.daily_click_count,
-                "features": sub.plan.features        # ✅ নতুন: ডিজাইন অনুযায়ী টিক মার্কের লিস্ট
+                "features": sub.plan.features  
             }
         })
 
 
 class CreateSubscriptionCheckoutView(APIView):
-    """ইউজার যখন কোনো প্ল্যান সাবস্ক্রাইব করতে চাবে"""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -886,7 +886,6 @@ class ManageSubscriptionView(APIView):
 
     def get(self, request):
         from payment.models import UserSubscription
-        # সরাসরি কুয়েরি করা হচ্ছে যাতে লেটেস্ট ডাটা পাওয়া যায়
         sub = UserSubscription.objects.filter(user=request.user).first()
 
         if not sub or not sub.stripe_customer_id:

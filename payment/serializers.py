@@ -5,6 +5,20 @@ from decimal import Decimal
 
 
 # ============================================================================
+# Shipping Address (reusable)
+# ============================================================================
+
+class ShippingAddressSerializer(serializers.Serializer):
+    first_name    = serializers.CharField(max_length=100)
+    last_name     = serializers.CharField(max_length=100)
+    address_line1 = serializers.CharField(max_length=255)
+    address_line2 = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    city          = serializers.CharField(max_length=100)
+    state         = serializers.CharField(max_length=100)
+    zip_code      = serializers.CharField(max_length=20)
+    country       = serializers.CharField(max_length=100)
+
+# ============================================================================
 # Checkout
 # ============================================================================
 
@@ -14,7 +28,7 @@ class CheckoutSerializer(serializers.Serializer):
         queryset=SellerProduct.objects.filter(status='APPROVED')
     )
     quantity         = serializers.IntegerField(min_value=1, default=1)
-    shipping_address = serializers.CharField(max_length=500)
+    shipping_address = ShippingAddressSerializer()  # ← nested object এখন
     coupon_code      = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
     note             = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
 
@@ -41,6 +55,7 @@ class CheckoutSerializer(serializers.Serializer):
         return attrs
 
 
+
 # ============================================================================
 # Payment
 # ============================================================================
@@ -51,6 +66,7 @@ class PaymentSerializer(serializers.ModelSerializer):
     shop_name       = serializers.CharField(source='seller_product.seller.shop_name', read_only=True, allow_null=True)
     order_status    = serializers.CharField(source='order.status', read_only=True, allow_null=True)
     status_display  = serializers.CharField(source='get_status_display', read_only=True)
+    shipping_address = serializers.SerializerMethodField()  # ← structured object হিসেবে return
 
     class Meta:
         model  = Payment
@@ -63,14 +79,25 @@ class PaymentSerializer(serializers.ModelSerializer):
             'status', 'status_display',
             'order_id', 'order_status',
             'stripe_checkout_url',
-            'shipping_address', 'note',
+            'shipping_address', 'note',  # shipping_address এখন nested object
             'created_at', 'updated_at',
         ]
         read_only_fields = fields
 
+    def get_shipping_address(self, obj):
+        return {
+            'first_name':    obj.shipping_first_name,
+            'last_name':     obj.shipping_last_name,
+            'address_line1': obj.shipping_address_line1,
+            'address_line2': obj.shipping_address_line2,
+            'city':          obj.shipping_city,
+            'state':         obj.shipping_state,
+            'zip_code':      obj.shipping_zip_code,
+            'country':       obj.shipping_country,
+        }
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # No need to show checkout_url unless it's pending.
         if instance.status != 'PENDING':
             data['stripe_checkout_url'] = None
         return data
@@ -83,6 +110,7 @@ class PaymentDetailSerializer(PaymentSerializer):
             'stripe_checkout_session_id',
             'stripe_payment_intent_id',
         ]
+
 
 
 # ============================================================================

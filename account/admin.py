@@ -6,56 +6,53 @@ from .models import User, Profile
 from django.contrib.auth.models import Group
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
-"""=========================unregister Models from admin========================="""
+# [FIX] আগে চেক করে আন-রেজিস্টার করা যাতে AlreadyRegistered এরর না আসে
+if admin.site.is_registered(User):
+    admin.site.unregister(User)
 
+if admin.site.is_registered(Group):
+    admin.site.unregister(Group)
 
 if admin.site.is_registered(OutstandingToken):
     admin.site.unregister(OutstandingToken)
+
 if admin.site.is_registered(BlacklistedToken):
     admin.site.unregister(BlacklistedToken)
-admin.site.unregister(Group)
 
-
-"""=========================Register Models to admin========================="""
 
 @admin.register(User)
 class UserAdmin(ModelAdmin):
     list_display = (
-        'email', 'otp', 'name', 'ads_provided', 'is_active',
-        'date_joined', 'referral_code', 'balance',
-        'has_claimed_referral', 'referred_by'
+        'email', 'name', 'display_buyer_activity', 'is_active', 
+        'date_joined', 'balance', 'referral_code'
     )
-    # list_editable = ('ads_provided',) 
     search_fields = ('email', 'name', 'referral_code')
-    list_filter = ('has_claimed_referral', 'is_active', 'ads_provided')
-    ordering = ('email',)
-    # readonly_fields = ('email',  'referral_code', 'has_claimed_referral', 'balance', 
-    #                    'referred_by', 'ads_provided', 'is_active', 'otp', 
-    #                    'profile_setup_completed', 'date_joined','last_login', 'is_superuser', 
-    #                    'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined', 
-    #                    'profile_setup_completed','groups', 'user_permissions','password','name',
-    #                    'address' , 'savings_comparison', 'savings_coupons', 'total_lifetime_savings')
+    list_filter = ('is_active', 'ads_provided', 'has_claimed_referral')
+    ordering = ('-date_joined',)
     
-    # Unfold specific configurations
+    # Unfold specific
     list_filter_submit = True 
     list_fullwidth = True 
 
+    # [Client Requirement] Buyer Activity Tracking (Alerts/Favorites)
+    @display(description='Buyer Metrics (Alerts/Favs)', label=True)
+    def display_buyer_activity(self, obj):
+        # আপনার মডেল রিলেশন অনুযায়ী কাউন্ট
+        alerts_count = obj.price_alerts.count() if hasattr(obj, 'price_alerts') else 0
+        favs_count = obj.favorites.count() if hasattr(obj, 'favorites') else 0
+        
+        return format_html(
+            '<span title="Price Alerts">🔔 {}</span> &nbsp; | &nbsp; <span title="Saved Deals">⭐ {}</span>',
+            alerts_count, favs_count
+        )
 
 @admin.register(Profile)
 class ProfileAdmin(ModelAdmin):
-    list_display = ('user', 'display_profile_picture', 'address', 'interests', 'profile_picture')
-    search_fields = ('user__email', 'user__name')
-    ordering = ('user__email',)
-    readonly_fields = ('user', 'display_profile_picture', 'address', 'interests', 'profile_picture')
-    
-    # Unfold specific
-    list_filter_submit = True
+    list_display = ('user', 'display_profile_picture', 'address')
+    readonly_fields = ('display_profile_picture',)
 
     @display(description='Profile Picture')
     def display_profile_picture(self, obj):
         if obj.profile_picture:
-            return format_html(
-                '<img src="{}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;" />',
-                obj.profile_picture.url
-            )
+            return format_html('<img src="{}" style="width: 40px; height: 40px; border-radius: 50%;" />', obj.profile_picture.url)
         return "No Image"

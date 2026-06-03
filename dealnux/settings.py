@@ -31,12 +31,15 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+
+
 def get_env_list(var_name, default=""):
     value = os.getenv(var_name, default)
     if not value:
         return []
 
     return [item.strip() for item in value.split(",") if item.strip()]
+
 
 # Security settings
 SECRET_KEY = os.getenv('SECRET_KEY')
@@ -65,7 +68,8 @@ CSRF_COOKIE_HTTPONLY = True
 SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False') == 'True'
 # HSTS settings
 SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0'))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv(
+    'SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
 SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False') == 'True'
 
 # browser protections
@@ -101,13 +105,14 @@ INSTALLED_APPS = [
     'blog',
     'career',
     'pages',
-    
+    'homepage',
+
 
     # Third-party apps
     'corsheaders',
     'rest_framework',
     'drf_spectacular',
-    
+
 ]
 
 AUTH_USER_MODEL = 'account.User'
@@ -184,6 +189,31 @@ TEMPLATES = [
     },
 ]
 
+
+def dashboard_callback(request, context):
+    from payment.models import Payment, SellerPayout
+    from store.models import Order
+    from django.db.models import Sum
+
+    # ক্লায়েন্টের চাহিদা অনুযায়ী ডাটা
+    revenue = Payment.objects.filter(status='PAID').aggregate(
+        Sum('final_amount'))['final_amount__sum'] or 0
+    fees = SellerPayout.objects.aggregate(Sum('platform_fee_amount'))[
+        'platform_fee_amount__sum'] or 0
+
+    context.update({
+        "kpi_cards": [
+            {"title": "Total Revenue", "metric": f"${revenue}",
+                "footer": "Total marketplace sales"},
+            {"title": "Platform Fees", "metric": f"${fees}",
+                "footer": "DealNux earnings"},
+            {"title": "Open Orders", "metric": Order.objects.filter(
+                status='PENDING').count(), "footer": "Awaiting processing"},
+        ]
+    })
+    return context
+
+
 UNFOLD = {
     "SITE_TITLE": "Dealnux Admin",
     "SITE_HEADER": "Dealnux Administration",
@@ -205,177 +235,236 @@ UNFOLD = {
         },
     },
 
-    # "SIDEBAR": {
-    #     "show_search": True,
-    #     "show_all_applications": False,
-    #     "navigation": [
-    #         {
-    #             "title": "Dashboard",
-    #             "separator": False,
-    #             "items": [
-    #                 {
-    #                     "title": "Home",
-    #                     "icon": "home",
-    #                     "link": "/admin/",
-    #                 },
-    #             ],
-    #         },
-    #         {
-    #             "title": "👤 User Management",
-    #             "separator": True,
-    #             "items": [
-    #                 {
-    #                     "title": "Users",
-    #                     "icon": "people",
-    #                     "link": "/admin/account/user/",
-    #                 },
-    #                 {
-    #                     "title": "Profiles",
-    #                     "icon": "manage_accounts",
-    #                     "link": "/admin/account/profile/",
-    #                 },
-    #             ],
-    #         },
-    #         {
-    #             "title": "🛍️ Products",
-    #             "separator": True,
-    #             "items": [
-    #                 {
-    #                     "title": "Products",
-    #                     "icon": "inventory_2",
-    #                     "link": "/admin/api_integration/product/",
-    #                 },
-    #                 {
-    #                     "title": "Categories",
-    #                     "icon": "category",
-    #                     "link": "/admin/api_integration/category/",
-    #                 },
-    #                 {
-    #                     "title": "Platforms",
-    #                     "icon": "device_hub",
-    #                     "link": "/admin/api_integration/platform/",
-    #                 },
-    #                 {
-    #                     "title": "Product Listings",
-    #                     "icon": "list_alt",
-    #                     "link": "/admin/api_integration/productlisting/",
-    #                 },
-    #                 {
-    #                     "title": "Price Histories",
-    #                     "icon": "trending_down",
-    #                     "link": "/admin/api_integration/pricehistory/",
-    #                 },
-    #                 {
-    #                     "title": "Favorites",
-    #                     "icon": "favorite",
-    #                     "link": "/admin/api_integration/favorite/",
-    #                 },
-    #             ],
-    #         },
-    #         {
-    #             "title": "🏪 Seller Marketplace",
-    #             "separator": True,
-    #             "items": [
-    #                 {
-    #                     "title": "Seller Requests",
-    #                     "icon": "store",
-    #                     "link": "/admin/store/sellerrequest/",
-    #                     "badge": "store.admin.pending_seller_requests_count",
-    #                 },
-    #                 {
-    #                     "title": "Seller Profiles",
-    #                     "icon": "storefront",
-    #                     "link": "/admin/store/sellerprofile/",
-    #                 },
-    #                 {
-    #                     "title": "Seller Products",
-    #                     "icon": "shopping_bag",
-    #                     "link": "/admin/store/sellerproduct/",
-    #                     "badge": "store.admin.pending_products_count",
-    #                 },
-    #                 {
-    #                     "title": "Orders",
-    #                     "icon": "receipt_long",
-    #                     "link": "/admin/store/order/",
-    #                 },
-    #                 {
-    #                     "title": "Coupons",
-    #                     "icon": "local_offer",
-    #                     "link": "/admin/store/coupon/",
-    #                 },
-    #             ],
-    #         },
-    #         {
-    #             "title": "📢 Advertisements",
-    #             "separator": True,
-    #             "items": [
-    #                 {
-    #                     "title": "Custom Ads",
-    #                     "icon": "campaign",
-    #                     "link": "/admin/custom_ads/customad/",
-    #                 },
-    #                 {
-    #                     "title": "Advertiser Requests",
-    #                     "icon": "request_page",
-    #                     "link": "/admin/custom_ads/advertiserrequest/",
-    #                     "badge": "custom_ads.admin.pending_advertiser_requests_count",
-    #                 },
-    #                 {
-    #                     "title": "Ad Reviews",
-    #                     "icon": "rate_review",
-    #                     "link": "/admin/custom_ads/adreview/",
-    #                 },
-    #                 {
-    #                     "title": "Ad Settings",
-    #                     "icon": "tune",
-    #                     "link": "/admin/custom_ads/adsetting/",
-    #                 },
-    #             ],
-    #         },
-    #         {
-    #             "title": "💳 Payment",
-    #             "separator": True,
-    #             "items": [
-    #                 {
-    #                     "title": "Payments",
-    #                     "icon": "payments",
-    #                     "link": "/admin/payment/payment/",
-    #                 },
-    #                 {
-    #                     "title": "Seller Payouts",
-    #                     "icon": "account_balance_wallet",
-    #                     "link": "/admin/payment/sellerpayout/",
-    #                 },
-    #             ],
-    #         },
-    #         {
-    #             "title": "📋 Policy",
-    #             "separator": True,
-    #             "items": [
-    #                 {
-    #                     "title": "Privacy Policy",
-    #                     "icon": "privacy_tip",
-    #                     "link": "/admin/policy/privacy_policy/",
-    #                 },
-    #                 {
-    #                     "title": "Terms of Service",
-    #                     "icon": "gavel",
-    #                     "link": "/admin/policy/terms_of_service/",
-    #                 },
-    #                 {
-    #                     "title": "Cookie Policy",
-    #                     "icon": "cookie",
-    #                     "link": "/admin/policy/cookie_policy/",
-    #                 },
-    #                 {
-    #                     "title": "Reviews",
-    #                     "icon": "reviews",
-    #                     "link": "/admin/policy/review/",
-    #                 },
-    #             ],
-    #         },
-    #     ],
-    # },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "DASHBOARD": {
+            "callback": "dealnux.settings.dashboard_callback",  # সঠিক পাথ দিন
+        },
+        "navigation": [
+            # {
+            #     "title": "Dashboard & Performance",  # মেনু গ্রুপ টাইটেল
+            #     "separator": True,
+            #     "items": [  # এই 'items' কি-টি মিসিং থাকলে KeyError আসে
+            #         {
+            #             "title": "Performance Overview",
+            #             "icon": "dashboard",
+            #             "link": "/admin/",
+            #         },
+            #         {
+            #             "title": "API Usage Tracking",
+            #             "icon": "api",
+            #             "link": "/admin/api_integration/platform/",
+            #         },
+            #     ],
+            # },
+            {
+                "title": "🖼️ Homepage Banners",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Main Slider Banners",
+                        "icon": "slideshow",
+                        "link": "/admin/homepage/mainsliderbanner/",
+                    },
+                    {
+                        "title": "Side Banners",
+                        "icon": "view_sidebar",
+                        "link": "/admin/homepage/sidebanner/",
+                    },
+                ],
+            },
+            {
+                "title": "👤 User Management",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Users",
+                        "icon": "people",
+                        "link": "/admin/account/user/",
+                    },
+                    {
+                        "title": "Profiles",
+                        "icon": "manage_accounts",
+                        "link": "/admin/account/profile/",
+                    },
+                ],
+            },
+            {
+                "title": "🛍️ Products",
+                "separator": True,
+                "items": [
+                    # {
+                    #     "title": "Products",
+                    #     "icon": "inventory_2",
+                    #     "link": "/admin/api_integration/product/",
+                    # },
+                    {
+                        "title": "Categories",
+                        "icon": "category",
+                        "link": "/admin/api_integration/category/",
+                    },
+                    {
+                        "title": "Platforms",
+                        "icon": "device_hub",
+                        "link": "/admin/api_integration/platform/",
+                    },
+                    {
+                        "title": "Product Listings",
+                        "icon": "list_alt",
+                        "link": "/admin/api_integration/productlisting/",
+                    },
+                    {
+                        "title": "Price Histories",
+                        "icon": "trending_down",
+                        "link": "/admin/api_integration/pricehistory/",
+                    },
+                    # {
+                    #     "title": "Favorites",
+                    #     "icon": "favorite",
+                    #     "link": "/admin/api_integration/favorite/",
+                    # },
+                ],
+            },
+            {
+                "title": "🏪 Seller Marketplace",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Seller Requests",
+                        "icon": "store",
+                        "link": "/admin/store/sellerrequest/",
+                        "badge": "store.admin.pending_seller_requests_count",
+                    },
+                    {
+                        "title": "Seller Profiles",
+                        "icon": "storefront",
+                        "link": "/admin/store/sellerprofile/",
+                    },
+                    {
+                        "title": "Seller Products",
+                        "icon": "shopping_bag",
+                        "link": "/admin/store/sellerproduct/",
+                        "badge": "store.admin.pending_products_count",
+                    },
+                    {
+                        "title": "Orders",
+                        "icon": "receipt_long",
+                        "link": "/admin/store/order/",
+                    },
+                    {
+                        "title": "Coupons",
+                        "icon": "local_offer",
+                        "link": "/admin/store/coupon/",
+                    },
+                ],
+            },
+            {
+                "title": "📢 Advertisements",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Custom Ads",
+                        "icon": "campaign",
+                        "link": "/admin/custom_ads/customad/",
+                    },
+                    {
+                        "title": "Advertiser Requests",
+                        "icon": "request_page",
+                        "link": "/admin/custom_ads/advertiserrequest/",
+                        "badge": "custom_ads.admin.pending_advertiser_requests_count",
+                    },
+                    {
+                        "title": "Ad Reviews",
+                        "icon": "rate_review",
+                        "link": "/admin/custom_ads/adreview/",
+                    },
+                    {
+                        "title": "Ad Settings",
+                        "icon": "tune",
+                        "link": "/admin/custom_ads/adsetting/",
+                    },
+                ],
+            },
+            {
+                "title": "💳 Payment",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Payments",
+                        "icon": "payments",
+                        "link": "/admin/payment/payment/",
+                    },
+                    {
+                        "title": "Seller Payouts",
+                        "icon": "account_balance_wallet",
+                        "link": "/admin/payment/sellerpayout/",
+                    },
+                ],
+            },
+            {
+                "title": "📋 Policy",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Privacy Policy",
+                        "icon": "privacy_tip",
+                        "link": "/admin/policy/privacy_policy/",
+                    },
+                    {
+                        "title": "Terms of Service",
+                        "icon": "assignment",
+                        "link": "/admin/policy/terms_of_service/",
+                    },
+                    {
+                        "title": "Cookie Policy",
+                        "icon": "cookie",
+                        "link": "/admin/policy/cookie_policy/",
+                    },
+                    {
+                        "title": "Refund Policy",
+                        "icon": "currency_exchange",
+                        "link": "/admin/policy/refund_policy/",
+                    },
+                    {
+                        "title": "EMI Payment Policy",
+                        "icon": "credit_card",
+                        "link": "/admin/policy/emi_payment_policy/",
+                    },
+                    {
+                        "title": "Warranty Policy",
+                        "icon": "verified_user",
+                        "link": "/admin/policy/warranty_policy/",
+                    },
+                    {
+                        "title": "Exchange Policy",
+                        "icon": "swap_horiz",
+                        "link": "/admin/policy/exchange_policy/",
+                    },
+                    {
+                        "title": "Delivery Policy",
+                        "icon": "local_shipping",
+                        "link": "/admin/policy/delivery_policy/",
+                    },
+                    {
+                        "title": "Pre-Order Policy",
+                        "icon": "pending_actions",
+                        "link": "/admin/policy/pre_order_policy/",
+                    },
+                    {
+                        "title": "Return Policy",
+                        "icon": "assignment_return",
+                        "link": "/admin/policy/return_policy/",
+                    },
+                    {
+                        "title": "Reviews",
+                        "icon": "reviews",
+                        "link": "/admin/policy/review/",
+                    },
+                ],
+            },
+        ],
+    },
 }
 
 # Add this to settings.py
@@ -426,18 +515,18 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE     = 'UTC'
-USE_I18N      = True
-USE_TZ        = True
+TIME_ZONE = 'UTC'
+USE_I18N = True
+USE_TZ = True
 
-REDIS_URL     = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 
-CELERY_BROKER_URL        = os.getenv('REDIS_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND    = CELERY_BROKER_URL
-CELERY_ACCEPT_CONTENT    = ['json']
-CELERY_TASK_SERIALIZER   = 'json'
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE          = 'UTC'
+CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TIME_LIMIT = 300  # 5 minutes max per task
 CELERY_TASK_SOFT_TIME_LIMIT = 240  # 4 minutes soft limit
 
@@ -460,7 +549,7 @@ CELERY_BEAT_SCHEDULE = {
 # CELERY_BEAT_SCHEDULE = {
 #     'hourly-category-sync': {
 #         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-#         'schedule': crontab(minute=0, hour='*/24'), 
+#         'schedule': crontab(minute=0, hour='*/24'),
 #     },
 # }
 # Internationalization
@@ -470,10 +559,10 @@ CELERY_BEAT_SCHEDULE = {
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL  = 'static/'
+STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
-MEDIA_URL   = '/media/'
-MEDIA_ROOT  = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -487,41 +576,39 @@ CACHES = {
     }
 }
 
-EMAIL_BACKEND       = os.getenv('EMAIL_BACKEND')
-EMAIL_HOST          = os.getenv('EMAIL_HOST')
-EMAIL_USE_TLS       = os.getenv('EMAIL_USE_TLS') == 'True'
-EMAIL_PORT          = os.getenv('EMAIL_PORT')
-EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER')
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
+EMAIL_HOST = os.getenv('EMAIL_HOST')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS') == 'True'
+EMAIL_PORT = os.getenv('EMAIL_PORT')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL')
 SITE_URL = os.environ.get('SITE_URL')
 
-GOOGLE_OAUTH2_CLIENT_ID     = os.getenv('GOOGLE_OAUTH2_CLIENT_ID')
+GOOGLE_OAUTH2_CLIENT_ID = os.getenv('GOOGLE_OAUTH2_CLIENT_ID')
 GOOGLE_OAUTH2_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH2_CLIENT_SECRET')
-GOOGLE_OAUTH2_REDIRECT_URI  = os.getenv('GOOGLE_OAUTH2_REDIRECT_URI')
+GOOGLE_OAUTH2_REDIRECT_URI = os.getenv('GOOGLE_OAUTH2_REDIRECT_URI')
 
 
-# revinewcat credential 
+# revinewcat credential
 REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
 REVENUECAT_WEBHOOK_AUTH_HEADER = os.getenv('REVENUECAT_WEBHOOK_AUTH_HEADER')
 
 RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
 
 
-STRIPE_PUBLIC_KEY          = os.getenv('STRIPE_PUBLIC_KEY')
-STRIPE_SECRET_KEY          = os.getenv('STRIPE_SECRET_KEY')
-STRIPE_WEBHOOK_SECRET      = os.getenv('STRIPE_WEBHOOK_SECRET')
-STRIPE_SUCCESS_URL         = os.getenv('STRIPE_SUCCESS_URL')
-STRIPE_CANCEL_URL          = os.getenv('STRIPE_CANCEL_URL')
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_SUCCESS_URL = os.getenv('STRIPE_SUCCESS_URL')
+STRIPE_CANCEL_URL = os.getenv('STRIPE_CANCEL_URL')
 STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
-STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
+STRIPE_CONNECT_RETURN_URL = os.getenv('STRIPE_CONNECT_RETURN_URL')
 STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
 
 
 # HTTPS Fix for Nginx Reverse Proxy
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-

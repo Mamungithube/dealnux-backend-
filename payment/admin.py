@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils import timezone
-
+from django.db.models import Sum
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display, action
 from unfold.contrib.filters.admin import RangeDateFilter
@@ -19,6 +19,12 @@ class PaymentAdmin(ModelAdmin):
     warn_unsaved_form   = True
     list_fullwidth      = True
     list_filter_submit  = True
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # আনফোল্ডে লিস্টের উপরে সামারি দেখানোর জন্য এগ্রিগেশন
+        self.total_revenue = qs.filter(status='PAID').aggregate(Sum('final_amount'))['final_amount__sum'] or 0
+        return qs
 
     list_display = [
         'display_buyer',
@@ -98,6 +104,10 @@ class PaymentAdmin(ModelAdmin):
         if 'delete_selected' in actions:
             del actions['delete_selected']
         return actions
+    
+    @display(description='Admin Fee', ordering='service_fee')
+    def admin_fee_display(self, obj):
+        return format_html('<b style="color: #10b981;">${}</b>', obj.service_fee)
 
     @display(description='Buyer', ordering='buyer__email')
     def display_buyer(self, obj):
