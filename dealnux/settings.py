@@ -540,7 +540,7 @@ CHANNEL_LAYERS = {
 CELERY_BEAT_SCHEDULE = {
     'daily-category-sync': {
         'task': 'api_integration.tasks.hourly_fixed_category_sync',
-        'schedule': crontab(hour=2, minute=0),  # ✅ প্রতিদিন রাত ২টায় একবার
+        'schedule': crontab(hour=2, minute=0), 
     },
 }
 
@@ -584,6 +584,7 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL')
 SITE_URL = os.environ.get('SITE_URL')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
 
 GOOGLE_OAUTH2_CLIENT_ID = os.getenv('GOOGLE_OAUTH2_CLIENT_ID')
 GOOGLE_OAUTH2_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH2_CLIENT_SECRET')

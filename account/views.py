@@ -1,3 +1,5 @@
+import profile
+
 from django.shortcuts import render
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
@@ -619,15 +621,20 @@ class ProfileSetupView(APIView):
                 # Create or update profile
                 profile, created = Profile.objects.get_or_create(user=user)
 
-                address = serializer.validated_data.get('address')
+                address_data = serializer.validated_data.get('address')
                 interests = serializer.validated_data.get('interests')
                 profile_picture = serializer.validated_data.get(
                     'profile_picture')
                 referred_by_code = serializer.validated_data.get(
                     'referred_by_code')
 
-                if address:
-                    profile.address = address
+                if address_data:
+                    profile.address   = serializer.validated_data.get('address', '')
+                    profile.address_2 = serializer.validated_data.get('address_2', '')
+                    profile.city      = serializer.validated_data.get('city', '')
+                    profile.state     = serializer.validated_data.get('state', '')
+                    profile.zip_code  = serializer.validated_data.get('zip_code', '')
+                    profile.country   = serializer.validated_data.get('country', '')
 
                 if interests:
                     profile.interests = json.dumps(interests)
