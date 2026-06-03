@@ -142,8 +142,6 @@ REST_FRAMEWORK = {
 }
 
 
-# ==================== JWT ====================
-
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=10),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
@@ -605,9 +603,14 @@ STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 STRIPE_SUCCESS_URL = os.getenv('STRIPE_SUCCESS_URL')
 STRIPE_CANCEL_URL = os.getenv('STRIPE_CANCEL_URL')
 STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
+<<<<<<< Updated upstream
 STRIPE_CONNECT_RETURN_URL = os.getenv('STRIPE_CONNECT_RETURN_URL')
 STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
 
+=======
+STRIPE_CONNECT_RETURN_URL  = os.getenv('STRIPE_CONNECT_RETURN_URL')
+STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
+>>>>>>> Stashed changes
 
 # HTTPS Fix for Nginx Reverse Proxy
 USE_X_FORWARDED_HOST = True
