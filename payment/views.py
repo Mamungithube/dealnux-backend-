@@ -64,7 +64,7 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     shipping = seller_product.shipping_cost if not seller_product.free_shipping else Decimal(
         '0')
 
-    # সার্ভিস ফি (৮%) ডিসকাউন্টেড দামের ওপর
+    # service fee is 8% of (item total + shipping)
     service_fee = (item_total + shipping) * Decimal('0.08')
     final_amount = item_total + shipping + service_fee
 
@@ -200,6 +200,7 @@ class CreateCheckoutSessionView(APIView):
                 line_items=line_items,
                 mode='payment',
                 return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                automatic_tax={'enabled': True},
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
@@ -210,7 +211,7 @@ class CreateCheckoutSessionView(APIView):
 
             payment.stripe_checkout_session_id = session.id
             payment.save()
-
+            tax_amount = Decimal(session.total_details.amount_tax or 0) / 100
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
@@ -218,7 +219,8 @@ class CreateCheckoutSessionView(APIView):
                     'subtotal': float(total_item_price),
                     'shipping': float(total_shipping_fee),
                     'service_fee': float(service_fee),
-                    'grand_total': float(final_grand_total)
+                    'tax': float(tax_amount),        
+                    'grand_total': float(final_grand_total + tax_amount)
                 }
             })
         except Exception as e:
