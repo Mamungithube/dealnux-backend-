@@ -64,14 +64,6 @@ class Command(BaseCommand):
             try:
                 product_data = service.extract_product_data(item)
 
-                # Non-USD skip
-                # if product_data.get('_is_non_usd'):
-                #     self.stdout.write(self.style.WARNING(
-                #         f'  ○ Non-USD listing skipped: {product_data.get("title","")[:50]}'
-                #     ))
-                #     skipped_count += 1
-                #     continue
-
                 external_id = product_data.get('external_id')
 
                 existing = ProductListing.objects.filter(

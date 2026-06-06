@@ -239,25 +239,9 @@ UNFOLD = {
         "show_search": True,
         "show_all_applications": False,
         "DASHBOARD": {
-            "callback": "dealnux.settings.dashboard_callback",  # সঠিক পাথ দিন
+            "callback": "dealnux.settings.dashboard_callback", 
         },
         "navigation": [
-            # {
-            #     "title": "Dashboard & Performance",  # মেনু গ্রুপ টাইটেল
-            #     "separator": True,
-            #     "items": [  # এই 'items' কি-টি মিসিং থাকলে KeyError আসে
-            #         {
-            #             "title": "Performance Overview",
-            #             "icon": "dashboard",
-            #             "link": "/admin/",
-            #         },
-            #         {
-            #             "title": "API Usage Tracking",
-            #             "icon": "api",
-            #             "link": "/admin/api_integration/platform/",
-            #         },
-            #     ],
-            # },
             {
                 "title": "🖼️ Homepage Banners",
                 "separator": True,
@@ -294,11 +278,6 @@ UNFOLD = {
                 "title": "🛍️ Products",
                 "separator": True,
                 "items": [
-                    # {
-                    #     "title": "Products",
-                    #     "icon": "inventory_2",
-                    #     "link": "/admin/api_integration/product/",
-                    # },
                     {
                         "title": "Categories",
                         "icon": "category",
@@ -319,11 +298,6 @@ UNFOLD = {
                         "icon": "trending_down",
                         "link": "/admin/api_integration/pricehistory/",
                     },
-                    # {
-                    #     "title": "Favorites",
-                    #     "icon": "favorite",
-                    #     "link": "/admin/api_integration/favorite/",
-                    # },
                 ],
             },
             {

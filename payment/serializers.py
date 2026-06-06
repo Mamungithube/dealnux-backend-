@@ -28,7 +28,7 @@ class CheckoutSerializer(serializers.Serializer):
         queryset=SellerProduct.objects.filter(status='APPROVED')
     )
     quantity         = serializers.IntegerField(min_value=1, default=1)
-    shipping_address = ShippingAddressSerializer()  # ← nested object এখন
+    shipping_address = ShippingAddressSerializer() 
     coupon_code      = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
     note             = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
 
@@ -66,7 +66,7 @@ class PaymentSerializer(serializers.ModelSerializer):
     shop_name       = serializers.CharField(source='seller_product.seller.shop_name', read_only=True, allow_null=True)
     order_status    = serializers.CharField(source='order.status', read_only=True, allow_null=True)
     status_display  = serializers.CharField(source='get_status_display', read_only=True)
-    shipping_address = serializers.SerializerMethodField()  # ← structured object হিসেবে return
+    shipping_address = serializers.SerializerMethodField()  
 
     class Meta:
         model  = Payment
@@ -79,7 +79,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             'status', 'status_display',
             'order_id', 'order_status',
             'stripe_checkout_url',
-            'shipping_address', 'note',  # shipping_address এখন nested object
+            'shipping_address', 'note',  
             'created_at', 'updated_at',
         ]
         read_only_fields = fields

@@ -130,8 +130,8 @@ class UserLoginSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     name                 = serializers.SerializerMethodField()
     email                = serializers.SerializerMethodField()
-    first_name           = serializers.SerializerMethodField()  # ← নতুন
-    last_name            = serializers.SerializerMethodField()  # ← নতুন
+    first_name           = serializers.SerializerMethodField() 
+    last_name            = serializers.SerializerMethodField() 
     refaradal_code       = serializers.SerializerMethodField()
     interests            = serializers.SerializerMethodField()
     balance              = serializers.SerializerMethodField()
@@ -141,9 +141,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Profile
         fields = [
-            'name', 'first_name', 'last_name', 'email',  # ← নতুন
+            'name', 'first_name', 'last_name', 'email',  
             'profile_picture',
-            'address', 'address_2', 'city', 'state', 'zip_code', 'country',  # ← নতুন
+            'address', 'address_2', 'city', 'state', 'zip_code', 'country',  
             'interests',
             'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by',
         ]
@@ -154,10 +154,10 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_email(self, obj):
         return getattr(obj.user, 'email', '') if obj.user else ''
 
-    def get_first_name(self, obj):  # ← নতুন
+    def get_first_name(self, obj):  
         return getattr(obj.user, 'first_name', '') if obj.user else ''
 
-    def get_last_name(self, obj):   # ← নতুন
+    def get_last_name(self, obj):   
         return getattr(obj.user, 'last_name', '') if obj.user else ''
 
     def get_refaradal_code(self, obj):

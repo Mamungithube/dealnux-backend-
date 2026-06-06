@@ -145,15 +145,6 @@ class VerifyOTPApiView(APIView):
                 "data": {}
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # if user.is_active:
-        #     return Response({
-        #         "success": False,
-        #         "code": status.HTTP_400_BAD_REQUEST,
-        #         "message": "This account is already activated.",
-        #         "timestamp": int(time.time()),
-        #         "data": {}
-        #     }, status=status.HTTP_400_BAD_REQUEST)
-
         if not user.otp:
             return Response({
                 "success": False,
@@ -644,20 +635,11 @@ class ProfileSetupView(APIView):
 
                 profile.save()
 
-                # Referral Bonus Process (Only Once)
-                # print(
-                #     f"[DEBUG] referred_by_code from request: {referred_by_code}")
-                # print(
-                #     f"[DEBUG] user.has_claimed_referral: {user.has_claimed_referral}")
-
                 if referred_by_code and not user.has_claimed_referral:
                     # Trim referral code
                     referred_by_code = referred_by_code.strip()
-                    # print(
-                    #     f"[DEBUG] Trimmed referral code: '{referred_by_code}'")
 
                     if not referred_by_code:
-                        # print("[DEBUG] Referral code is empty after trim")
                         return Response({
                             "success": False,
                             "code": status.HTTP_400_BAD_REQUEST,
@@ -667,15 +649,11 @@ class ProfileSetupView(APIView):
                         }, status=status.HTTP_400_BAD_REQUEST)
 
                     try:
-                        # Find the person whose code is being used
                         referrer = User.objects.get(
                             referral_code=referred_by_code)
-                        # print(
-                        #     f"[DEBUG] Referrer found: {referrer.email} (ID: {referrer.id})")
 
                         # You cannot use your own code.
                         if referrer == user:
-                            # print(f"[DEBUG] User trying to use own code")
                             return Response({
                                 "success": False,
                                 "code": status.HTTP_400_BAD_REQUEST,
@@ -684,12 +662,6 @@ class ProfileSetupView(APIView):
                                 "data": {"referred_by_code": ["Invalid referral code."]}
                             }, status=status.HTTP_400_BAD_REQUEST)
 
-                        #  Bonus day (in atomic transaction)
-                        # print(f"[DEBUG] Adding bonus to referrer and new user")
-                        # print(
-                        #     f"[DEBUG] Referrer old balance: {referrer.balance}")
-                        # print(f"[DEBUG] New user old balance: {user.balance}")
-
                         referrer.balance += 10
                         referrer.save()
 
@@ -697,13 +669,7 @@ class ProfileSetupView(APIView):
                         user.referred_by = referrer
                         user.has_claimed_referral = True
 
-                        # print(
-                        #     f"[DEBUG] Referrer new balance: {referrer.balance}")
-                        # print(f"[DEBUG] New user new balance: {user.balance}")
-                        # print(f"[DEBUG] Referral bonus applied successfully!")
-
                     except User.DoesNotExist:
-                        # print(f"[DEBUG] Referral code not found in database")
                         return Response({
                             "success": False,
                             "code": status.HTTP_400_BAD_REQUEST,
@@ -712,7 +678,6 @@ class ProfileSetupView(APIView):
                             "data": {"referred_by_code": ["Referral code not found."]}
                         }, status=status.HTTP_400_BAD_REQUEST)
 
-                # Mark Profile setup complete.
                 user.profile_setup_completed = True
                 user.save()
 
@@ -777,7 +742,6 @@ class ProfileDetailsView(generics.RetrieveAPIView):
             return {"status": "not_applied"}
         
     def get_subscription_status(self, user):
-        """ইউজারের বর্তমান সাবস্ক্রিপশন ডাটা নিয়ে আসবে"""
         try:
             from payment.models import UserSubscription
             sub = UserSubscription.objects.get(user=user)
@@ -790,7 +754,6 @@ class ProfileDetailsView(generics.RetrieveAPIView):
                 "clicks_left": sub.plan.clicks_per_day - sub.daily_click_count
             }
         except Exception:
-            # যদি কোনো সাবস্ক্রিপশন না থাকে (নতুন ইউজার)
             return {
                 "plan_name": "None",
                 "status": "INACTIVE",
@@ -827,7 +790,6 @@ class ProfileUpdateView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        # Get or create profile for the current user
         profile, created = Profile.objects.get_or_create(
             user=self.request.user)
         return profile
@@ -852,7 +814,6 @@ class ProfileUpdateView(generics.UpdateAPIView):
 
         self.perform_update(serializer)
 
-        # Return full profile data after update
         profile_serializer = ProfileSerializer(
             instance, context=self.get_serializer_context())
         return Response(
@@ -872,7 +833,6 @@ class ProfileUpdateView(generics.UpdateAPIView):
 def start_free_trial(user):
     try:
         free_plan = SubscriptionPlan.objects.get(plan_type='FREE')
-        # অ্যাডমিন ড্যাশবোর্ড থেকে সেট করা দিন (১৪, ৭ বা ৩ দিন)
         trial_duration = free_plan.trial_days 
         
         UserSubscription.objects.create(

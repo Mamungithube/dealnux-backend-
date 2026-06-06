@@ -7,7 +7,6 @@ from datetime import timedelta
 
 def assign_free_trial(user):
     free_plan = SubscriptionPlan.objects.get(plan_type='FREE')
-    # অ্যাডমিন যে দিন সেট করে রেখেছে (৩, ৭ বা ১৪) সেটি নেওয়া হচ্ছে
     duration = free_plan.trial_days 
     
     UserSubscription.objects.create(

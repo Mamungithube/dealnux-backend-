@@ -353,7 +353,7 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='me')
     def me(self, request):
-        """সেলার নিজের প্রোফাইল ডাটা দেখার জন্য এটি ব্যবহার করবে"""
+        """The seller will use this to view their profile data."""
         try:
             seller = request.user.seller_profile
             serializer = self.get_serializer(seller)
@@ -644,20 +644,19 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='update-status')
     def update_status(self, request, pk=None):
         """
-        সেলার এটি কল করবে অর্ডারটি গ্রহণ করার জন্য।
-        এটি স্ট্যাটাসকে PENDING থেকে PROCESSING এ নিয়ে যাবে।
+        The seller will call this to accept the order.
+        This will change the status from PENDING to PROCESSING.
         """
         order = self.get_object()
 
-        # ১. সিকিউরিটি চেক: শুধুমাত্র অর্ডারের আসল সেলার এটি করতে পারবে
+        # Security check: Only the original seller of the order can do this
         if not request.user.is_staff and order.seller.user != request.user:
             return error_response("Access denied. You are not the seller of this order.", code=403)
 
-        # ২. স্ট্যাটাস পরিবর্তন
-        # সেলার যখন একসেপ্ট করবে তখন আমরা ডিফল্টভাবে PROCESSING সেট করে দিচ্ছি
+        # status update
         new_status = request.data.get('status', 'PROCESSING').upper()
 
-        # ভ্যালিডেশন: স্ট্যাটাস কি আমাদের চয়েস লিস্টে আছে?
+        # Validate the new status
         allowed_statuses = [s[0] for s in Order.STATUS_CHOICES]
         if new_status not in allowed_statuses:
             return error_response(f"Invalid status. Choose from: {allowed_statuses}", code=400)
@@ -750,7 +749,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         from payment.models import PayoutRecord 
 
         with transaction.atomic():
-            # ১. ডাটাবেজ স্ট্যাটাস আপডেট
+            # database updates
             order.status = 'ACCEPTED'
             order.is_accepted_by_buyer = True
             order.accepted_at = timezone.now()
@@ -759,13 +758,13 @@ class OrderViewSet(viewsets.ModelViewSet):
             seller_profile = order.seller
             amount_to_release = order.item_total + order.shipping_fee
 
-            # ২. ওয়ালেট ট্রান্সফার
+            # wallet update
             seller_profile.pending_balance -= amount_to_release
             seller_profile.available_balance += amount_to_release
             seller_profile.total_earnings += amount_to_release
             seller_profile.save()
 
-            # ৩. পেমেন্ট হিস্ট্রি রেকর্ড তৈরি (যাতে ড্যাশবোর্ড টেবিলে ডাটা আসে)
+            # payment history update (PayoutRecord)
             import random
             import string
             p_id = "PAY-" + "".join(random.choices(string.digits, k=4))
@@ -777,7 +776,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status="Paid"
             )
 
-            # ৪. স্ট্রাইপ রিয়েল ট্রান্সফার (আগের লজিক)
+            # stripe transfer (if the seller has connected their Stripe account and completed onboarding)
             if seller_profile.stripe_account_id and seller_profile.stripe_onboarding_completed:
                 try:
                     stripe.Transfer.create(
@@ -799,7 +798,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         Case 2: Buyer fault -> Refund (Price only, buyer pays shipping & fees)
         """
         order = self.get_object()
-        fault = request.data.get('fault_party')  # 'SELLER' or 'BUYER'
+        fault = request.data.get('fault_party')  
 
         if fault not in ['SELLER', 'BUYER']:
             return error_response("Invalid fault_party. Must be SELLER or BUYER.", code=400)
@@ -826,7 +825,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return success_response({"refund_amount": float(refund_amount)}, message=f"Refund processed. Fault: {fault}")
 
-    # ── ১. বায়ার অ্যাকশন: ডিসপিউট ওপেন করা ──
+    # ── Buyer Action: Open Dispute ──
 
     @action(detail=True, methods=['post'], url_path='open-dispute')
     def open_dispute(self, request, pk=None):
@@ -850,12 +849,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 reason=request.data.get('reason'),
                 description=request.data.get('description'),
                 evidence_image=request.FILES.get(
-                    'evidence_image')  # যদি ছবি পাঠায়
+                    'evidence_image')  
             )
 
         return success_response(None, message="Dispute opened. Admin will review it soon.")
 
-    # ── ২. অ্যাডমিন অ্যাকশন: ডিসপিউট সমাধান এবং রিফান্ড (ডক অনুযায়ী) ──
+    # ── Admin Action: Resolve Dispute (Approve/Reject + Fault Logic) ──
     @action(detail=True, methods=['post'], url_path='resolve-dispute', permission_classes=[IsAdminUser])
     def resolve_dispute(self, request, pk=None):
         order = self.get_object()
@@ -869,38 +868,30 @@ class OrderViewSet(viewsets.ModelViewSet):
             dispute = order.dispute
 
             if decision == 'REJECT':
-                # যদি অ্যাডমিন দেখে বায়ারের অভিযোগ মিথ্যা
+                
                 dispute.status = 'REJECTED'
-                order.status = 'SHIPPED'  # আবার আগের অবস্থায় ফেরত
+                order.status = 'SHIPPED'  
                 dispute.save()
                 order.save()
                 return success_response(None, message="Dispute rejected. Order set back to Shipped.")
 
-            # --- এপ্রুভ হলে রিফান্ড লজিক (ডক অনুযায়ী) ---
             dispute.status = 'RESOLVED'
             order.status = 'REFUNDED'
             order.fault_party = fault
 
-            # সেলারের পেন্ডিং ওয়ালেট থেকে টাকা সরিয়ে ফেলা
             seller = order.seller
             amount_held = order.item_total + order.shipping_fee
             seller.pending_balance -= amount_held
             seller.save()
 
             if fault == 'SELLER':
-                # Case 1: সেলারের দোষ (Full Refund)
-                # বায়ার পাবে: Item + Shipping + Dealnux Fee
                 refund_amount = order.total_price
             else:
-                # Case 2: বায়ারের দোষ (Partial Refund)
-                # বায়ার পাবে: শুধুমাত্র Item Price (শিপিং ও ফি কাটা যাবে)
                 refund_amount = order.item_total
 
             order.refund_amount = refund_amount
             order.save()
             dispute.save()
-
-            # এখানে Stripe Refund API কল করার কোড বসবে (পরবর্তীতে)
 
         return success_response(
             {"refund_amount": float(refund_amount)},
@@ -911,7 +902,6 @@ class OrderViewSet(viewsets.ModelViewSet):
 # ============================================================================
 # Product Review ViewSet
 # ============================================================================
-
 
 class ProductReviewViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProductReviewSerializer
@@ -1032,18 +1022,14 @@ class CouponViewSet(viewsets.ModelViewSet):
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
-                # আপনার সেই হেল্পার ফাংশন ব্যবহার করে ডিসকাউন্ট বের করা
-                # এটি পেমেন্ট ভিউতেও ব্যবহার হয়েছে, তাই হিসাব দুই জায়গায় একই হবে
                 res = _calculate_order_amounts(product, qty, code)
                 
                 total_discount += res['discount_amount']
                 total_original += Decimal(str(product.price * qty))
                 
-                # রেসপন্সের ডাটা সেট করা
                 applied_seller_shop = product.seller.shop_name
                 last_product_title = product.title if len(items_data) == 1 else f"Multiple Items ({len(items_data)})"
-                
-                # কুপনের তথ্য (একই সেলারের কুপন বলে এগুলো সব আইটেমের জন্য এক হবে)
+
                 coupon = Coupon.objects.filter(code=code, seller=product.seller).first()
                 if coupon:
                     discount_type = coupon.discount_type
@@ -1054,7 +1040,6 @@ class CouponViewSet(viewsets.ModelViewSet):
 
         final_amount = total_original - total_discount
 
-        # আপনার অরিজিনাল ৮টি ফিল্ড রেসপন্স (বিন্দুমাত্র পরিবর্তন নেই)
         return success_response({
             "code":              code,
             "seller_shop":       applied_seller_shop,

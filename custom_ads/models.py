@@ -73,7 +73,6 @@ class CustomAd(models.Model):
             if self.image.size > 10 * 1024 * 1024:
                 raise ValidationError("Image size must be less than 10MB.")
 
-            # ডাইমেনশন চেক (Width & Height)
             width, height = get_image_dimensions(self.image)
             
             if width < 640:

@@ -204,7 +204,7 @@ class SellerProfileAdmin(ModelAdmin):
 
     @action(description="Pause Payout", url_path="pause", variant=ActionVariant.WARNING)
     def pause_payout(self, request, object_id):
-        # পেমেন্ট পজ করার লজিক
+
         pass
 
     list_filter = ['is_active', 'created_at']

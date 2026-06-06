@@ -6,7 +6,6 @@ from .models import User, Profile
 from django.contrib.auth.models import Group
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
-# [FIX] আগে চেক করে আন-রেজিস্টার করা যাতে AlreadyRegistered এরর না আসে
 if admin.site.is_registered(User):
     admin.site.unregister(User)
 
@@ -37,7 +36,6 @@ class UserAdmin(ModelAdmin):
     # [Client Requirement] Buyer Activity Tracking (Alerts/Favorites)
     @display(description='Buyer Metrics (Alerts/Favs)', label=True)
     def display_buyer_activity(self, obj):
-        # আপনার মডেল রিলেশন অনুযায়ী কাউন্ট
         alerts_count = obj.price_alerts.count() if hasattr(obj, 'price_alerts') else 0
         favs_count = obj.favorites.count() if hasattr(obj, 'favorites') else 0
         
