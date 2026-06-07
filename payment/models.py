@@ -97,16 +97,15 @@ class SubscriptionPlan(models.Model):
     plan_type = models.CharField(max_length=20, choices=PLAN_CHOICES)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     trial_days = models.PositiveIntegerField(default=14, help_text="How long is the free trial?")
-    duration_months = models.PositiveIntegerField(default=1) # ১ মাস বা ১২ মাস
-    features = models.JSONField(default=list, blank=True) # ["Price Alerts", "Priority Support"]
+    duration_months = models.PositiveIntegerField(default=1)
+    features = models.JSONField(default=list, blank=True)
 
-    # লিমিটেশন ফিল্ডস (ডক অনুযায়ী)
     clicks_per_day = models.PositiveIntegerField(default=5)
-    price_alerts_limit = models.IntegerField(default=5) # -1 মানে Unlimited
+    price_alerts_limit = models.IntegerField(default=5) # -1 == Unlimited
     has_ai_optimization = models.BooleanField(default=False)
     has_barcode_scanning = models.BooleanField(default=True)
     
-    stripe_price_id = models.CharField(max_length=200, blank=True) # Stripe Dashboard থেকে আসবে
+    stripe_price_id = models.CharField(max_length=200, blank=True) 
     is_active = models.BooleanField(default=True)
 
     def __str__(self):

@@ -315,11 +315,6 @@ class Favorite(models.Model):
         return f"{self.user.email} → {self.product.title}"
 
 
-
-
-
-
-# api_integration/models.py এ নতুন মডেল যোগ করুন
 class PriceAlert(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='price_alerts')
     product = models.ForeignKey('Product', on_delete=models.CASCADE)
@@ -328,7 +323,7 @@ class PriceAlert(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'product') # এক প্রোডাক্টে একবারই এলার্ট
+        unique_together = ('user', 'product') 
 
 class Notification(models.Model):
     """নোটিফিকেশন হিস্ট্রি রাখার জন্য (Optional but recommended)"""

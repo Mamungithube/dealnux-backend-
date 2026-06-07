@@ -43,8 +43,7 @@ class PlatformAdmin(ModelAdmin):
     
     @display(description='API Usage & Cost')
     def display_api_usage(self, obj):
-        # এখানে ডাটাবেজ থেকে API কলের ডাটা আসবে (ডেমো হিসেবে দেখানো হলো)
-        usage = 65  # % হিসেবে
+        usage = 65 
         color = "green" if usage < 80 else "red"
         return format_html(
             '<div style="width:100px; background:#eee; border-radius:4px;">'
@@ -58,7 +57,6 @@ class CategoryAdmin(ModelAdmin):
     list_display = ['name', 'slug', 'parent', 'products_count', 'created_at']
     list_filter = ['created_at']
     search_fields = ['name', 'slug']
-    # prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ['name', 'slug', 'parent', 'created_at', 'updated_at']
 
     def has_delete_permission(self, request, obj=None):
@@ -126,7 +124,7 @@ class ProductAdmin(ModelAdmin):
     prepopulated_fields = {'slug': ('title',)}
     readonly_fields = ['created_at', 'updated_at', 'last_synced', 'image_preview']
     date_hierarchy = 'created_at'
-    list_per_page = 20  # ← 100 থেকে কমিয়ে 20
+    list_per_page = 20 
     inlines = [ProductListingInline, ProductImageInline, ProductSpecificationInline]
 
     def get_queryset(self, request):
@@ -175,9 +173,9 @@ class ProductAdmin(ModelAdmin):
             )
         return 'No image'
 
-    @display(description='Lowest Price', ordering='_lowest_price')  # ← ordering ঠিক করা হয়েছে
+    @display(description='Lowest Price', ordering='_lowest_price')
     def lowest_price_display(self, obj):
-        price = obj._lowest_price  # ← get_lowest_price() বাদ, annotated value
+        price = obj._lowest_price  
         if price:
             return format_html(
                 '<span style="color: green; font-weight: bold; font-size: 14px;">${}</span>',
@@ -187,7 +185,7 @@ class ProductAdmin(ModelAdmin):
 
     @display(description='Listings')
     def listings_count(self, obj):
-        count = obj._listings_count  # ← annotated value, ঠিক আছে
+        count = obj._listings_count 
         if count > 0:
             return format_html(
                 '<span style="background: #4CAF50; color: white; padding: 3px 8px; border-radius: 12px;">{}</span>',

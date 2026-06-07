@@ -419,7 +419,6 @@ class StripeWebhookView(APIView):
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
 
     def _handle_recurring_subscription(self, invoice):
-        """সাবস্ক্রিপশন রিনিউ হলে মেয়াদ বাড়িয়ে দিবে"""
         stripe_sub_id = invoice.get('subscription')
         try:
             sub = UserSubscription.objects.get(
@@ -707,7 +706,6 @@ class ProductClickTrackerView(APIView):
         user = request.user
         sub = getattr(user, 'subscription', None)
 
-        # ১. সাবস্ক্রিপশন চেক
         if not sub or not sub.is_valid:
             return Response({"error": "Please subscribe to a plan."}, status=403)
 

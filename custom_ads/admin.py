@@ -129,7 +129,6 @@ class AdSettingAdmin(ModelAdmin):
         )
 
     def has_add_permission(self, request):
-        # শুধু একটাই AdSetting থাকবে
         if AdSetting.objects.exists():
             return False
         return True

@@ -1,6 +1,9 @@
 # Dealnux Backend Engine 🚀
 ### Multi-platform Price Aggregator & Secure Marketplace Architecture
 
+**Developer:** Md Mamun Or Rashid
+**GitHub:** https://github.com/Mamungithube/dealnux-backend-
+
 Dealnux is a powerful backend engine that collects real-time data from various e-commerce platforms (Amazon, eBay, Walmart, etc.) to help users find the best deals. It is not just an aggregator, but a full-featured marketplace where local sellers can sell products through a secure Escrow payment system.
 
 ---
@@ -50,8 +53,8 @@ Dealnux is a powerful backend engine that collects real-time data from various e
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/dealnux-backend.git
-cd dealnux-backend
+git clone https://github.com/Mamungithube/dealnux-backend-
+cd dealnux-backend-
 ```
 
 ### 2. Run the Project with Docker
@@ -66,6 +69,12 @@ docker compose up --build
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
 ```
+
+### 4. Project Links
+
+- Repository: https://github.com/Mamungithube/dealnux-backend-
+- API Docs: http://localhost:8000/api/docs/
+- Schema: http://localhost:8000/api/schema/
 
 ---
 
@@ -104,6 +113,4 @@ The system operates across 3 core layers:
 
 ---
 
-## 📄 License
 
-This project is licensed under the **MIT License**.

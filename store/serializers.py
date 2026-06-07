@@ -407,13 +407,13 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
 
 class OrderItemSerializer(serializers.Serializer):
-    """প্রতিটি প্রোডাক্টের জন্য ইনপুট ফরম্যাট"""
+    """Input format for each product"""
     seller_product = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
     coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
 
 class OrderCreateSerializer(serializers.Serializer):
-    """মাল্টিপল আইটেম চেকআউট সিরিয়ালাইজার (Note ফিল্ড ছাড়া)"""
+    """Input format for creating an order (without the Note field)"""
     items = OrderItemSerializer(many=True)
     shipping_address = serializers.CharField(max_length=500)
 
@@ -424,17 +424,17 @@ class OrderCreateSerializer(serializers.Serializer):
 
         validated_data_list = []
         for item in item_list:
-            # ১. প্রোডাক্ট চেক
+            # Product existence and approval check
             try:
                 product = SellerProduct.objects.get(id=item['seller_product'], status='APPROVED')
             except SellerProduct.DoesNotExist:
                 raise serializers.ValidationError({"seller_product": [f"Product ID {item['seller_product']} not found."]})
 
-            # ২. স্টক চেক
+            # stock check
             if product.quantity < item['quantity']:
                 raise serializers.ValidationError({"quantity": [f"Insufficient stock for {product.title}."]})
 
-            # ৩. ইন্ডিভিজুয়াল কুপন চেক
+            # coupon validation (if provided)
             coupon = None
             c_code = item.get('coupon_code')
             if c_code:
@@ -468,7 +468,7 @@ class OrderCreateSerializer(serializers.Serializer):
                 qty = entry['quantity']
                 coupon = entry['coupon']
 
-                # হিসাব নিকাশ
+                # calculate prices
                 total_base = product.price * qty
                 discount = Decimal('0')
                 if coupon:
@@ -484,7 +484,7 @@ class OrderCreateSerializer(serializers.Serializer):
                 service_fee = (item_total + shipping) * Decimal('0.08')
                 total_price = item_total + shipping + service_fee
 
-                # অর্ডার তৈরি
+                # create order
                 order = Order.objects.create(
                     buyer=request.user,
                     seller=product.seller,
@@ -503,7 +503,7 @@ class OrderCreateSerializer(serializers.Serializer):
                     status='PENDING'
                 )
 
-                # ইনভেন্টরি ও সেলার ওয়ালেট আপডেট
+                
                 product.quantity -= qty
                 product.save()
 
@@ -515,7 +515,6 @@ class OrderCreateSerializer(serializers.Serializer):
                 if not first_order:
                     first_order = order
 
-        # রেসপন্স ফরম্যাট ঠিক রাখতে প্রথম অর্ডারটি রিটার্ন করছি
         return first_order
 
 # ============================================================================
@@ -543,7 +542,7 @@ class CouponSerializer(serializers.ModelSerializer):
 # store/serializers.py
 
 class CouponValidateSerializer(serializers.Serializer):
-    """চেকআউট ফরম্যাট অনুযায়ী মাল্টিপল আইটেম কুপন ভ্যালিডেশন"""
+    """Input format for validating multiple items with a coupon"""
     items = serializers.ListField(child=serializers.DictField(), required=True)
     coupon_code = serializers.CharField(max_length=50, required=True)
 
@@ -563,7 +562,7 @@ class CouponValidateSerializer(serializers.Serializer):
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
                 seller_name = product.seller.shop_name
                 
-                # কুপন চেক
+                # copon validation
                 coupon = Coupon.objects.get(code=code, seller=product.seller)
                 
                 item_subtotal = product.price * qty
@@ -575,7 +574,7 @@ class CouponValidateSerializer(serializers.Serializer):
                     else:
                         total_discount += min(coupon.discount_value, item_subtotal)
             except (SellerProduct.DoesNotExist, Coupon.DoesNotExist):
-                continue # কোনো আইটেমে কুপন না মিললে শুধু ওই আইটেম বাদ যাবে
+                continue 
 
         attrs['total_discount'] = total_discount
         attrs['total_original'] = total_original

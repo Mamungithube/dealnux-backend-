@@ -565,7 +565,6 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # Category Filter
         if category_input:
-            # কমা দিয়ে আলাদা করা স্লাগগুলোকে লিস্টে নেওয়া
             slugs = []
             for item in category_input:
                 slugs.extend([s.strip() for s in item.split(',') if s.strip()])
@@ -575,7 +574,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                 all_ids = set()
                 for cat in matching_cats:
                     all_ids.add(cat.id)
-                    # চাইল্ড ক্যাটাগরি যোগ করা
                     all_ids.update(cat.children.values_list('id', flat=True))
                 
                 if all_ids:
@@ -938,7 +936,7 @@ def compare_prices_api(request, slug):
         k_query = Q()
         for word in keywords:
             if len(word) > 2: 
-                k_query &= Q(title__icontains=word) # Strict Match
+                k_query &= Q(title__icontains=word) 
         q_filter &= k_query
 
     if product.category:

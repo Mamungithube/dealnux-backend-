@@ -22,7 +22,6 @@ class PaymentAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        # আনফোল্ডে লিস্টের উপরে সামারি দেখানোর জন্য এগ্রিগেশন
         self.total_revenue = qs.filter(status='PAID').aggregate(Sum('final_amount'))['final_amount__sum'] or 0
         return qs
 
@@ -296,7 +295,7 @@ class SubscriptionPlanAdmin(ModelAdmin):
         }),
         ('Stripe Integration', {
             'fields': ('stripe_price_id',),
-            'description': 'Stripe ড্যাশবোর্ড থেকে Price ID কপি করে এখানে দিন।'
+            'description': 'Copy the Price ID from the Stripe dashboard and paste it here.'
         }),
     )
 
@@ -330,7 +329,7 @@ class UserSubscriptionAdmin(ModelAdmin):
     ]
     list_filter = ['status', 'plan']
     search_fields = ['user__email', 'stripe_subscription_id']
-    readonly_fields = ['trial_started_at', 'expires_at'] # নিরাপত্তা নিশ্চিত করতে রিড-অনলি
+    readonly_fields = ['trial_started_at', 'expires_at'] 
 
     @display(description='User', ordering='user__email')
     def display_user(self, obj):

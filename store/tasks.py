@@ -14,14 +14,10 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def auto_accept_shipped_orders():
-    """
-    যে অর্ডারগুলো SHIPPED অবস্থায় ৭ দিন পার হয়েছে, সেগুলোকে অটো DELIVERED/ACCEPTED করবে।
-    """
-    # বর্তমানে আমরা টেস্ট করার জন্য সময়টা কমিয়েও দেখতে পারি
+
     threshold_days = 7 
     cutoff_time = timezone.now() - timedelta(days=threshold_days)
     
-    # টার্গেট অর্ডারগুলো খুঁজে বের করা
     orders_to_release = Order.objects.filter(
         status='SHIPPED',
         updated_at__lte=cutoff_time,
@@ -32,13 +28,13 @@ def auto_accept_shipped_orders():
     for order in orders_to_release:
         try:
             with transaction.atomic():
-                # ১. স্ট্যাটাস আপডেট
+                # stutes update
                 order.status = 'DELIVERED'
                 order.is_accepted_by_buyer = True
                 order.accepted_at = timezone.now()
                 order.save()
 
-                # ২. ওয়ালেট ট্রান্সফার
+                # wallet update
                 seller = order.seller
                 amount = order.item_total + order.shipping_fee
                 seller.pending_balance -= amount
@@ -46,7 +42,7 @@ def auto_accept_shipped_orders():
                 seller.total_earnings += amount
                 seller.save()
 
-                # ৩. পayout রেকর্ড তৈরি (টেবিলের ডাটার জন্য)
+                # payout record
                 import uuid
                 PayoutRecord.objects.create(
                     seller=seller,
@@ -56,7 +52,7 @@ def auto_accept_shipped_orders():
                     status="Paid"
                 )
 
-                # ৪. রিয়েল স্ট্রাইপ ট্রান্সফার (সেলার কানেক্টেড থাকলে)
+                # release funds to seller's Stripe account
                 if seller.stripe_account_id and seller.stripe_onboarding_completed:
                     stripe.Transfer.create(
                         amount=int(amount * 100),
