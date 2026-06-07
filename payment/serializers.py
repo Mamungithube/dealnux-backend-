@@ -184,5 +184,5 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'plan_type', 'price', 'trial_days', 
             'clicks_per_day', 'price_alerts_limit', 'has_ai_optimization', 
-            'has_barcode_scanning'
+            'has_barcode_scanning','features'
         ]
