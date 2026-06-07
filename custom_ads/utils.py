@@ -59,3 +59,24 @@ def get_weighted_ads(count=3):
             daily_stat.save()
             
     return selected_ads
+
+
+from django.core.mail import EmailMessage
+from django.template.loader import render_to_string
+from django.conf import settings
+
+def send_dealnux_email(subject, recipient_email, template_name, context):
+    try:
+        html_content = render_to_string(template_name, context)
+        msg = EmailMessage(
+            subject=subject,
+            body=html_content,
+            from_email=settings.EMAIL_HOST_USER,
+            to=[recipient_email],
+        )
+        msg.content_subtype = "html"
+        msg.send()
+        return True
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return False
