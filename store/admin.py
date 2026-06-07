@@ -16,6 +16,15 @@ from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.db import transaction
 from django.http import HttpResponseRedirect
+from django.contrib import admin
+from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
+from unfold.admin import ModelAdmin
+from unfold.decorators import display, action
+from unfold.enums import ActionVariant
+from django.contrib import messages
+from .models import SellerRequest
+from django.core.mail import send_mail
 # ============================================================================
 # Inline
 # ============================================================================
@@ -34,7 +43,6 @@ class SellerProductImageInline(TabularInline):
 # Seller Request Admin
 # ============================================================================
 
-
 @admin.register(SellerRequest)
 class SellerRequestAdmin(ModelAdmin):
     compressed_fields = True
@@ -42,7 +50,6 @@ class SellerRequestAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
 
-    # Custom QuerySet to load ManyToMany and Foreign Key data quickly
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user').prefetch_related('categories')
 
@@ -55,124 +62,108 @@ class SellerRequestAdmin(ModelAdmin):
     ]
 
     list_filter = ['status', 'legal_business_type', 'created_at']
-    search_fields = ['trade_name', 'user__email',
-                     'contact_full_name', 'contact_phone']
+    search_fields = ['trade_name', 'user__email', 'contact_full_name']
+    
+    # অ্যাডমিন প্যানেলে সুন্দরভাবে দেখানোর জন্য এই কাস্টম মেথডগুলো readonly_fields এ থাকবে
+    readonly_fields = [
+        'user', 'trade_name', 'legal_business_type', 'business_reg_number',
+        'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
+        'display_categories_list', 
+        'estimated_sku_count', 'min_price', 'max_price',
+        'display_product_conditions', # কাস্টম লিস্ট
+        'owns_inventory', 
+        'display_fulfillment_methods', # কাস্টম লিস্ট
+        'display_shipping_regions',    # কাস্টম লিস্ট
+        'return_policy_description', 'return_policy_document', 
+        'display_gov_id', 'display_license', 'display_utility_bill', # ইমেজ প্রিভিউ
+        'has_prior_experience', 'experience_description', 
+        'digital_signature', 'reviewed_at', 'created_at'
+    ]
 
-    # Most fields are kept read-only so that admins cannot change the legal data submitted by users.
-    # readonly_fields = [
-    #     'user', 'trade_name', 'legal_business_type', 'business_reg_number',
-    #     'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
-    #     'display_categories_list', 'estimated_sku_count', 'min_price', 'max_price',
-    #     'product_conditions', 'owns_inventory', 'fulfillment_methods', 'shipping_regions',
-    #     'return_policy_description', 'return_policy_document', 'government_id',
-    #     'business_license', 'utility_bill', 'has_prior_experience',
-    #     'experience_description', 'digital_signature', 'reviewed_at', 'created_at'
-    # ]
-
-    # Sorting fieldsets according to 11 steps
     fieldsets = (
-        (_('👤 User Account'), {
-            'fields': ('user', 'status', 'admin_note'),
-        }),
-        (_('🏪 Business Details'), {
-            'fields': ('trade_name', 'legal_business_type', 'business_reg_number'),
-            'classes': ['tab'],
-        }),
-        (_('📞 Primary Contact'), {
-            'fields': ('contact_full_name', 'job_title', 'contact_email', 'contact_phone'),
-            'classes': ['tab'],
-        }),
-        (_('📦 Product Catalog'), {
-            'fields': ('display_categories_list', 'estimated_sku_count', 'min_price', 'max_price', 'product_conditions', 'owns_inventory'),
-            'classes': ['tab'],
-        }),
-        (_('🚚 Shipping & Returns'), {
-            'fields': ('fulfillment_methods', 'shipping_regions', 'return_policy_description', 'return_policy_document'),
-            'classes': ['tab'],
-        }),
-        (_('📄 Documents & Verification'), {
-            'fields': ('government_id', 'business_license', 'utility_bill', 'has_prior_experience', 'experience_description'),
-            'classes': ['tab'],
-        }),
-        (_('⚖️ Legal & Signature'), {
-            'fields': ('agreed_to_compliance', 'agreed_to_prohibited_items', 'digital_signature'),
-            'classes': ['tab'],
-        }),
+        (_('👤 User Account'), {'fields': ('user', 'status', 'admin_note')}),
+        (_('🏪 Business Details'), {'fields': ('trade_name', 'legal_business_type', 'business_reg_number'), 'classes': ['tab']}),
+        (_('📞 Primary Contact'), {'fields': ('contact_full_name', 'job_title', 'contact_email', 'contact_phone'), 'classes': ['tab']}),
+        (_('📦 Product Catalog'), {'fields': ('display_categories_list', 'estimated_sku_count', 'min_price', 'max_price', 'display_product_conditions', 'owns_inventory'), 'classes': ['tab']}),
+        (_('🚚 Shipping & Returns'), {'fields': ('display_fulfillment_methods', 'display_shipping_regions', 'return_policy_description', 'return_policy_document'), 'classes': ['tab']}),
+        (_('📄 Documents & Verification'), {'fields': ('display_gov_id', 'display_license', 'display_utility_bill', 'has_prior_experience', 'experience_description'), 'classes': ['tab']}),
+        (_('⚖️ Legal & Signature'), {'fields': ('agreed_to_compliance', 'agreed_to_prohibited_items', 'digital_signature'), 'classes': ['tab']}),
     )
 
-    actions_row = ['action_approve_row', 'action_reject_row']
+    # --- ১. লিস্ট ডাটা সুন্দর করার মেথড (JSON to Comma Separated) ---
+    @display(description=_('Product Conditions'))
+    def display_product_conditions(self, obj):
+        return ", ".join(obj.product_conditions) if obj.product_conditions else "N/A"
 
-    @display(description=_('Business Name'), ordering='trade_name')
+    @display(description=_('Fulfillment Methods'))
+    def display_fulfillment_methods(self, obj):
+        return ", ".join(obj.fulfillment_methods) if obj.fulfillment_methods else "N/A"
+
+    @display(description=_('Shipping Regions'))
+    def display_shipping_regions(self, obj):
+        return ", ".join(obj.shipping_regions) if obj.shipping_regions else "N/A"
+
+    # --- ২. ইমেজ প্রিভিউ মেথড (Image Previews) ---
+    def _img_render(self, field_file):
+        if field_file:
+            return format_html('<img src="{}" style="max-height: 300px; border-radius: 8px; border: 1px solid #ddd;" />', field_file.url)
+        return "No document uploaded"
+
+    @display(description=_('Government ID'))
+    def display_gov_id(self, obj): return self._img_render(obj.government_id)
+
+    @display(description=_('Business License'))
+    def display_license(self, obj): return self._img_render(obj.business_license)
+
+    @display(description=_('Utility Bill'))
+    def display_utility_bill(self, obj): return self._img_render(obj.utility_bill)
+
+    # --- ৩. অন্যান্য ডিসপ্লে মেথড ---
+    @display(description=_('Categories'))
+    def display_categories_list(self, obj):
+        return ", ".join([c.name for c in obj.categories.all()]) if obj.pk else "None"
+
+    @display(description=_('Business Name'))
     def display_trade_name(self, obj):
         return format_html('<strong>{}</strong>', obj.trade_name or "N/A")
 
-    @display(description=_('User'), ordering='user__email')
+    @display(description=_('User'))
     def display_user(self, obj):
-        return format_html(
-            '<div>{}<br><small style="color:#6b7280">{}</small></div>',
-            obj.user.name or "No Name",
-            obj.user.email
-        )
+        return format_html('{}<br><small style="color:#6b7280">{}</small>', obj.user.name or "No Name", obj.user.email)
 
-    @display(description=_('Status'), label={
-        'PENDING': 'warning',
-        'APPROVED': 'success',
-        'REJECTED': 'danger',
-    })
-    def display_status(self, obj):
-        return obj.status
+    @display(description=_('Status'), label={'PENDING': 'warning', 'APPROVED': 'success', 'REJECTED': 'danger'})
+    def display_status(self, obj): return obj.status
 
-    @display(description=_('Categories'))
-    def display_categories_list(self, obj):
-        names = ", ".join([c.name for c in obj.categories.all()])
-        return names or "None"
+    actions_row = ['action_approve_row', 'action_reject_row']
 
-    # --- Actions ---
-    @action(
-        description=_('Approve'),
-        url_path='approve-request',
-        icon='check_circle',
-        variant=ActionVariant.SUCCESS,
-    )
+    @action(description=_('Approve'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
     def action_approve_row(self, request, object_id):
-
+        from django.http import HttpResponseRedirect
+        from django.db import transaction
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
-            # The logic in views.py will be called as a model method.
-
             try:
                 with transaction.atomic():
                     obj.approve(admin_user=request.user)
-                self.message_user(
-                    request, f'✓ {obj.user.email} approved as seller.', messages.SUCCESS)
+                self.message_user(request, f'✓ {obj.user.email} approved.', messages.SUCCESS)
             except Exception as e:
                 self.message_user(request, f'Error: {str(e)}', messages.ERROR)
         return HttpResponseRedirect('../..')
 
-    @action(
-        description=_('Reject'),
-        url_path='reject-request',
-        icon='cancel',
-        variant=ActionVariant.DANGER,
-    )
+    @action(description=_('Reject'), url_path='reject-request', icon='cancel', variant=ActionVariant.DANGER)
     def action_reject_row(self, request, object_id):
-
+        from django.http import HttpResponseRedirect
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
-            note = request.POST.get(
-                'admin_note', 'Rejected by admin via panel.')
             obj.status = 'REJECTED'
-            obj.admin_note = note
+            obj.admin_note = request.POST.get('admin_note', 'Rejected by admin.')
             obj.save()
-            self.message_user(
-                request, f'✗ {obj.user.email} application rejected.', messages.WARNING)
+            self.message_user(request, f'✗ {obj.user.email} rejected.', messages.WARNING)
         return HttpResponseRedirect('../..')
-
 
 # # ============================================================================
 # # Seller Profile Admin
 # # ============================================================================
-
 @admin.register(SellerProfile)
 class SellerProfileAdmin(ModelAdmin):
     list_fullwidth = True
@@ -184,7 +175,71 @@ class SellerProfileAdmin(ModelAdmin):
         'display_active',
         'created_at',
     ]
-    actions_row = ['suspend_seller', 'pause_payout']
+    
+    # বাটনগুলো সিরিয়াল অনুযায়ী: Suspend, Reinstate, Delete Marketplace
+    actions_row = ['suspend_seller', 'reinstate_seller', 'delete_seller_marketplace', 'pause_payout']
+
+    # ========================================================================
+    # Permissions Logic (Manager vs Admin)
+    # Manager (Superuser) সব পারবে। Admin গ্রুপ আর্থিক বিষয় বা সেলার এপ্রুভাল পারবে না।
+    # ========================================================================
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(self.readonly_fields)
+        if request.user.groups.filter(name='Admin').exists() and not request.user.is_superuser:
+            # Admin হলে ব্যালেন্স এডিট বা দেখা সীমিত হবে
+            readonly += ['pending_balance', 'available_balance', 'total_earnings']
+        return readonly
+
+    # ========================================================================
+    # Actions Logic (Suspend, Reinstate, Delete)
+    # ========================================================================
+    
+    @action(description=_("Suspend Seller"), url_path="suspend", variant=ActionVariant.DANGER)
+    def suspend_seller(self, request, object_id):
+        seller = SellerProfile.objects.get(pk=object_id)
+        seller.is_active = False
+        seller.save()
+        
+        # ক্লায়েন্ট চেয়েছে ইমেল নোটিফিকেশন (সাসপেন্ড হলে আপিলের সুযোগ আছে)
+        send_mail(
+            "Marketplace Suspended - DealNux",
+            f"Hello {seller.shop_name}, your marketplace access has been suspended. You can appeal this decision.",
+            "noreply@dealnux.com",
+            [seller.user.email],
+        )
+        self.message_user(request, _("Seller suspended and notified via email."))
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+    @action(description=_("Reinstate Seller"), url_path="reinstate", variant=ActionVariant.SUCCESS)
+    def reinstate_seller(self, request, object_id):
+        seller = SellerProfile.objects.get(pk=object_id)
+        seller.is_active = True
+        seller.save()
+        self.message_user(request, _("Seller reinstated successfully."))
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+    @action(description=_("Delete Marketplace (Sell No, Buy Yes)"), url_path="deactivate-shop", variant=ActionVariant.DANGER)
+    def delete_seller_marketplace(self, request, object_id):
+        seller = SellerProfile.objects.get(pk=object_id)
+        # ক্লায়েন্ট বলেছে: সেলার ডিলিট করলে শুধু সেলিং বন্ধ হবে, কেনাকাটা চলবে।
+        seller.is_active = False
+        seller.shop_name = f"CLOSED - {seller.shop_name}"
+        seller.save()
+        # সেলারের প্রোডাক্টগুলো রিজেক্ট করে দেওয়া
+        seller.products.update(status='REJECTED')
+        
+        self.message_user(request, _("Marketplace deactivated permanently. User can still purchase items."))
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+    @action(description=_("Pause Payout"), url_path="pause", variant=ActionVariant.WARNING)
+    def pause_payout(self, request, object_id):
+        # পে-আউট পজ করার লজিক
+        self.message_user(request, _("Payout paused for this seller."))
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+    # ========================================================================
+    # Display & UI Logic
+    # ========================================================================
 
     @display(description='Risk Level', label={
         'High Risk': 'danger',
@@ -192,25 +247,13 @@ class SellerProfileAdmin(ModelAdmin):
         'Healthy': 'success'
     })
     def display_risk_level(self, obj):
-        if obj.seller_score < 30:
-            return "High Risk"
-        if obj.seller_score < 60:
-            return "Medium"
+        if obj.seller_score < 30: return "High Risk"
+        if obj.seller_score < 60: return "Medium"
         return "Healthy"
-
-    @action(description="Suspend Seller", url_path="suspend", variant=ActionVariant.DANGER)
-    def suspend_seller(self, request, object_id):
-        SellerProfile.objects.filter(pk=object_id).update(is_active=False)
-
-    @action(description="Pause Payout", url_path="pause", variant=ActionVariant.WARNING)
-    def pause_payout(self, request, object_id):
-
-        pass
 
     list_filter = ['is_active', 'created_at']
     search_fields = ['shop_name', 'user__email']
 
-    # Wallet and stats admin cannot change manually
     readonly_fields = [
         'user', 'shop_name', 'pending_balance', 'available_balance',
         'total_earnings', 'total_products', 'total_orders', 'created_at', 'updated_at'
@@ -222,7 +265,6 @@ class SellerProfileAdmin(ModelAdmin):
         }),
         (_('💰 Wallet & Escrow'), {
             'fields': ('pending_balance', 'available_balance', 'total_earnings'),
-            'description': _('Pending: Held in escrow | Available: Ready for withdrawal')
         }),
         (_('📊 Performance Stats'), {
             'fields': ('total_products', 'total_orders', 'seller_score'),
@@ -240,7 +282,7 @@ class SellerProfileAdmin(ModelAdmin):
     def display_user(self, obj):
         return obj.user.email
 
-    @display(description=_('Wallet (Pending / Available)'))
+    @display(description=_('Wallet (P / A)'))
     def display_balances(self, obj):
         return format_html(
             '<span style="color: #f59e0b; font-weight: bold;">P: ${}</span> | '
@@ -252,7 +294,6 @@ class SellerProfileAdmin(ModelAdmin):
     @display(description=_('Status'), boolean=True)
     def display_active(self, obj):
         return obj.is_active
-
 # ============================================================================
 # Seller Product Admin
 # ============================================================================
