@@ -43,6 +43,16 @@ class SellerProductImageInline(TabularInline):
 # Seller Request Admin
 # ============================================================================
 
+from django.contrib import admin, messages
+from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
+from django.http import HttpResponseRedirect
+from django.db import transaction
+from unfold.admin import ModelAdmin
+from unfold.decorators import display, action
+from unfold.enums import ActionVariant
+from .models import SellerRequest
+
 @admin.register(SellerRequest)
 class SellerRequestAdmin(ModelAdmin):
     compressed_fields = True
@@ -64,18 +74,18 @@ class SellerRequestAdmin(ModelAdmin):
     list_filter = ['status', 'legal_business_type', 'created_at']
     search_fields = ['trade_name', 'user__email', 'contact_full_name']
     
-    # অ্যাডমিন প্যানেলে সুন্দরভাবে দেখানোর জন্য এই কাস্টম মেথডগুলো readonly_fields এ থাকবে
+    # [FIXED] readonly_fields এর নাম আর নিচের ফাংশনের নাম এখন হুবহু এক
     readonly_fields = [
         'user', 'trade_name', 'legal_business_type', 'business_reg_number',
         'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
         'display_categories_list', 
         'estimated_sku_count', 'min_price', 'max_price',
-        'display_product_conditions', # কাস্টম লিস্ট
+        'display_product_conditions', 
         'owns_inventory', 
-        'display_fulfillment_methods', # কাস্টম লিস্ট
-        'display_shipping_regions',    # কাস্টম লিস্ট
+        'display_fulfillment_methods', 
+        'display_shipping_regions',   
         'return_policy_description', 'return_policy_document', 
-        'display_gov_id', 'display_license', 'display_utility_bill', # ইমেজ প্রিভিউ
+        'display_gov_id', 'display_license', 'display_utility_bill', # এখানে নাম ঠিক করা হয়েছে
         'has_prior_experience', 'experience_description', 
         'digital_signature', 'reviewed_at', 'created_at'
     ]
@@ -90,7 +100,7 @@ class SellerRequestAdmin(ModelAdmin):
         (_('⚖️ Legal & Signature'), {'fields': ('agreed_to_compliance', 'agreed_to_prohibited_items', 'digital_signature'), 'classes': ['tab']}),
     )
 
-    # --- ১. লিস্ট ডাটা সুন্দর করার মেথড (JSON to Comma Separated) ---
+    # --- ১. মেথডসমূহ (JSON/List to Text) ---
     @display(description=_('Product Conditions'))
     def display_product_conditions(self, obj):
         return ", ".join(obj.product_conditions) if obj.product_conditions else "N/A"
@@ -103,25 +113,31 @@ class SellerRequestAdmin(ModelAdmin):
     def display_shipping_regions(self, obj):
         return ", ".join(obj.shipping_regions) if obj.shipping_regions else "N/A"
 
-    # --- ২. ইমেজ প্রিভিউ মেথড (Image Previews) ---
-    def _img_render(self, field_file):
-        if field_file:
-            return format_html('<img src="{}" style="max-height: 300px; border-radius: 8px; border: 1px solid #ddd;" />', field_file.url)
-        return "No document uploaded"
+    # --- ২. ফাইল ভিউ বাটন (View Buttons) ---
+    @display(description="Government ID")
+    def display_gov_id(self, obj):
+        if obj.government_id:
+            return format_html('<a href="{}" target="_blank" style="background: #2563eb; color: white; padding: 5px 15px; border-radius: 5px; text-decoration: none; font-weight: bold;">👁️ View Gov ID</a>', obj.government_id.url)
+        return "No file uploaded"
 
-    @display(description=_('Government ID'))
-    def display_gov_id(self, obj): return self._img_render(obj.government_id)
+    @display(description="Business License")
+    def display_license(self, obj):
+        if obj.business_license:
+            return format_html('<a href="{}" target="_blank" style="background: #2563eb; color: white; padding: 5px 15px; border-radius: 5px; text-decoration: none; font-weight: bold;">👁️ View License</a>', obj.business_license.url)
+        return "No file uploaded"
 
-    @display(description=_('Business License'))
-    def display_license(self, obj): return self._img_render(obj.business_license)
+    @display(description="Utility Bill")
+    def display_utility_bill(self, obj):
+        if obj.utility_bill:
+            return format_html('<a href="{}" target="_blank" style="background: #2563eb; color: white; padding: 5px 15px; border-radius: 5px; text-decoration: none; font-weight: bold;">👁️ View Utility Bill</a>', obj.utility_bill.url)
+        return "No file uploaded"
 
-    @display(description=_('Utility Bill'))
-    def display_utility_bill(self, obj): return self._img_render(obj.utility_bill)
-
-    # --- ৩. অন্যান্য ডিসপ্লে মেথড ---
+    # --- ৩. অন্যান্য ডিসপ্লে ---
     @display(description=_('Categories'))
     def display_categories_list(self, obj):
-        return ", ".join([c.name for c in obj.categories.all()]) if obj.pk else "None"
+        if obj.pk:
+            return ", ".join([c.name for c in obj.categories.all()])
+        return "None"
 
     @display(description=_('Business Name'))
     def display_trade_name(self, obj):
@@ -132,34 +148,35 @@ class SellerRequestAdmin(ModelAdmin):
         return format_html('{}<br><small style="color:#6b7280">{}</small>', obj.user.name or "No Name", obj.user.email)
 
     @display(description=_('Status'), label={'PENDING': 'warning', 'APPROVED': 'success', 'REJECTED': 'danger'})
-    def display_status(self, obj): return obj.status
+    def display_status(self, obj): 
+        return obj.status
 
+    # --- ৪. অ্যাকশনসমূহ (Actions with Redirect Fix) ---
     actions_row = ['action_approve_row', 'action_reject_row']
 
     @action(description=_('Approve'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
     def action_approve_row(self, request, object_id):
-        from django.http import HttpResponseRedirect
-        from django.db import transaction
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
             try:
                 with transaction.atomic():
                     obj.approve(admin_user=request.user)
-                self.message_user(request, f'✓ {obj.user.email} approved.', messages.SUCCESS)
+                self.message_user(request, f'✓ {obj.user.email} approved successfully.', messages.SUCCESS)
             except Exception as e:
                 self.message_user(request, f'Error: {str(e)}', messages.ERROR)
-        return HttpResponseRedirect('../..')
+        
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
     @action(description=_('Reject'), url_path='reject-request', icon='cancel', variant=ActionVariant.DANGER)
     def action_reject_row(self, request, object_id):
-        from django.http import HttpResponseRedirect
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
             obj.status = 'REJECTED'
-            obj.admin_note = request.POST.get('admin_note', 'Rejected by admin.')
+            obj.admin_note = "Rejected by admin."
             obj.save()
-            self.message_user(request, f'✗ {obj.user.email} rejected.', messages.WARNING)
-        return HttpResponseRedirect('../..')
+            self.message_user(request, f'✗ {obj.user.email} request rejected.', messages.WARNING)
+        
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
 # # ============================================================================
 # # Seller Profile Admin
