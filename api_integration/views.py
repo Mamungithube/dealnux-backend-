@@ -148,7 +148,7 @@ def product_detail(request, pk):
         from payment.utils import validate_and_increment_click
         success, message = validate_and_increment_click(request.user, product_id=product.id)
         if not success:
-            return error_response(message, code=429)
+            return error_response(message, code=403 if "subscribe" in message.lower() else 429)
 
     # ✅ Override with SellerProduct data
     if seller_product_data:
@@ -925,7 +925,7 @@ def compare_prices_api(request, slug):
     from payment.utils import validate_and_increment_click
     success, message = validate_and_increment_click(request.user, product_id=product.id)
     if not success:
-        return error_response(message, code=429)
+        return error_response(message, code=403 if "subscribe" in message.lower() else 429)
 
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)

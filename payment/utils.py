@@ -9,15 +9,15 @@ def validate_and_increment_click(user, product_id=None):
             return False, "Please subscribe to a plan."
 
         today = timezone.now().date()
-        if getattr(user, 'last_click_date', None) != today:
-            user.daily_click_count = 0
-            user.last_click_date = today
+        if subscription.last_click_date != today:
+            subscription.daily_click_count = 0
+            subscription.last_click_date = today
 
-        if user.daily_click_count >= subscription.plan.clicks_per_day:
+        if subscription.daily_click_count >= subscription.plan.clicks_per_day:
             return False, "Daily click limit reached!"
 
-        user.daily_click_count += 1
-        user.save(update_fields=['daily_click_count', 'last_click_date'])
+        subscription.daily_click_count += 1
+        subscription.save(update_fields=['daily_click_count', 'last_click_date'])
         return True, "Click recorded."
     except Exception as e:
         return False, f"Unable to validate click: {e}"
