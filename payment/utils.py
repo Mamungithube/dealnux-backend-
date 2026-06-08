@@ -1,71 +1,34 @@
-import stripe
-from django.utils import timezone
 
-def release_funds_to_seller(order):
-    seller = order.seller
-    if not seller.stripe_account_id or not seller.stripe_onboarding_completed:
-        return False, "Seller bank not connected."
+
+def process_referral_reward_for_user(user):
+    """Process referral rewards for a referred user once subscription and first purchase criteria are met."""
+    from decimal import Decimal
+    from store.models import Order
 
     try:
-        #  Item Total + Shipping
-        amount_to_transfer = int((order.item_total + order.shipping_fee) * 100) 
+        if not getattr(user, 'referred_by', None) or user.has_referral_reward_awarded:
+            return False
 
-        transfer = stripe.Transfer.create(
-            amount=amount_to_transfer,
-            currency=order.currency.lower(),
-            destination=seller.stripe_account_id,
-            transfer_group=f"ORDER_{order.order_number}",
-            metadata={'order_id': order.id}
-        )
-        return True, transfer.id
-    except stripe.error.StripeError as e:
-        return False, str(e)
+        if not Order.objects.filter(buyer=user).exists():
+            return False
 
+        referrer = user.referred_by
+        user_subscription = getattr(user, 'subscription', None)
+        referrer_subscription = getattr(referrer, 'subscription', None)
 
-def can_user_click(user):
-    sub = getattr(user, 'subscription', None)
-    if not sub or not sub.is_active:
-        return False, "No active subscription found."
+        if (
+            user_subscription is None or user_subscription.status != 'ACTIVE' or
+            referrer_subscription is None or referrer_subscription.status != 'ACTIVE'
+        ):
+            return False
 
-    plan = sub.plan
-    today = timezone.now().date()
+        referrer.balance += Decimal('10')
+        referrer.save(update_fields=['balance'])
 
-    if user.last_click_date != today:
-        user.daily_click_count = 0
-        user.last_click_date = today
-        user.save(update_fields=['daily_click_count', 'last_click_date'])
-
-    if user.daily_click_count >= plan.clicks_per_day:
-        return False, f"Daily limit of {plan.clicks_per_day} clicks reached. Upgrade your plan!"
-
-    return True, "Success"
-
-
-from django.core.cache import cache
-from django.utils import timezone
-
-def validate_and_increment_click(user, product_id=None):
-    sub = getattr(user, 'subscription', None)
-    if not sub or not sub.is_active:
-        return False, "Active subscription required."
-
-    today = timezone.now().date()
-    if product_id:
-        cache_key = f"user_click_{user.id}_{product_id}_{today}"
-        if cache.get(cache_key):
-            return True, "Already counted for today"
-        
-    if sub.last_click_date != today:
-        sub.daily_click_count = 0
-        sub.last_click_date = today
-
-    if sub.daily_click_count >= sub.plan.clicks_per_day:
-        return False, "Daily limit reached!"
-
-    sub.daily_click_count += 1
-    sub.save(update_fields=['daily_click_count', 'last_click_date'])
-    
-    if product_id:
-        cache.set(cache_key, True, 86400) 
-
-    return True, "Success"
+        user.has_referral_reward_awarded = True
+        user.save(update_fields=['has_referral_reward_awarded'])
+        print(f"Referral reward paid to {referrer.email} for referred user {user.email}")
+        return True
+    except Exception as e:
+        print(f"Error processing referral reward in helper: {str(e)}")
+        return False

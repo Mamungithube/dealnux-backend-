@@ -15,6 +15,7 @@ from django.db.models import Q, Sum, Avg, Count
 from stripe.climate import Product
 
 from payment.views import _calculate_order_amounts
+from payment.utils import process_referral_reward_for_user
 
 from .models import (
     ProductReview, SellerRequest, SellerProfile,
@@ -595,6 +596,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             amount_for_seller = order.item_total + order.shipping_fee
             seller_profile.pending_balance += amount_for_seller
             seller_profile.save(update_fields=['pending_balance'])
+
+            # Try to process referral reward for the buyer if they were referred.
+            process_referral_reward_for_user(request.user)
 
         return success_response(
             OrderSerializer(order).data,

@@ -199,7 +199,7 @@ class CreateCheckoutSessionView(APIView):
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                return_url=settings.STRIPE_RETURN_URL + '?session_id={CHECKOUT_SESSION_ID}',
+                return_url=settings.STRIPE_RETURN_URL,
                 automatic_tax={'enabled': True},
                 metadata={
                     'payment_id': payment.id,
@@ -375,6 +375,10 @@ class StripeWebhookView(APIView):
             CartItem.objects.filter(user=buyer).delete()
             print(f"✅ Cart cleared for user: {buyer.email}")
 
+            # If this was the buyer's first purchase, and they already have an active subscription,
+            # perform referral reward processing now.
+            self._process_referral_reward(buyer)
+
     def _handle_subscription_success(self, session):
         """Activates the paid subscription plan for the user in the database."""
         metadata = session.get('metadata', {})
@@ -423,11 +427,16 @@ class StripeWebhookView(APIView):
     def _process_referral_reward(self, user):
         """
         Award the referral bonus once, only after both the referred user and the referrer
-        have active paid subscriptions.
+        have active paid subscriptions and the referred user has completed a first DEALNUX purchase.
         """
         from decimal import Decimal
+        from store.models import Order
 
         try:
+            # Only process if the referred user has made at least one order.
+            if not Order.objects.filter(buyer=user).exists():
+                return
+
             # Only pay the referrer once per referred user.
             if user.referred_by and not user.has_referral_reward_awarded:
                 referrer = user.referred_by
@@ -445,7 +454,8 @@ class StripeWebhookView(APIView):
                     user.save(update_fields=['has_referral_reward_awarded'])
                     print(f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
 
-            # If the current user is a referrer, check for any referred users who already have active subscriptions.
+            # If the current user is a referrer, check for any referred users who already have active subscriptions
+            # and have completed their first purchase.
             current_subscription = getattr(user, 'subscription', None)
             if current_subscription is not None and current_subscription.status == 'ACTIVE':
                 pending_referred_users = user.referrals.filter(
@@ -455,12 +465,13 @@ class StripeWebhookView(APIView):
                 for referred_user in pending_referred_users:
                     referred_subscription = getattr(referred_user, 'subscription', None)
                     if referred_subscription is not None and referred_subscription.status == 'ACTIVE':
-                        user.balance += Decimal('10')
-                        user.save(update_fields=['balance'])
+                        if Order.objects.filter(buyer=referred_user).exists():
+                            user.balance += Decimal('10')
+                            user.save(update_fields=['balance'])
 
-                        referred_user.has_referral_reward_awarded = True
-                        referred_user.save(update_fields=['has_referral_reward_awarded'])
-                        print(f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
+                            referred_user.has_referral_reward_awarded = True
+                            referred_user.save(update_fields=['has_referral_reward_awarded'])
+                            print(f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
 
         except Exception as e:
             print(f"❌ Error processing referral reward: {str(e)}")
@@ -751,13 +762,38 @@ class ProductClickTrackerView(APIView):
 
     def get(self, request, listing_id):
         user = request.user
-        sub = getattr(user, 'subscription', None)
+        try:
+            listing = ProductListing.objects.select_related('platform').get(
+                id=listing_id,
+                is_available=True
+            )
+        except ProductListing.DoesNotExist:
+            return Response({"error": "Listing not found."}, status=404)
 
-        if not sub or not sub.is_valid:
-            return Response({"error": "Please subscribe to a plan."}, status=403)
+        # Local seller products should be accessible without subscription.
+        if listing.platform.api_enabled:
+            sub = getattr(user, 'subscription', None)
+            if not sub or not sub.is_active:
+                return Response({"error": "Please subscribe to a plan."}, status=403)
 
-        plan = sub.plan
-        today = timezone.now().date()
+            plan = sub.plan
+            today = timezone.now().date()
+
+            if user.last_click_date != today:
+                user.daily_click_count = 0
+                user.last_click_date = today
+
+            if user.daily_click_count >= plan.clicks_per_day:
+                return Response({
+                    "error": "Daily click limit reached!",
+                    "limit": plan.clicks_per_day,
+                    "message": "Upgrade your plan for more access."
+                }, status=429)
+
+            user.daily_click_count += 1
+            user.save(update_fields=['daily_click_count', 'last_click_date'])
+
+        return Response({"redirect_url": listing.external_url})
 
         if user.last_click_date != today:
             user.daily_click_count = 0
