@@ -415,8 +415,55 @@ class StripeWebhookView(APIView):
             print(
                 f"✅ Payment success! Subscription activated for: {user.email}")
 
+            self._process_referral_reward(user)
+
         except Exception as e:
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
+
+    def _process_referral_reward(self, user):
+        """
+        Award the referral bonus once, only after both the referred user and the referrer
+        have active paid subscriptions.
+        """
+        from decimal import Decimal
+
+        try:
+            # Only pay the referrer once per referred user.
+            if user.referred_by and not user.has_referral_reward_awarded:
+                referrer = user.referred_by
+                user_subscription = getattr(user, 'subscription', None)
+                referrer_subscription = getattr(referrer, 'subscription', None)
+
+                if (
+                    user_subscription is not None and user_subscription.status == 'ACTIVE' and
+                    referrer_subscription is not None and referrer_subscription.status == 'ACTIVE'
+                ):
+                    referrer.balance += Decimal('10')
+                    referrer.save(update_fields=['balance'])
+
+                    user.has_referral_reward_awarded = True
+                    user.save(update_fields=['has_referral_reward_awarded'])
+                    print(f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
+
+            # If the current user is a referrer, check for any referred users who already have active subscriptions.
+            current_subscription = getattr(user, 'subscription', None)
+            if current_subscription is not None and current_subscription.status == 'ACTIVE':
+                pending_referred_users = user.referrals.filter(
+                    has_claimed_referral=True,
+                    has_referral_reward_awarded=False
+                )
+                for referred_user in pending_referred_users:
+                    referred_subscription = getattr(referred_user, 'subscription', None)
+                    if referred_subscription is not None and referred_subscription.status == 'ACTIVE':
+                        user.balance += Decimal('10')
+                        user.save(update_fields=['balance'])
+
+                        referred_user.has_referral_reward_awarded = True
+                        referred_user.save(update_fields=['has_referral_reward_awarded'])
+                        print(f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
+
+        except Exception as e:
+            print(f"❌ Error processing referral reward: {str(e)}")
 
     def _handle_recurring_subscription(self, invoice):
         stripe_sub_id = invoice.get('subscription')
@@ -836,49 +883,6 @@ class UserSubscriptionStatusView(APIView):
                 "features": sub.plan.features  
             }
         })
-
-
-class CreateSubscriptionCheckoutView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        plan_id = request.data.get('plan_id')
-
-        try:
-            plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
-        except SubscriptionPlan.DoesNotExist:
-            return Response({"error": "Invalid Plan selected."}, status=404)
-
-        if plan.plan_type == 'FREE':
-            return Response({"error": "Free trial cannot be purchased."}, status=400)
-
-        try:
-            session = stripe.checkout.Session.create(
-                ui_mode='embedded',
-                payment_method_types=['card'],
-                line_items=[{
-                    'price': plan.stripe_price_id,  
-                    'quantity': 1,
-                }],
-                mode='subscription',  
-                return_url=settings.STRIPE_RETURN_URL +
-                '?session_id={CHECKOUT_SESSION_ID}',
-                metadata={
-                    'user_id': request.user.id,
-                    'plan_id': plan.id,
-                    'type': 'subscription_payment'
-                },
-                customer_email=request.user.email,
-            )
-
-            return Response({
-                "client_secret": session.client_secret,
-                "plan_name": plan.name,
-                "amount": float(plan.price)
-            }, status=201)
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
 
 
 class ManageSubscriptionView(APIView):

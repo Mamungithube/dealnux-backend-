@@ -10,7 +10,6 @@ from .models import Order
 @receiver(post_save, sender=SellerRequest)
 def handle_seller_request_email(sender, instance, created, **kwargs):
     if created:
-        # ১. সেলারকে পেন্ডিং মেসেজ
         send_dealnux_email(
             "Application Pending - DealNux Seller",
             instance.user.email,

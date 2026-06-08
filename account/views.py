@@ -662,10 +662,7 @@ class ProfileSetupView(APIView):
                                 "data": {"referred_by_code": ["Invalid referral code."]}
                             }, status=status.HTTP_400_BAD_REQUEST)
 
-                        referrer.balance += 10
-                        referrer.save()
-
-                        user.balance += 10
+                        # Do not award referral bonuses until both users have purchased an active paid subscription.
                         user.referred_by = referrer
                         user.has_claimed_referral = True
 

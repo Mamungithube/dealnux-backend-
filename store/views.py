@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Avg, Count
 from stripe.climate import Product
 
 from payment.views import _calculate_order_amounts
@@ -257,6 +257,11 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
             seller=seller, status='APPROVED'
         ).aggregate(total=Sum('quantity'))['total'] or 0
 
+        review_stats = ProductReview.objects.filter(product__seller=seller).aggregate(
+            average_rating=Avg('rating'),
+            total_reviews=Count('id')
+        )
+
         data = {
             "shop_name": seller.shop_name,
             "stats": {
@@ -265,7 +270,9 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
                 "active_orders": Order.objects.filter(seller=seller, status__in=['PENDING', 'CONFIRMED', 'SHIPPED']).count(),
                 "needs_action": Order.objects.filter(seller=seller, status='PENDING').count(),
                 "this_month_earnings": float(this_month_earned),
-                "total_earned": float(seller.total_earnings)
+                "total_earned": float(seller.total_earnings),
+                "total_reviews": review_stats['total_reviews'],
+                "average_rating": round(review_stats['average_rating'] or 0, 1),
             }
         }
         return success_response(data)
@@ -713,6 +720,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         if status_filter and status_filter.upper() != 'ALL':
             qs = qs.filter(status=status_filter.upper())
 
+        review_count = ProductReview.objects.filter(user=user).count()
+
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -723,6 +732,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 "total_orders": total_orders,
                 "delivered_text": f"{delivered_count} delivered",
                 "pending_action_count": pending_action,
+                "review_count": review_count,
                 "plan_name": "Pro",
                 "plan_status": "Active"
             }
@@ -732,7 +742,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         summary = {
             "lifetime_savings": float(user.total_lifetime_savings),
             "total_orders": total_orders,
-            "pending_action_count": pending_action
+            "pending_action_count": pending_action,
+            "review_count": review_count,
         }
         return success_response({"summary": summary, "orders": serializer.data})
 
@@ -1076,6 +1087,11 @@ class SellerDashboardView(APIView):
         recent_orders = Order.objects.filter(
             seller=seller).order_by('-created_at')[:5]
 
+        review_stats = ProductReview.objects.filter(product__seller=seller).aggregate(
+            average_rating=Avg('rating'),
+            total_reviews=Count('id')
+        )
+
         data = {
             "shop_name": seller.shop_name,
             "wallet": {
@@ -1086,6 +1102,8 @@ class SellerDashboardView(APIView):
             },
             "total_products": seller.total_products,
             "total_orders":   seller.total_orders,
+            "total_reviews":  review_stats['total_reviews'],
+            "average_rating": round(review_stats['average_rating'] or 0, 1),
             "product_stats": {
                 "pending":  pending_products,
                 "approved": approved_products,

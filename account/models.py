@@ -44,6 +44,7 @@ class User(AbstractUser):
     referral_code   = models.CharField(max_length=12, unique=True, blank=True, null=True)
     has_claimed_referral = models.BooleanField(default=False)
     referred_by     = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals')
+    has_referral_reward_awarded = models.BooleanField(default=False)
     balance         = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     ads_provided    = models.BooleanField(default=False)
     is_active       = models.BooleanField(default=False)
