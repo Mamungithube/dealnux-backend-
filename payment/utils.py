@@ -1,3 +1,26 @@
+from django.utils import timezone
+
+
+def validate_and_increment_click(user, product_id=None):
+    """Validate and increment a user's daily click quota for API-backed product details."""
+    try:
+        subscription = getattr(user, 'subscription', None)
+        if not subscription or not subscription.is_active:
+            return False, "Please subscribe to a plan."
+
+        today = timezone.now().date()
+        if getattr(user, 'last_click_date', None) != today:
+            user.daily_click_count = 0
+            user.last_click_date = today
+
+        if user.daily_click_count >= subscription.plan.clicks_per_day:
+            return False, "Daily click limit reached!"
+
+        user.daily_click_count += 1
+        user.save(update_fields=['daily_click_count', 'last_click_date'])
+        return True, "Click recorded."
+    except Exception as e:
+        return False, f"Unable to validate click: {e}"
 
 
 def process_referral_reward_for_user(user):

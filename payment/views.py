@@ -772,44 +772,14 @@ class ProductClickTrackerView(APIView):
 
         # Local seller products should be accessible without subscription.
         if listing.platform.api_enabled:
-            sub = getattr(user, 'subscription', None)
-            if not sub or not sub.is_active:
-                return Response({"error": "Please subscribe to a plan."}, status=403)
-
-            plan = sub.plan
-            today = timezone.now().date()
-
-            if user.last_click_date != today:
-                user.daily_click_count = 0
-                user.last_click_date = today
-
-            if user.daily_click_count >= plan.clicks_per_day:
+            from payment.utils import validate_and_increment_click
+            success, message = validate_and_increment_click(user, product_id=listing.id)
+            if not success:
                 return Response({
-                    "error": "Daily click limit reached!",
-                    "limit": plan.clicks_per_day,
-                    "message": "Upgrade your plan for more access."
-                }, status=429)
+                    "error": message,
+                    "message": message
+                }, status=429 if "limit" in message.lower() else 403)
 
-            user.daily_click_count += 1
-            user.save(update_fields=['daily_click_count', 'last_click_date'])
-
-        return Response({"redirect_url": listing.external_url})
-
-        if user.last_click_date != today:
-            user.daily_click_count = 0
-            user.last_click_date = today
-
-        if user.daily_click_count >= plan.clicks_per_day:
-            return Response({
-                "error": "Daily click limit reached!",
-                "limit": plan.clicks_per_day,
-                "message": "Upgrade your plan for more access."
-            }, status=429)
-
-        user.daily_click_count += 1
-        user.save(update_fields=['daily_click_count', 'last_click_date'])
-
-        listing = get_object_or_404(ProductListing, id=listing_id)
         return Response({"redirect_url": listing.external_url})
 
 
