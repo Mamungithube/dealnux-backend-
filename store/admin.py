@@ -323,6 +323,7 @@ class SellerProductAdmin(ModelAdmin):
     list_fullwidth = True
     list_filter_submit = True
     list_per_page = 20
+    raw_id_fields = ('seller', 'category', 'linked_product', 'linked_listing', 'reviewed_by')
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
@@ -331,9 +332,11 @@ class SellerProductAdmin(ModelAdmin):
             'linked_product',
             'linked_listing',
             'reviewed_by',
+        ).prefetch_related(
+            'images' 
         )
 
-    list_display = [
+    ist_display = [
         'display_seller',
         'display_product',
         'display_price',
@@ -342,7 +345,12 @@ class SellerProductAdmin(ModelAdmin):
         'display_status',
         'created_at',
     ]
-    list_filter = ['status', 'condition', 'category', 'created_at']
+    list_filter = [
+        'status', 
+        'condition', 
+        ('category', admin.RelatedOnlyFieldListFilter), 
+        'created_at'
+    ]
     search_fields = ['title', 'brand', 'seller__shop_name', 'model_number']
     # readonly_fields = [
     #     'seller', 'category', 'title', 'description', 'brand', 'model_number',
@@ -403,22 +411,14 @@ class SellerProductAdmin(ModelAdmin):
     @display(description=_('Product'), ordering='title')
     def display_product(self, obj):
         if obj.main_image:
-            img = format_html(
-                '<img src="{}" width="36" height="36" '
-                'style="border-radius:6px;object-fit:cover;'
-                'margin-right:8px;vertical-align:middle"/>',
-                obj.main_image.url,
+            return format_html(
+                '<img src="{}" width="36" height="36" loading="lazy" '
+                'style="border-radius:6px; object-fit:cover; margin-right:8px; vertical-align:middle"/>'
+                '<div style="display:inline-block; vertical-align:middle">'
+                '<strong>{}</strong><br><small style="color:#6b7280">{}</small></div>',
+                obj.main_image.url, obj.title[:50], obj.brand or '—'
             )
-        else:
-            img = ''
-        return format_html(
-            '{}<div style="display:inline-block;vertical-align:middle">'
-            '<strong>{}</strong><br>'
-            '<small style="color:#6b7280">{}</small></div>',
-            img,
-            obj.title[:50],
-            obj.brand or '—',
-        )
+        return obj.title[:50]
 
     @display(description=_('Seller'), ordering='seller__shop_name')
     def display_seller(self, obj):
