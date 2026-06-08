@@ -19,7 +19,7 @@ from payment.utils import process_referral_reward_for_user
 
 from .models import (
     ProductReview, SellerRequest, SellerProfile,
-    SellerProduct, Order, Coupon,Dispute  
+    SellerProduct, Order, Coupon, Dispute
 )
 from .serializers import (
     SellerProductReviewSerializer, SellerRequestSerializer, AdminSellerRequestSerializer,
@@ -285,38 +285,53 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
             seller = request.user.seller_profile
         except SellerProfile.DoesNotExist:
             return error_response("Seller profile not found.", code=404)
-        
+
         # --- ১. Update Logic (PATCH) ---
         if request.method == 'PATCH':
             data = request.data
-            
+
             # Local Pickup Section
             pickup_data = data.get('local_pickup', {})
             if pickup_data:
-                seller.local_pickup_active = pickup_data.get('active', seller.local_pickup_active)
-                seller.pickup_address_street = pickup_data.get('address_street', seller.pickup_address_street)
-                seller.pickup_address_city = pickup_data.get('address_city', seller.pickup_address_city)
-                seller.pickup_address_state = pickup_data.get('address_state', seller.pickup_address_state)
-                seller.pickup_address_zip = pickup_data.get('address_zip', seller.pickup_address_zip)
-                seller.pickup_hours_start = pickup_data.get('hours_start', seller.pickup_hours_start)
-                seller.pickup_hours_end = pickup_data.get('hours_end', seller.pickup_hours_end)
-                seller.pickup_available_days = pickup_data.get('available_days', seller.pickup_available_days)
+                seller.local_pickup_active = pickup_data.get(
+                    'active', seller.local_pickup_active)
+                seller.pickup_address_street = pickup_data.get(
+                    'address_street', seller.pickup_address_street)
+                seller.pickup_address_city = pickup_data.get(
+                    'address_city', seller.pickup_address_city)
+                seller.pickup_address_state = pickup_data.get(
+                    'address_state', seller.pickup_address_state)
+                seller.pickup_address_zip = pickup_data.get(
+                    'address_zip', seller.pickup_address_zip)
+                seller.pickup_hours_start = pickup_data.get(
+                    'hours_start', seller.pickup_hours_start)
+                seller.pickup_hours_end = pickup_data.get(
+                    'hours_end', seller.pickup_hours_end)
+                seller.pickup_available_days = pickup_data.get(
+                    'available_days', seller.pickup_available_days)
 
             # Local Delivery Section
             delivery_data = data.get('local_delivery', {})
             if delivery_data:
-                seller.local_delivery_active = delivery_data.get('active', seller.local_delivery_active)
-                seller.delivery_radius = delivery_data.get('radius', seller.delivery_radius)
-                seller.delivery_fee = delivery_data.get('fee', seller.delivery_fee)
-                seller.delivery_timeframe = delivery_data.get('timeframe', seller.delivery_timeframe)
+                seller.local_delivery_active = delivery_data.get(
+                    'active', seller.local_delivery_active)
+                seller.delivery_radius = delivery_data.get(
+                    'radius', seller.delivery_radius)
+                seller.delivery_fee = delivery_data.get(
+                    'fee', seller.delivery_fee)
+                seller.delivery_timeframe = delivery_data.get(
+                    'timeframe', seller.delivery_timeframe)
 
             # Standard Shipping Section
             standard_data = data.get('standard_shipping', {})
             if standard_data:
-                seller.standard_shipping_active = standard_data.get('active', seller.standard_shipping_active)
-                seller.order_processing_time = standard_data.get('processing_time', seller.order_processing_time)
-                seller.preferred_couriers = standard_data.get('preferred_couriers', seller.preferred_couriers)
-            
+                seller.standard_shipping_active = standard_data.get(
+                    'active', seller.standard_shipping_active)
+                seller.order_processing_time = standard_data.get(
+                    'processing_time', seller.order_processing_time)
+                seller.preferred_couriers = standard_data.get(
+                    'preferred_couriers', seller.preferred_couriers)
+
             seller.save()
             return success_response(None, message="Shipping settings updated successfully.")
 
@@ -651,33 +666,26 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return success_response(serializer.data, message="Seller shop orders fetched")
-    
+
     @action(detail=True, methods=['post'], url_path='update-status')
     def update_status(self, request, pk=None):
         """
-        The seller will call this to accept the order.
-        This will change the status from PENDING to PROCESSING.
+        সেলার এটি কল করবে অর্ডারটি গ্রহণ করার জন্য।
+        এটি স্ট্যাটাসকে PENDING থেকে সরাসরি ACCEPTED করবে।
         """
         order = self.get_object()
 
-        # Security check: Only the original seller of the order can do this
+        # সেলার চেক
         if not request.user.is_staff and order.seller.user != request.user:
-            return error_response("Access denied. You are not the seller of this order.", code=403)
+            return error_response("Unauthorized.", code=403)
 
-        # status update
-        new_status = request.data.get('status', 'PROCESSING').upper()
-
-        # Validate the new status
-        allowed_statuses = [s[0] for s in Order.STATUS_CHOICES]
-        if new_status not in allowed_statuses:
-            return error_response(f"Invalid status. Choose from: {allowed_statuses}", code=400)
-
-        order.status = new_status
+        # সেলারের জন্য স্ট্যাটাস ফিক্সড: ACCEPTED
+        order.status = 'ACCEPTED' 
         order.save(update_fields=['status', 'updated_at'])
 
         return success_response(
-            {"order_number": order.order_number, "new_status": order.status}, 
-            message=f"Order has been accepted and is now in {order.status} state."
+            {"order_number": order.order_number, "status": order.status}, 
+            message="Order accepted by seller."
         )
 
     # ── Seller Action: Adding Tracking Number ──
@@ -753,59 +761,64 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='accept-order')
     def accept_order(self, request, pk=None):
+        """
+        বায়ার এটি কল করবে প্রোডাক্ট হাতে পাওয়ার পর।
+        এটি স্ট্যাটাসকে SHIPPED থেকে সরাসরি CONFIRMED করবে।
+        """
         order = self.get_object()
 
+        # বায়ার চেক
         if order.buyer != request.user:
             return error_response("Not authorized.", code=403)
 
-        if order.status == 'ACCEPTED':
-            return error_response("Already accepted.", code=400)
+        # লজিক চেক: আগে শিপড হতে হবে, তারপর বায়ার কনফার্ম করতে পারবে
+        if order.status != 'SHIPPED':
+            return error_response("You can only confirm after the order is SHIPPED.", code=400)
 
         from payment.models import PayoutRecord 
 
         with transaction.atomic():
-            # database updates
-            order.status = 'ACCEPTED'
+            # বায়ারের কাজ: স্ট্যাটাস এখন CONFIRMED হবে
+            order.status = 'CONFIRMED'
             order.is_accepted_by_buyer = True
             order.accepted_at = timezone.now()
             order.save()
 
+            # ওয়ালেট আপডেট লজিক
             seller_profile = order.seller
-            amount_to_release = order.item_total + order.shipping_fee
-
-            # wallet update
-            seller_profile.pending_balance -= amount_to_release
-            seller_profile.available_balance += amount_to_release
-            seller_profile.total_earnings += amount_to_release
+            amount = order.item_total + order.shipping_fee
+            seller_profile.pending_balance -= amount
+            seller_profile.available_balance += amount
+            seller_profile.total_earnings += amount
             seller_profile.save()
 
-            # payment history update (PayoutRecord)
-            import random
-            import string
+            # ড্যাশবোর্ডের জন্য রেকর্ড তৈরি
+            import random, string
             p_id = "PAY-" + "".join(random.choices(string.digits, k=4))
             PayoutRecord.objects.create(
-                seller=seller_profile,
-                payout_id=p_id,
-                amount=amount_to_release,
-                method="Stripe Transfer",
-                status="Paid"
+                seller=seller_profile, payout_id=p_id,
+                amount=amount, method="Stripe Transfer", status="Paid"
             )
 
-            # stripe transfer (if the seller has connected their Stripe account and completed onboarding)
+            # স্ট্রাইপ ট্রান্সফার (যদি একাউন্ট কানেক্টেড থাকে)
             if seller_profile.stripe_account_id and seller_profile.stripe_onboarding_completed:
                 try:
+                    import stripe
                     stripe.Transfer.create(
-                        amount=int(amount_to_release * 100),
+                        amount=int(amount * 100),
                         currency=order.currency.lower(),
                         destination=seller_profile.stripe_account_id,
                         transfer_group=f"ORDER_{order.order_number}",
                     )
                 except Exception as e:
-                    logger.error(f"Stripe Transfer Error: {str(e)}")
+                    logger.error(f"Stripe Error: {str(e)}")
 
-        return success_response(None, message="Payment released to your wallet and history updated!")
+        return success_response(None, message="Order Confirmed! Funds released to seller.")
+        
+
 
     # ── Admin Action: Process refund (Fault Logic) ──
+
     @action(detail=True, methods=['post'], url_path='process-refund', permission_classes=[IsAdminUser])
     def process_refund(self, request, pk=None):
         """
@@ -813,7 +826,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         Case 2: Buyer fault -> Refund (Price only, buyer pays shipping & fees)
         """
         order = self.get_object()
-        fault = request.data.get('fault_party')  
+        fault = request.data.get('fault_party')
 
         if fault not in ['SELLER', 'BUYER']:
             return error_response("Invalid fault_party. Must be SELLER or BUYER.", code=400)
@@ -864,7 +877,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 reason=request.data.get('reason'),
                 description=request.data.get('description'),
                 evidence_image=request.FILES.get(
-                    'evidence_image')  
+                    'evidence_image')
             )
 
         return success_response(None, message="Dispute opened. Admin will review it soon.")
@@ -883,9 +896,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             dispute = order.dispute
 
             if decision == 'REJECT':
-                
+
                 dispute.status = 'REJECTED'
-                order.status = 'SHIPPED'  
+                order.status = 'SHIPPED'
                 dispute.save()
                 order.save()
                 return success_response(None, message="Dispute rejected. Order set back to Shipped.")
@@ -1038,14 +1051,16 @@ class CouponViewSet(viewsets.ModelViewSet):
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
                 res = _calculate_order_amounts(product, qty, code)
-                
+
                 total_discount += res['discount_amount']
                 total_original += Decimal(str(product.price * qty))
-                
-                applied_seller_shop = product.seller.shop_name
-                last_product_title = product.title if len(items_data) == 1 else f"Multiple Items ({len(items_data)})"
 
-                coupon = Coupon.objects.filter(code=code, seller=product.seller).first()
+                applied_seller_shop = product.seller.shop_name
+                last_product_title = product.title if len(
+                    items_data) == 1 else f"Multiple Items ({len(items_data)})"
+
+                coupon = Coupon.objects.filter(
+                    code=code, seller=product.seller).first()
                 if coupon:
                     discount_type = coupon.discount_type
                     discount_value = float(coupon.discount_value)

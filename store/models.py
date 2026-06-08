@@ -389,13 +389,14 @@ class SellerProductImage(models.Model):
 # ============================================================================
 class Order(models.Model):
     STATUS_CHOICES = [
-        ('PENDING',    'Pending'),     
-        ('CONFIRMED',  'Accepted'),    
-                                      
+        ('PENDING',   'Pending'),
+        ('ACCEPTED',  'Accepted by Seller'),  # সেলারের কাজ
         ('PROCESSING', 'Processing'),
-        ('DELIVERED',  'Delivered'),    
-        ('CANCELLED',  'Cancelled'),
-        ('REFUNDED',   'Refunded'),
+        ('SHIPPED',   'Shipped'),
+        ('DELIVERED', 'Delivered'),
+        ('CONFIRMED', 'Confirmed by Buyer'),  # বায়ারের কাজ (ফাইনাল)
+        ('CANCELLED', 'Cancelled'),
+        ('REFUNDED',  'Refunded'),
     ]
 
     FAULT_CHOICES = [
@@ -528,17 +529,21 @@ class Coupon(models.Model):
             return False
         return True
 
+
 class Dispute(models.Model):
     STATUS_CHOICES = [
         ('OPEN', 'Open'),
         ('RESOLVED', 'Resolved'),
         ('REJECTED', 'Rejected'),
     ]
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='dispute')
-    reason = models.CharField(max_length=255) # যেমন: Wrong item, Damaged
+    order = models.OneToOneField(
+        Order, on_delete=models.CASCADE, related_name='dispute')
+    reason = models.CharField(max_length=255)  # যেমন: Wrong item, Damaged
     description = models.TextField()
-    evidence_image = models.ImageField(upload_to='dispute_evidences/', blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OPEN')
+    evidence_image = models.ImageField(
+        upload_to='dispute_evidences/', blank=True, null=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='OPEN')
     admin_note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
