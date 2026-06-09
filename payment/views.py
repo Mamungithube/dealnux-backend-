@@ -77,26 +77,17 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 # 1. Checkout — Create Embedded Checkout Session (returns client_secret)
 # ============================================================================
 
-
 class CreateCheckoutSessionView(APIView):
-    """
-    Creates a Stripe Embedded Checkout Session for multiple items.
-    Handles item prices, individual coupons, shipping fees, and service fees.
-    """
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
         items_data = request.data.get('items', [])
         shipping_address = request.data.get('shipping_address')
-        
-        # Root level coupon code (if applies to all items from same seller)
         root_coupon_code = request.data.get('coupon_code', '').strip()
 
-        if not items_data:
-            return Response({'error': 'Items list is required.'}, status=400)
-        if not shipping_address:
-            return Response({'error': 'Shipping address is required.'}, status=400)
+        if not items_data or not shipping_address:
+            return Response({'error': 'Items and shipping address are required.'}, status=400)
 
         total_item_price = Decimal('0')
         total_shipping_fee = Decimal('0')
@@ -104,41 +95,36 @@ class CreateCheckoutSessionView(APIView):
         line_items = []
         validated_items = []
 
-        # 1. Process each item in the cart
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            
-            # Use item-specific coupon or fallback to root coupon
             c_code = item.get('coupon_code', '') or root_coupon_code
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
             except SellerProduct.DoesNotExist:
-                return Response({'error': f'Product ID {p_id} not found or not approved.'}, status=404)
+                return Response({'error': f'Product ID {p_id} not found.'}, status=404)
 
-            # Calculate individual item amounts using helper
-            # (Ensure _calculate_order_amounts is defined in your views.py)
             res = _calculate_order_amounts(product, qty, c_code)
             
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
             total_discount += res['discount_amount']
 
-            # Add product as a line item for Stripe
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int((res['item_total'] / qty) * 100), # Price per unit in cents
+                    'unit_amount': int((res['item_total'] / qty) * 100),
                     'product_data': {
                         'name': product.title,
                         'images': [request.build_absolute_uri(product.main_image.url)] if product.main_image else [],
                     },
+                    # ✅ এই আইটেমটির জন্য ট্যাক্স ক্যালকুলেশন এনাবল করা
+                    'tax_behavior': 'exclusive', 
                 },
                 'quantity': qty,
             })
             
-            # Prepare data for Webhook order creation
             validated_items.append({
                 'id': p_id, 
                 'qty': qty, 
@@ -147,87 +133,78 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(res['item_total'])
             })
 
-        # 2. Calculate Dealnux Service Fee (8%)
+        # সার্ভিস ফি এবং শিপিং ফি লাইন আইটেম হিসেবে যোগ করা
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
         
-        # 3. Calculate Final Grand Total
-        final_grand_total = total_item_price + total_shipping_fee + service_fee
+        line_items.append({
+            'price_data': {
+                'currency': 'usd',
+                'unit_amount': int(service_fee * 100),
+                'product_data': {'name': 'Dealnux Service Fee'},
+            },
+            'quantity': 1,
+        })
 
-        # 4. Create master Payment record in database
-        payment = Payment.objects.create(
-            buyer=request.user,
-            payment_type='STORE',
-            shipping_address=shipping_address,
-            unit_price=total_item_price, # Base amount
-            total_amount=total_item_price + total_discount, # Original market price
-            discount_amount=total_discount,
-            quantity=len(items_data),
-            item_total=total_item_price,
-            shipping_fee=total_shipping_fee,
-            service_fee=service_fee,
-            final_amount=final_grand_total,
-            currency='usd',
-            status='PENDING'
-        )
-
-        try:
-            # 5. Add Service Fee as a separate Line Item (Visible to buyer)
+        if total_shipping_fee > 0:
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int(service_fee * 100),
-                    'product_data': {
-                        'name': 'Dealnux Service Fee',
-                        'description': 'Covers buyer protection and secure escrow.',
-                    },
+                    'unit_amount': int(total_shipping_fee * 100),
+                    'product_data': {'name': 'Shipping Fee'},
                 },
                 'quantity': 1,
             })
 
-            # 6. Add Total Shipping Fee as a separate Line Item
-            # This ensures the $10 or other shipping amount is included in Stripe Total
-            if total_shipping_fee > 0:
-                line_items.append({
-                    'price_data': {
-                        'currency': 'usd',
-                        'unit_amount': int(total_shipping_fee * 100),
-                        'product_data': {
-                            'name': 'Shipping & Handling',
-                            'description': 'Delivery charges from sellers.',
-                        },
-                    },
-                    'quantity': 1,
-                })
-
-            # 7. Create Stripe Embedded Session
+        try:
+            # ৪. স্ট্রাইপ সেশন তৈরি (Automatic Tax এনাবল করে)
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                # Redirect URL without session_id as requested
+                automatic_tax={'enabled': True}, # ✅ স্ট্রাইপ নিজে ট্যাক্স হিসেব করবে
                 return_url=settings.STRIPE_RETURN_URL, 
                 metadata={
-                    'payment_id': payment.id,
+                    'payment_id': 0, # পরে আপডেট হবে
                     'type': 'store_payment',
                     'items_json': json.dumps(validated_items) 
                 },
                 customer_email=request.user.email,
             )
 
-            # Save session data
-            payment.stripe_checkout_session_id = session.id
-            payment.save(update_fields=['stripe_checkout_session_id'])
+            # স্ট্রাইপ থেকে পাওয়া রিয়েল ট্যাক্স অ্যামাউন্ট বের করা (Cents থেকে Dollars এ)
+            # নোট: এমবেডেড চেকআউটে অনেক সময় ইউজারের ফুল এড্রেস পাওয়ার আগে ট্যাক্স ০ থাকে।
+            # যদি স্ট্রাইপ ট্যাক্স ক্যালকুলেট করে ফেলে, তবে এখানে ভ্যালু আসবে।
+            stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
+            
+            final_grand_total = total_item_price + total_shipping_fee + service_fee + stripe_tax
 
-            # 8. Return response consistent with frontend integration
+            # ৫. পেমেন্ট রেকর্ড তৈরি (সেশন আইডিসহ)
+            payment = Payment.objects.create(
+                buyer=request.user,
+                payment_type='STORE',
+                shipping_address=shipping_address,
+                unit_price=total_item_price,
+                total_amount=total_item_price + total_discount, 
+                discount_amount=total_discount,
+                quantity=len(items_data),
+                item_total=total_item_price,
+                shipping_fee=total_shipping_fee,
+                service_fee=service_fee,
+                final_amount=final_grand_total, # ট্যাক্সসহ ফাইনাল অ্যামাউন্ট
+                currency='usd',
+                status='PENDING',
+                stripe_checkout_session_id=session.id
+            )
+
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
-                    'subtotal': float(total_item_price),
-                    'discount': float(total_discount),
-                    'shipping': float(total_shipping_fee),
-                    'service_fee': float(service_fee),
-                    'grand_total': float(final_grand_total)
+                    "subtotal": float(total_item_price),
+                    "shipping": float(total_shipping_fee),
+                    "service_fee": float(service_fee),
+                    "tax": float(stripe_tax), 
+                    "grand_total": float(final_grand_total)
                 }
             })
 
