@@ -148,6 +148,15 @@ class CreateCheckoutSessionView(APIView):
                 return Response({'error': f'Product ID {p_id} not found.'}, status=404)
 
             res = _calculate_order_amounts(product, qty, c_code)
+            requested_item_total = item.get('item_total')
+            requested_discount_amount = item.get('discount_amount')
+
+            if requested_item_total is not None:
+                res['item_total'] = Decimal(str(requested_item_total))
+                if requested_discount_amount is not None:
+                    res['discount_amount'] = Decimal(str(requested_discount_amount))
+                else:
+                    res['discount_amount'] = (product.price * qty) - res['item_total']
             
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
