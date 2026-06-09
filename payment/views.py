@@ -116,7 +116,12 @@ class CreateCheckoutSessionView(APIView):
     def post(self, request):
         items_data = request.data.get('items', [])
         shipping_address = request.data.get('shipping_address')
-        root_coupon_code = request.data.get('coupon_code', '').strip()
+        root_coupon_code = (
+            request.data.get('coupon_code')
+            or request.data.get('couponCode')
+            or request.data.get('coupon')
+            or ''
+        ).strip()
 
         if not items_data or not shipping_address:
             return Response({'error': 'Items and shipping address are required.'}, status=400)
@@ -130,7 +135,12 @@ class CreateCheckoutSessionView(APIView):
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            c_code = item.get('coupon_code', '') or root_coupon_code
+            c_code = (
+                item.get('coupon_code')
+                or item.get('couponCode')
+                or item.get('coupon')
+                or root_coupon_code
+            )
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
