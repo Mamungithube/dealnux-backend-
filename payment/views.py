@@ -167,6 +167,23 @@ class CreateCheckoutSessionView(APIView):
 
         # সার্ভিস ফি এবং শিপিং ফি লাইন আইটেম হিসেবে যোগ করা
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
+        pre_tax_grand_total = total_item_price + total_shipping_fee + service_fee
+
+        payment = Payment.objects.create(
+            buyer=request.user,
+            payment_type='STORE',
+            shipping_address=shipping_address,
+            unit_price=total_item_price,
+            total_amount=total_item_price + total_discount,
+            discount_amount=total_discount,
+            quantity=len(items_data),
+            item_total=total_item_price,
+            shipping_fee=total_shipping_fee,
+            service_fee=service_fee,
+            final_amount=pre_tax_grand_total,
+            currency='usd',
+            status='PENDING',
+        )
         
         line_items.append({
             'price_data': {
@@ -193,9 +210,9 @@ class CreateCheckoutSessionView(APIView):
                 line_items=line_items,
                 mode='payment',
                 automatic_tax={'enabled': True}, 
-                return_url=settings.STRIPE_RETURN_URL, 
+                return_url=settings.STRIPE_RETURN_URL + "?session_id={CHECKOUT_SESSION_ID}", 
                 metadata={
-                    'payment_id': 0, # পরে আপডেট হবে
+                    'payment_id': payment.id,
                     'type': 'store_payment',
                     'items_json': json.dumps(validated_items) 
                 },
@@ -204,24 +221,11 @@ class CreateCheckoutSessionView(APIView):
 
             stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
             
-            final_grand_total = total_item_price + total_shipping_fee + service_fee + stripe_tax
+            final_grand_total = pre_tax_grand_total + stripe_tax
 
-            payment = Payment.objects.create(
-                buyer=request.user,
-                payment_type='STORE',
-                shipping_address=shipping_address,
-                unit_price=total_item_price,
-                total_amount=total_item_price + total_discount, 
-                discount_amount=total_discount,
-                quantity=len(items_data),
-                item_total=total_item_price,
-                shipping_fee=total_shipping_fee,
-                service_fee=service_fee,
-                final_amount=final_grand_total, 
-                currency='usd',
-                status='PENDING',
-                stripe_checkout_session_id=session.id
-            )
+            payment.stripe_checkout_session_id = session.id
+            payment.final_amount = final_grand_total
+            payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
 
             return Response({
                 'client_secret': session.client_secret,
@@ -236,6 +240,7 @@ class CreateCheckoutSessionView(APIView):
             })
 
         except Exception as e:
+            payment.delete()
             return Response({'error': str(e)}, status=500)
 
 # ============================================================================
