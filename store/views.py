@@ -863,8 +863,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         if order.status != 'DISPUTED':
             return error_response("This order is not in dispute.", code=400)
 
-        decision = request.data.get('decision')  # 'APPROVE' or 'REJECT'
-        fault = request.data.get('fault_party')  # 'SELLER' or 'BUYER'
+        decision = request.data.get('decision')
+        fault = request.data.get('fault_party')
 
         with transaction.atomic():
             dispute = order.dispute

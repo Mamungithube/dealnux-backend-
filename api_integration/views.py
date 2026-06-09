@@ -1799,21 +1799,62 @@ class CartViewSet(viewsets.ModelViewSet):
         return self._success(data, message="Dashboard data fetched successfully")
 
 
+
+from django.db.models import Sum
+from django.db.models.functions import TruncDate
+from datetime import timedelta
+from django.utils import timezone
+
+
 class DashboardSavingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
+        
+        # ১. আগের মতোই রিসেন্ট ৫টি অ্যাক্টিভিটি নেওয়া হচ্ছে
         recent = SavingsActivity.objects.filter(
-            user=user).order_by('-created_at')[:5]
+            user=user
+        ).order_by('-created_at')[:5]
+
+        # ২. গ্রাফের জন্য গত ৩০ দিনের ডাটা ক্যালকুলেশন (CPU অপ্টিমাইজড)
+        thirty_days_ago = timezone.now().date() - timedelta(days=30)
+        
+        # ডাটাবেজ থেকে প্রতিদিনের টোটাল সেভিংস এগ্রিগেশন
+        trend_data = SavingsActivity.objects.filter(
+            user=user,
+            created_at__date__gte=thirty_days_ago
+        ).annotate(
+            day=TruncDate('created_at')
+        ).values('day').annotate(
+            total=Sum('saved_amount')
+        ).order_by('day')
+
+        # ৩. ডাটা ফরম্যাটিং (গ্রাফের জন্য ডিকশনারি তৈরি)
+        # যদি কোনো দিন সেভিংস না থাকে, ফ্রন্টএন্ডে ০ দেখানোর জন্য এটি করা হয়েছে
+        trend_map = {item['day'].strftime('%Y-%m-%d'): float(item['total']) for item in trend_data}
+        
+        graph_list = []
+        for i in range(30, -1, -1): # গত ৩০ দিন থেকে আজ পর্যন্ত
+            date_str = (timezone.now().date() - timedelta(days=i)).strftime('%Y-%m-%d')
+            graph_list.append({
+                "date": date_str,
+                "amount": trend_map.get(date_str, 0.0) # ডাটা না থাকলে ০.০
+            })
+
+        # ৪. আপনার অরিজিনাল রেসপন্স ফরম্যাট বজায় রাখা হয়েছে
         data = {
             "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
+            "savings_trend": graph_list, # ✅ নতুন: গ্রাফের জন্য তারিখ অনুযায়ী ডাটা
             "recent_activity": [
-                {"title": a.title, "saved_amount": float(
-                    a.saved_amount), "date": a.time_ago}
-                for a in recent
+                {
+                    "title": a.title, 
+                    "saved_amount": float(a.saved_amount), 
+                    "date": a.time_ago
+                } for a in recent
             ],
         }
+        
         return success_response(data, message="Dashboard data fetched successfully")
 
 

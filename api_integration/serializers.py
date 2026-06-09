@@ -141,8 +141,8 @@ class ProductSerializer(serializers.ModelSerializer):
         return obj.id in favorite_ids
 
     def get_lowest_price(self, obj):
-        price = obj.get_lowest_price()
-        return float(price) if price else None
+        cheapest = obj.listings.filter(is_available=True, price__gt=0).order_by('price').first()
+        return float(cheapest.price) if cheapest else None
 
     def get_listings_count(self, obj):
         return obj.listings.filter(is_available=True).count()
