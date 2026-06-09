@@ -266,7 +266,7 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
         data = {
             "shop_name": seller.shop_name,
             "stats": {
-                "total_products": seller.total_products,
+                "total_products": SellerProduct.objects.filter(seller=seller).count(),
                 "total_units_in_stock": total_units,
                 "active_orders": Order.objects.filter(seller=seller, status__in=['PENDING', 'CONFIRMED', 'SHIPPED']).count(),
                 "needs_action": Order.objects.filter(seller=seller, status='PENDING').count(),
@@ -1093,7 +1093,7 @@ class SellerDashboardView(APIView):
                 "withdrawn":  float(seller.total_withdrawn),
                 "total_earned": float(seller.total_earnings),
             },
-            "total_products": seller.total_products,
+            "total_products": SellerProduct.objects.filter(seller=seller).count(),
             "total_orders":   seller.total_orders,
             "total_reviews":  review_stats['total_reviews'],
             "average_rating": round(review_stats['average_rating'] or 0, 1),
