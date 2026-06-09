@@ -186,6 +186,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     deal_badge = serializers.SerializerMethodField()
     is_best_seller = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()  
+    main_image = serializers.SerializerMethodField()
     # listing = serializers.SerializerMethodField()
     # price_analysis = serializers.SerializerMethodField()
 
@@ -242,6 +243,15 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     def get_has_coupon(self, obj):
         best = obj.listings.filter(is_available=True).order_by('price').first()
         return best.has_coupon if best else False
+    
+    def get_main_image(self, obj):
+        request = self.context.get('request')
+        if not obj.main_image:
+            return None
+        image_url = obj.main_image if isinstance(obj.main_image, str) else obj.main_image.url
+        if request:
+            return request.build_absolute_uri(image_url)
+        return image_url
 
 
     def get_coupon_text(self, obj):
