@@ -27,11 +27,46 @@ from . serializers import (
     SubscriptionPlanSerializer, CheckoutSerializer, ShippingAddressSerializer
 
 )
-
+from rest_framework.pagination import PageNumberPagination
+import time 
 from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
 PLATFORM_FEE_PERCENT = Decimal('10')
 
+class CustomPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        next_page_number = None
+        if self.page.has_next():
+            next_page_number = self.page.next_page_number()
+
+        prev_page_number = None
+        if self.page.has_previous():
+            prev_page_number = self.page.previous_page_number()
+
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Success",
+            "timestamp": int(time.time()),
+            "data": {
+                "count": len(data),
+                "results": data
+            },
+            "pagination": {
+                "total_count": self.page.paginator.count,
+                "total_pages": self.page.paginator.num_pages,
+                "current_page": self.page.number,
+                "page_size": self.get_page_size(self.request),
+                "has_next": self.page.has_next(),
+                "has_previous": self.page.has_previous(),
+                "next_page": next_page_number,
+                "prev_page": prev_page_number,
+            }
+        })
 
 def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     unit_price = seller_product.price
@@ -171,9 +206,6 @@ class CreateCheckoutSessionView(APIView):
                 customer_email=request.user.email,
             )
 
-            # স্ট্রাইপ থেকে পাওয়া রিয়েল ট্যাক্স অ্যামাউন্ট বের করা (Cents থেকে Dollars এ)
-            # নোট: এমবেডেড চেকআউটে অনেক সময় ইউজারের ফুল এড্রেস পাওয়ার আগে ট্যাক্স ০ থাকে।
-            # যদি স্ট্রাইপ ট্যাক্স ক্যালকুলেট করে ফেলে, তবে এখানে ভ্যালু আসবে।
             stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
             
             final_grand_total = total_item_price + total_shipping_fee + service_fee + stripe_tax
@@ -317,7 +349,6 @@ class StripeWebhookView(APIView):
                 print(f"Error: Payment ID {payment_id} not found in database.")
 
     def _process_store_orders(self, payment, metadata):
-        """মেটাডাটা থেকে লুপ চালিয়ে প্রতিটি আইটেমের জন্য অর্ডার তৈরি করবে"""
         items_json = metadata.get('items_json', '[]')
         items = json.loads(items_json)
 
@@ -363,8 +394,6 @@ class StripeWebhookView(APIView):
             CartItem.objects.filter(user=buyer).delete()
             print(f"✅ Cart cleared for user: {buyer.email}")
 
-            # If this was the buyer's first purchase, and they already have an active subscription,
-            # perform referral reward processing now.
             self._process_referral_reward(buyer)
 
     def _handle_subscription_success(self, session):
@@ -608,18 +637,18 @@ class SellerStripeStatusView(APIView):
 # ============================================================================
 
 class PaymentHistoryView(APIView):
-    """
-    Buyer own payment history
-    GET /api/v1/store/payments/
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         payments = Payment.objects.filter(buyer=request.user).select_related(
             'seller_product', 'order'
         )
+
+        paginator = CustomPagination()
+        paginated_qs = paginator.paginate_queryset(payments, request)
+
         data = []
-        for p in payments:
+        for p in paginated_qs:
             data.append({
                 'id':              p.id,
                 'product':         p.seller_product.title if p.seller_product else None,
@@ -632,7 +661,8 @@ class PaymentHistoryView(APIView):
                 'order_status':    p.order.status if p.order else None,
                 'created_at':      p.created_at,
             })
-        return Response(data)
+
+        return paginator.get_paginated_response(data)
 
 
 class SellerPayoutHistoryView(APIView):
