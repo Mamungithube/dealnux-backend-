@@ -52,10 +52,7 @@ class CustomPagination(PageNumberPagination):
             "code": 200,
             "message": "Success",
             "timestamp": int(time.time()),
-            "data": {
-                "count": len(data),
-                "results": data
-            },
+            "data": data,
             "pagination": {
                 "total_count": self.page.paginator.count,
                 "total_pages": self.page.paginator.num_pages,
@@ -191,12 +188,11 @@ class CreateCheckoutSessionView(APIView):
             })
 
         try:
-            # ৪. স্ট্রাইপ সেশন তৈরি (Automatic Tax এনাবল করে)
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                automatic_tax={'enabled': True}, # ✅ স্ট্রাইপ নিজে ট্যাক্স হিসেব করবে
+                automatic_tax={'enabled': True}, 
                 return_url=settings.STRIPE_RETURN_URL, 
                 metadata={
                     'payment_id': 0, # পরে আপডেট হবে
@@ -210,7 +206,6 @@ class CreateCheckoutSessionView(APIView):
             
             final_grand_total = total_item_price + total_shipping_fee + service_fee + stripe_tax
 
-            # ৫. পেমেন্ট রেকর্ড তৈরি (সেশন আইডিসহ)
             payment = Payment.objects.create(
                 buyer=request.user,
                 payment_type='STORE',
@@ -222,7 +217,7 @@ class CreateCheckoutSessionView(APIView):
                 item_total=total_item_price,
                 shipping_fee=total_shipping_fee,
                 service_fee=service_fee,
-                final_amount=final_grand_total, # ট্যাক্সসহ ফাইনাল অ্যামাউন্ট
+                final_amount=final_grand_total, 
                 currency='usd',
                 status='PENDING',
                 stripe_checkout_session_id=session.id
