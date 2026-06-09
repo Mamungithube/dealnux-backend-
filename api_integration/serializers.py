@@ -106,7 +106,7 @@ class ProductSerializer(serializers.ModelSerializer):
     available_on = serializers.SerializerMethodField()
     is_favorite = serializers.SerializerMethodField()
     is_cart = serializers.SerializerMethodField()
-
+    main_image = serializers.SerializerMethodField()
     has_coupon = serializers.SerializerMethodField()
     coupon_text = serializers.SerializerMethodField()
     deal_badge = serializers.SerializerMethodField()
@@ -128,6 +128,15 @@ class ProductSerializer(serializers.ModelSerializer):
             # 'description', 'model_number', 'last_synced', 'updated_at',
         ]
 
+    def get_main_image(self, obj):
+        request = self.context.get('request')
+        if not obj.main_image:
+            return None
+        image_url = obj.main_image if isinstance(obj.main_image, str) else obj.main_image.url
+        if request:
+            return request.build_absolute_uri(image_url)
+        return "https://server.dealnux.shop" + image_url if image_url.startswith("/") else image_url
+    
     def get_price(self, obj):                      
         best = obj.listings.filter(is_available=True).order_by('price').first()
         return float(best.price) if best else None
