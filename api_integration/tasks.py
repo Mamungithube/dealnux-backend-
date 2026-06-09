@@ -347,8 +347,8 @@ def hourly_fixed_category_sync():
 
     for index, category in enumerate(categories):
         sync_all_platforms_task.apply_async(
-            args=[category.name, 100, category.slug],
-            countdown=index * 300 
+            args=[category.name, 10, category.slug],
+            countdown=index * 7200 
         )
 
     fix_coupon_flags.apply_async(countdown=len(categories) * 300 + 60)

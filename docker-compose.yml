@@ -41,7 +41,7 @@ services:
     image: dealnux-backend
     container_name: dealnux_celery_worker
     restart: always
-    command: celery -A dealnux worker -l info --concurrency=2
+    command: celery -A dealnux worker -l info --concurrency=1
     volumes:
       - .:/app
     env_file:
