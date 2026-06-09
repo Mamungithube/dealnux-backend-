@@ -65,7 +65,7 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 
     return {
         'unit_price': unit_price,
-        'item_total': item_total,  
+        'item_total': item_total,
         'discount_amount': discount,
         'shipping_fee': shipping,
         'service_fee': service_fee,
@@ -79,35 +79,37 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
 
 
 class CreateCheckoutSessionView(APIView):
+    """
+    Creates a Stripe Embedded Checkout Session for multiple items.
+    Handles item prices, individual coupons, shipping fees, and service fees.
+    """
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
         items_data = request.data.get('items', [])
-        shipping_address_data = request.data.get('shipping_address')
+        shipping_address = request.data.get('shipping_address')
+        
+        # Root level coupon code (if applies to all items from same seller)
         root_coupon_code = request.data.get('coupon_code', '').strip()
 
         if not items_data:
             return Response({'error': 'Items list is required.'}, status=400)
-        if not shipping_address_data:
-            return Response({'error': 'shipping_address is required.'}, status=400)
-
-        # Validate structured shipping address
-        address_serializer = ShippingAddressSerializer(data=shipping_address_data)
-        if not address_serializer.is_valid():
-            return Response({'error': address_serializer.errors}, status=400)
-        addr = address_serializer.validated_data
+        if not shipping_address:
+            return Response({'error': 'Shipping address is required.'}, status=400)
 
         total_item_price = Decimal('0')
         total_shipping_fee = Decimal('0')
         total_discount = Decimal('0')
-
         line_items = []
         validated_items = []
 
+        # 1. Process each item in the cart
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
+            
+            # Use item-specific coupon or fallback to root coupon
             c_code = item.get('coupon_code', '') or root_coupon_code
 
             try:
@@ -115,109 +117,120 @@ class CreateCheckoutSessionView(APIView):
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found or not approved.'}, status=404)
 
+            # Calculate individual item amounts using helper
+            # (Ensure _calculate_order_amounts is defined in your views.py)
             res = _calculate_order_amounts(product, qty, c_code)
-
+            
             total_item_price += res['item_total']
             total_shipping_fee += res['shipping_fee']
             total_discount += res['discount_amount']
 
+            # Add product as a line item for Stripe
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int((res['item_total'] / qty) * 100),
-                    'product_data': {'name': product.title},
+                    'unit_amount': int((res['item_total'] / qty) * 100), # Price per unit in cents
+                    'product_data': {
+                        'name': product.title,
+                        'images': [request.build_absolute_uri(product.main_image.url)] if product.main_image else [],
+                    },
                 },
                 'quantity': qty,
             })
-
+            
+            # Prepare data for Webhook order creation
             validated_items.append({
-                'id': p_id,
-                'qty': qty,
+                'id': p_id, 
+                'qty': qty, 
                 'c_code': c_code,
                 'shipping': float(res['shipping_fee']),
                 'item_total': float(res['item_total'])
             })
 
-        # Service fee calculation (8% of item total + shipping)
+        # 2. Calculate Dealnux Service Fee (8%)
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
+        
+        # 3. Calculate Final Grand Total
         final_grand_total = total_item_price + total_shipping_fee + service_fee
 
-        # Build human-readable address string for legacy field
-        address_line2_part = f", {addr['address_line2']}" if addr.get('address_line2') else ''
-        shipping_address_str = (
-            f"{addr['first_name']} {addr['last_name']}, "
-            f"{addr['address_line1']}{address_line2_part}, "
-            f"{addr['city']}, {addr['state']} {addr['zip_code']}, "
-            f"{addr['country']}"
-        )
-
-        # Create payment record
+        # 4. Create master Payment record in database
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
-
-            # Legacy plain-text field
-            shipping_address=shipping_address_str,
-
-            # Structured address fields
-            shipping_first_name=addr['first_name'],
-            shipping_last_name=addr['last_name'],
-            shipping_address_line1=addr['address_line1'],
-            shipping_address_line2=addr.get('address_line2', ''),
-            shipping_city=addr['city'],
-            shipping_state=addr['state'],
-            shipping_zip_code=addr['zip_code'],
-            shipping_country=addr['country'],
-
-            unit_price=total_item_price,
-            total_amount=total_item_price + total_shipping_fee + total_discount,
+            shipping_address=shipping_address,
+            unit_price=total_item_price, # Base amount
+            total_amount=total_item_price + total_discount, # Original market price
+            discount_amount=total_discount,
+            quantity=len(items_data),
             item_total=total_item_price,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            discount_amount=total_discount,
             final_amount=final_grand_total,
             currency='usd',
             status='PENDING'
         )
 
         try:
+            # 5. Add Service Fee as a separate Line Item (Visible to buyer)
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
                     'unit_amount': int(service_fee * 100),
-                    'product_data': {'name': 'Dealnux Service Fee (Buyer Protection)'},
+                    'product_data': {
+                        'name': 'Dealnux Service Fee',
+                        'description': 'Covers buyer protection and secure escrow.',
+                    },
                 },
                 'quantity': 1,
             })
 
+            # 6. Add Total Shipping Fee as a separate Line Item
+            # This ensures the $10 or other shipping amount is included in Stripe Total
+            if total_shipping_fee > 0:
+                line_items.append({
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': int(total_shipping_fee * 100),
+                        'product_data': {
+                            'name': 'Shipping & Handling',
+                            'description': 'Delivery charges from sellers.',
+                        },
+                    },
+                    'quantity': 1,
+                })
+
+            # 7. Create Stripe Embedded Session
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                return_url=settings.STRIPE_RETURN_URL,
-                automatic_tax={'enabled': True},
+                # Redirect URL without session_id as requested
+                return_url=settings.STRIPE_RETURN_URL, 
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
-                    'items_json': json.dumps(validated_items)
+                    'items_json': json.dumps(validated_items) 
                 },
                 customer_email=request.user.email,
             )
 
+            # Save session data
             payment.stripe_checkout_session_id = session.id
-            payment.save()
-            tax_amount = Decimal(session.total_details.amount_tax or 0) / 100
+            payment.save(update_fields=['stripe_checkout_session_id'])
+
+            # 8. Return response consistent with frontend integration
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
                     'subtotal': float(total_item_price),
+                    'discount': float(total_discount),
                     'shipping': float(total_shipping_fee),
                     'service_fee': float(service_fee),
-                    'tax': float(tax_amount),        
-                    'grand_total': float(final_grand_total + tax_amount)
+                    'grand_total': float(final_grand_total)
                 }
             })
+
         except Exception as e:
             return Response({'error': str(e)}, status=500)
 
@@ -231,7 +244,7 @@ class CheckoutSessionStatusView(APIView):
 
     def get(self, request):
         payment_id = request.query_params.get(
-            'payment_id') 
+            'payment_id')
 
         if not payment_id:
             return Response({'error': 'payment_id is required.'}, status=400)
@@ -305,7 +318,7 @@ class StripeWebhookView(APIView):
 
         if p_type == 'subscription_payment':
             self._handle_subscription_success(session)
-            return 
+            return
 
         if payment_id:
             try:
@@ -330,14 +343,15 @@ class StripeWebhookView(APIView):
         """মেটাডাটা থেকে লুপ চালিয়ে প্রতিটি আইটেমের জন্য অর্ডার তৈরি করবে"""
         items_json = metadata.get('items_json', '[]')
         items = json.loads(items_json)
-        
+
         buyer = payment.buyer
 
         with transaction.atomic():
             for item_data in items:
                 try:
-                    seller_product = SellerProduct.objects.get(id=item_data['id'])
-                    
+                    seller_product = SellerProduct.objects.get(
+                        id=item_data['id'])
+
                     Order.objects.create(
                         buyer=buyer,
                         seller=seller_product.seller,
@@ -347,7 +361,8 @@ class StripeWebhookView(APIView):
                         unit_price=seller_product.price,
                         item_total=Decimal(str(item_data['item_total'])),
                         shipping_fee=Decimal(str(item_data['shipping'])),
-                        service_fee=(Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
+                        service_fee=(Decimal(str(
+                            item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
                         total_price=payment.final_amount,
                         currency=payment.currency,
                         shipping_address=payment.shipping_address,
@@ -358,7 +373,8 @@ class StripeWebhookView(APIView):
                     seller_product.save()
 
                     seller = seller_product.seller
-                    amount_for_seller = Decimal(str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
+                    amount_for_seller = Decimal(
+                        str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
                     seller.pending_balance += amount_for_seller
                     seller.total_orders += 1
                     seller.save()
@@ -408,7 +424,7 @@ class StripeWebhookView(APIView):
                     'stripe_customer_id': stripe_cust_id,
                     'started_at': now,
                     'expires_at': now + timedelta(days=days),
-                    'trial_ends_at': now 
+                    'trial_ends_at': now
                 }
             )
             print(
@@ -447,7 +463,8 @@ class StripeWebhookView(APIView):
 
                     user.has_referral_reward_awarded = True
                     user.save(update_fields=['has_referral_reward_awarded'])
-                    print(f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
+                    print(
+                        f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
 
             # If the current user is a referrer, check for any referred users who already have active subscriptions
             # and have completed their first purchase.
@@ -458,15 +475,18 @@ class StripeWebhookView(APIView):
                     has_referral_reward_awarded=False
                 )
                 for referred_user in pending_referred_users:
-                    referred_subscription = getattr(referred_user, 'subscription', None)
+                    referred_subscription = getattr(
+                        referred_user, 'subscription', None)
                     if referred_subscription is not None and referred_subscription.status == 'ACTIVE':
                         if Order.objects.filter(buyer=referred_user).exists():
                             user.balance += Decimal('10')
                             user.save(update_fields=['balance'])
 
                             referred_user.has_referral_reward_awarded = True
-                            referred_user.save(update_fields=['has_referral_reward_awarded'])
-                            print(f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
+                            referred_user.save(
+                                update_fields=['has_referral_reward_awarded'])
+                            print(
+                                f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
 
         except Exception as e:
             print(f"❌ Error processing referral reward: {str(e)}")
@@ -768,7 +788,8 @@ class ProductClickTrackerView(APIView):
         # Local seller products should be accessible without subscription.
         if listing.platform.api_enabled:
             from payment.utils import validate_and_increment_click
-            success, message = validate_and_increment_click(user, product_id=listing.id)
+            success, message = validate_and_increment_click(
+                user, product_id=listing.id)
             if not success:
                 return Response({
                     "error": message,
@@ -857,7 +878,8 @@ class UserSubscriptionStatusView(APIView):
         sub = UserSubscription.objects.filter(user=request.user).first()
         if sub and sub.is_active:
             sub = refresh_subscription_limits(sub)
-        has_used_trial = UserSubscription.objects.filter(user=request.user).exists()
+        has_used_trial = UserSubscription.objects.filter(
+            user=request.user).exists()
         if not sub or not sub.is_active:
             return Response({
                 "success": True,
@@ -868,7 +890,7 @@ class UserSubscriptionStatusView(APIView):
                     "is_active": False,
                     "has_used_trial": has_used_trial,
                     "access": "Local Products Only",
-                    "features": [] 
+                    "features": []
                 }
             })
 
@@ -876,14 +898,14 @@ class UserSubscriptionStatusView(APIView):
             "success": True,
             "data": {
                 "plan_name": sub.plan.name,
-                "price": float(sub.plan.price),    
-                "renews_at": sub.expires_at,  
+                "price": float(sub.plan.price),
+                "renews_at": sub.expires_at,
                 "status": sub.status,
                 "is_active": sub.is_active,
                 "has_used_trial": True,
                 "days_remaining": sub.days_remaining,
                 "clicks_left": sub.plan.clicks_per_day - sub.daily_click_count,
-                "features": sub.plan.features  
+                "features": sub.plan.features
             }
         })
 
@@ -897,14 +919,14 @@ class ManageSubscriptionView(APIView):
 
         if not sub or not sub.stripe_customer_id:
             return Response({
-                "success": False, 
+                "success": False,
                 "message": "No active paid subscription or billing record found."
             }, status=404)
 
         try:
             session = stripe.billing_portal.Session.create(
                 customer=sub.stripe_customer_id,
-                return_url=settings.STRIPE_RETURN_URL, 
+                return_url=settings.STRIPE_RETURN_URL,
             )
             return Response({
                 "success": True,
