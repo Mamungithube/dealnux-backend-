@@ -485,10 +485,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         obj = serializer.save()
-        if not request.user.is_staff and obj.status == 'APPROVED':
-            obj.status = 'PENDING'
-            obj.save(update_fields=['status'])
-        return success_response(self.get_serializer(obj).data, message="Product updated. Pending review.")
+        return success_response(self.get_serializer(obj).data, message="Product updated.")
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -535,29 +532,6 @@ class SellerProductViewSet(viewsets.ModelViewSet):
                 'prev_page':    page - 1 if page > 1 else None,
             },
         }, message="Your products fetched")
-
-    # ── Admin: approve / reject ──────────────────────────────────────────
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
-    def approve(self, request, pk=None):
-        product = self.get_object()
-        if product.status == 'APPROVED':
-            return error_response("Already approved.", code=400)
-        product.approve(admin_user=request.user)
-        return success_response(
-            AdminSellerProductSerializer(product).data,
-            message="Product approved and listed."
-        )
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
-    def reject(self, request, pk=None):
-        product = self.get_object()
-        note = request.data.get('admin_note', '')
-        product.reject(admin_user=request.user, note=note)
-        return success_response(
-            AdminSellerProductSerializer(product).data,
-            message="Product rejected."
-        )
 
     # ── Seller: image upload ────────────────────────────────────────────
 

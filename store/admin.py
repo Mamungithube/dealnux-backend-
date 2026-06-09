@@ -396,7 +396,7 @@ class SellerProductAdmin(ModelAdmin):
         }),
     )
 
-    actions_row = ['action_approve_product', 'action_reject_product']
+    actions_row = []
     actions_list = []
 
     def has_delete_permission(self, request, obj=None):
@@ -460,35 +460,6 @@ class SellerProductAdmin(ModelAdmin):
     )
     def display_status(self, obj):
         return obj.status
-
-    @action(
-        description=_('Approve'),
-        url_path='approve-product',
-        icon='check_circle',
-        variant=ActionVariant.SUCCESS,
-    )
-    def action_approve_product(self, request, object_id):
-
-        obj = SellerProduct.objects.get(pk=object_id)
-        if obj.status != 'APPROVED':
-            obj.approve(admin_user=request.user)
-            self.message_user(
-                request, f'✓ "{obj.title[:40]}" approved and listed.')
-        return HttpResponseRedirect('../..')
-
-    @action(
-        description=_('Reject'),
-        url_path='reject-product',
-        icon='cancel',
-        variant=ActionVariant.DANGER,
-    )
-    def action_reject_product(self, request, object_id):
-
-        obj = SellerProduct.objects.get(pk=object_id)
-        if obj.status != 'REJECTED':
-            obj.reject(admin_user=request.user, note='Rejected by admin.')
-            self.message_user(request, f'✗ "{obj.title[:40]}" rejected.')
-        return HttpResponseRedirect('../..')
 
 
 # ============================================================================

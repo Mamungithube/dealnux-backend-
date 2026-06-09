@@ -1,6 +1,7 @@
 import profile
 
 from django.shortcuts import render
+from payment.utils import refresh_subscription_limits
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
 
@@ -742,6 +743,8 @@ class ProfileDetailsView(generics.RetrieveAPIView):
         try:
             from payment.models import UserSubscription
             sub = UserSubscription.objects.get(user=user)
+            if sub.is_active:
+                sub = refresh_subscription_limits(sub)
             return {
                 "plan_name": sub.plan.name,
                 "status": sub.status,

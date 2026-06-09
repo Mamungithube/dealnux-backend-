@@ -90,20 +90,25 @@ def token_similarity(title1, title2):
     t2 = re.sub(r'\s+', ' ', t2).strip()
     return round(SequenceMatcher(None, t1, t2).ratio() * 100, 2)
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def product_detail(request, pk):
     product = None
     seller_product_data = None
 
-    # ✅ Search SellerProduct first.
     try:
-        from store.models import SellerProduct
+        from store.models import SellerProduct, ProductReview 
+        from django.db.models import Avg, Count 
+
         seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
+                
+                stats = ProductReview.objects.filter(product=seller_product).aggregate(
+                    avg=Avg('rating'), total=Count('id')
+                )
+                
                 seller_product_data = {
                     'id': seller_product.id,
                     'price': str(seller_product.price),
@@ -113,13 +118,14 @@ def product_detail(request, pk):
                     'condition': seller_product.condition,
                     'seller_shop': seller_product.seller.shop_name,
                     'seller_logo': None,
+                    'rating': round(stats['avg'] or 0.0, 1),
+                    'review_count': stats['total'],
                 }
             else:
                 return success_response(SellerProductSerializer(seller_product).data)
     except ImportError:
         pass
 
-    # ✅ If you don't find it in SellerProduct, search in the Product table.
     if not product:
         product = Product.objects.filter(id=pk, is_active=True).first()
 
@@ -150,7 +156,6 @@ def product_detail(request, pk):
         if not success:
             return error_response(message, code=403 if "subscribe" in message.lower() else 429)
 
-    # ✅ Override with SellerProduct data
     if seller_product_data:
         data.update(seller_product_data)
 

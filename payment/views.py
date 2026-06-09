@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 
 from elasticsearch import logger
+from payment.utils import refresh_subscription_limits
 from redis import event
 import stripe
 from decimal import Decimal
@@ -30,12 +31,6 @@ from . serializers import (
 from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
 PLATFORM_FEE_PERCENT = Decimal('10')
-
-# ============================================================================
-# Helper function to calculate amounts based on product price, quantity, and coupon code.
-# ================= ===========================================================
-
-# payment/views.py
 
 
 def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
@@ -860,6 +855,8 @@ class UserSubscriptionStatusView(APIView):
     def get(self, request):
         from payment.models import UserSubscription
         sub = UserSubscription.objects.filter(user=request.user).first()
+        if sub and sub.is_active:
+            sub = refresh_subscription_limits(sub)
         has_used_trial = UserSubscription.objects.filter(user=request.user).exists()
         if not sub or not sub.is_active:
             return Response({

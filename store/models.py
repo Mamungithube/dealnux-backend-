@@ -9,7 +9,6 @@ import random
 # Seller Request — You can become a Seller if the Admin approves.
 # ============================================================================
 
-
 class SellerRequest(models.Model):
     STATUS_CHOICES = [('PENDING', 'Pending'), ('APPROVED',
                                                'Approved'), ('REJECTED', 'Rejected')]
@@ -231,7 +230,7 @@ class SellerProduct(models.Model):
 
     # Admin review
     status = models.CharField(
-        max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+        max_length=20, choices=STATUS_CHOICES, default='APPROVED')
     admin_note = models.TextField(blank=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
                                     blank=True, related_name='reviewed_seller_products')
@@ -260,6 +259,72 @@ class SellerProduct(models.Model):
             return round(((self.original_price - self.price) / self.original_price) * 100, 2)
         return None
 
+    def save(self, *args, **kwargs):
+        """Auto-create linked product and listing on first save when status is APPROVED."""
+        is_new = not self.pk
+        
+        if is_new and self.status == 'APPROVED':
+            # On creation, auto-generate linked product and listing
+            try:
+                from django.utils.text import slugify
+                
+                # Create local platform for this seller
+                local_platform, _ = Platform.objects.update_or_create(
+                    code=f"local-seller-{self.seller.id}",
+                    defaults={
+                        'name': self.seller.shop_name,
+                        'api_enabled': False,
+                    }
+                )
+                if local_platform.name != self.seller.shop_name:
+                    local_platform.name = self.seller.shop_name
+                    local_platform.save(update_fields=['name'])
+
+                # Create/get product
+                product, _ = Product.objects.get_or_create(
+                    title=self.title,
+                    defaults={
+                        'description': self.description,
+                        'brand': self.brand,
+                        'model_number': self.model_number,
+                        'main_image': self.main_image.url if self.main_image else '',
+                        'category': self.category,
+                    }
+                )
+
+                # Create/update listing
+                listing, _ = ProductListing.objects.update_or_create(
+                    product=product,
+                    platform=local_platform,
+                    external_id=f"seller-{self.seller.id}-product-{self.id}",
+                    defaults={
+                        'external_url': '',
+                        'price': self.price,
+                        'currency': self.currency,
+                        'original_price': self.original_price,
+                        'discount_percentage': self.discount_percentage,
+                        'condition': self.condition,
+                        'quantity': self.quantity,
+                        'seller_username': self.seller.shop_name,
+                        'seller_rating': None,
+                        'item_location': 'Local',
+                        'shipping_cost': self.shipping_cost,
+                        'free_shipping': self.free_shipping,
+                        'estimated_delivery_days': self.estimated_delivery_days,
+                        'returns_accepted': self.returns_accepted,
+                        'return_period_days': self.return_period_days,
+                        'is_available': True,
+                    }
+                )
+
+                self.linked_product = product
+                self.linked_listing = listing
+                self.reviewed_at = timezone.now()
+            except Exception as e:
+                pass  # If linking fails, still save the product
+        
+        super().save(*args, **kwargs)
+
     def approve(self, admin_user):
         """
         Admin Approval:
@@ -273,8 +338,6 @@ class SellerProduct(models.Model):
         self.reviewed_by = admin_user
         self.reviewed_at = timezone.now()
 
-        # 'local' platform get_or_create — separate platform entry for each seller
-        # so that the shop name is shown in price comparison
         local_platform, _ = Platform.objects.update_or_create(
             code=f"local-seller-{self.seller.id}",
             defaults={
@@ -282,7 +345,6 @@ class SellerProduct(models.Model):
                 'api_enabled': False,
             }
         )
-        # If you change the shop name, update the platform name as well.
         if local_platform.name != self.seller.shop_name:
             local_platform.name = self.seller.shop_name
             local_platform.save(update_fields=['name'])
@@ -390,11 +452,11 @@ class SellerProductImage(models.Model):
 class Order(models.Model):
     STATUS_CHOICES = [
         ('PENDING',   'Pending'),
-        ('ACCEPTED',  'Accepted by Seller'),  # সেলারের কাজ
+        ('ACCEPTED',  'Accepted by Seller'),
         ('PROCESSING', 'Processing'),
         ('SHIPPED',   'Shipped'),
         ('DELIVERED', 'Delivered'),
-        ('CONFIRMED', 'Confirmed by Buyer'),  # বায়ারের কাজ (ফাইনাল)
+        ('CONFIRMED', 'Confirmed by Buyer'),
         ('CANCELLED', 'Cancelled'),
         ('REFUNDED',  'Refunded'),
     ]
@@ -538,7 +600,7 @@ class Dispute(models.Model):
     ]
     order = models.OneToOneField(
         Order, on_delete=models.CASCADE, related_name='dispute')
-    reason = models.CharField(max_length=255)  # যেমন: Wrong item, Damaged
+    reason = models.CharField(max_length=255) 
     description = models.TextField()
     evidence_image = models.ImageField(
         upload_to='dispute_evidences/', blank=True, null=True)

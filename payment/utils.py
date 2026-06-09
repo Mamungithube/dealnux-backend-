@@ -55,3 +55,15 @@ def process_referral_reward_for_user(user):
     except Exception as e:
         print(f"Error processing referral reward in helper: {str(e)}")
         return False
+
+
+
+def refresh_subscription_limits(sub):
+    from django.utils import timezone
+    today = timezone.now().date()
+    
+    if sub.last_click_date != today:
+        sub.daily_click_count = 0
+        sub.last_click_date = today
+        sub.save(update_fields=['daily_click_count', 'last_click_date'])
+    return sub
