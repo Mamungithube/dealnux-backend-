@@ -259,71 +259,84 @@ class SellerProduct(models.Model):
             return round(((self.original_price - self.price) / self.original_price) * 100, 2)
         return None
 
+    def _ensure_linked_records(self):
+        if self.linked_product and self.linked_listing:
+            return
+
+        # Create local platform for this seller
+        local_platform, _ = Platform.objects.update_or_create(
+            code=f"local-seller-{self.seller.id}",
+            defaults={
+                'name': self.seller.shop_name,
+                'api_enabled': False,
+            }
+        )
+        if local_platform.name != self.seller.shop_name:
+            local_platform.name = self.seller.shop_name
+            local_platform.save(update_fields=['name'])
+
+        # Create/get product
+        product, _ = Product.objects.get_or_create(
+            title=self.title,
+            defaults={
+                'description': self.description,
+                'brand': self.brand,
+                'model_number': self.model_number,
+                'main_image': self.main_image.url if self.main_image else '',
+                'category': self.category,
+            }
+        )
+
+        # Create/update listing
+        listing, _ = ProductListing.objects.update_or_create(
+            product=product,
+            platform=local_platform,
+            external_id=f"seller-{self.seller.id}-product-{self.pk}",
+            defaults={
+                'external_url': '',
+                'price': self.price,
+                'currency': self.currency,
+                'original_price': self.original_price,
+                'discount_percentage': self.discount_percentage,
+                'condition': self.condition,
+                'quantity': self.quantity,
+                'seller_username': self.seller.shop_name,
+                'seller_rating': None,
+                'item_location': 'Local',
+                'shipping_cost': self.shipping_cost,
+                'free_shipping': self.free_shipping,
+                'estimated_delivery_days': self.estimated_delivery_days,
+                'returns_accepted': self.returns_accepted,
+                'return_period_days': self.return_period_days,
+                'is_available': True,
+            }
+        )
+
+        self.linked_product = product
+        self.linked_listing = listing
+        self.reviewed_at = timezone.now()
+
     def save(self, *args, **kwargs):
         """Auto-create linked product and listing on first save when status is APPROVED."""
-        is_new = not self.pk
-        
-        if is_new and self.status == 'APPROVED':
-            # On creation, auto-generate linked product and listing
-            try:
-                from django.utils.text import slugify
-                
-                # Create local platform for this seller
-                local_platform, _ = Platform.objects.update_or_create(
-                    code=f"local-seller-{self.seller.id}",
-                    defaults={
-                        'name': self.seller.shop_name,
-                        'api_enabled': False,
-                    }
-                )
-                if local_platform.name != self.seller.shop_name:
-                    local_platform.name = self.seller.shop_name
-                    local_platform.save(update_fields=['name'])
+        is_new = self.pk is None
 
-                # Create/get product
-                product, _ = Product.objects.get_or_create(
-                    title=self.title,
-                    defaults={
-                        'description': self.description,
-                        'brand': self.brand,
-                        'model_number': self.model_number,
-                        'main_image': self.main_image.url if self.main_image else '',
-                        'category': self.category,
-                    }
-                )
+        if is_new:
+            super().save(*args, **kwargs)
+            if self.status == 'APPROVED':
+                try:
+                    self._ensure_linked_records()
+                    super().save(update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
+                except Exception:
+                    pass
+            return
 
-                # Create/update listing
-                listing, _ = ProductListing.objects.update_or_create(
-                    product=product,
-                    platform=local_platform,
-                    external_id=f"seller-{self.seller.id}-product-{self.id}",
-                    defaults={
-                        'external_url': '',
-                        'price': self.price,
-                        'currency': self.currency,
-                        'original_price': self.original_price,
-                        'discount_percentage': self.discount_percentage,
-                        'condition': self.condition,
-                        'quantity': self.quantity,
-                        'seller_username': self.seller.shop_name,
-                        'seller_rating': None,
-                        'item_location': 'Local',
-                        'shipping_cost': self.shipping_cost,
-                        'free_shipping': self.free_shipping,
-                        'estimated_delivery_days': self.estimated_delivery_days,
-                        'returns_accepted': self.returns_accepted,
-                        'return_period_days': self.return_period_days,
-                        'is_available': True,
-                    }
-                )
-
-                self.linked_product = product
-                self.linked_listing = listing
-                self.reviewed_at = timezone.now()
-            except Exception as e:
-                pass  # If linking fails, still save the product
-        
         super().save(*args, **kwargs)
+        if self.status == 'APPROVED' and (not self.linked_product or not self.linked_listing):
+            try:
+                self._ensure_linked_records()
+                super().save(update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
+            except Exception:
+                pass
 
     def approve(self, admin_user):
         """

@@ -104,7 +104,19 @@ def product_detail(request, pk):
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
-                
+            elif seller_product.linked_listing:
+                product = seller_product.linked_listing.product
+                seller_product.linked_product = product
+                seller_product.save(update_fields=['linked_product'])
+            else:
+                try:
+                    seller_product._ensure_linked_records()
+                    seller_product.save(update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
+                    product = seller_product.linked_product
+                except Exception:
+                    return success_response(SellerProductSerializer(seller_product).data)
+
+            if product:
                 stats = ProductReview.objects.filter(product=seller_product).aggregate(
                     avg=Avg('rating'), total=Count('id')
                 )

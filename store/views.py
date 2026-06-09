@@ -457,7 +457,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
             data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        return success_response(serializer.data, message="Product submitted for review.", code=201)
+        return success_response(serializer.data, message="Product added successfully.", code=201)
 
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
