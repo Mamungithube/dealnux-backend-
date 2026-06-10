@@ -21,59 +21,46 @@ if admin.site.is_registered(BlacklistedToken):
 
 from django.contrib import admin
 from unfold.admin import ModelAdmin
-from unfold.decorators import action, display # <- এই ইম্পোর্টটা মিসিং ছিল
+from unfold.decorators import action, display  # <- এই ইম্পোর্টটা মিসিং ছিল
 from unfold.enums import ActionVariant
-from django.core.mail import send_mail # ইমেল পাঠানোর জন্য
+from django.core.mail import send_mail  # ইমেল পাঠানোর জন্য
 
+
+@admin.register(User)
 class UserAdmin(ModelAdmin):
-    list_display = ('email', 'name', 'is_active', 'balance', 'has_referral_reward_awarded')
-    
-    # [UPDATE] actions_row তে 'issue_referral_credit_manually' যোগ করা হয়েছে
+    list_display = ('email', 'name', 'is_active', 'balance',
+                    'has_referral_reward_awarded')
+    search_fields = ('email', 'name')
+
+    # আপনার রিকোয়েস্ট করা বাটনগুলো এখানে
     actions_row = [
-        'suspend_user_row', 
-        'reinstate_user_row', 
-        'issue_referral_credit_manually', # নতুন বাটন
+        'suspend_user_row',
+        'reinstate_user_row',
+        'issue_referral_credit_manually',  # ক্লায়েন্টের বাটন
         'delete_user_permanent'
     ]
 
-    # --- Manual Issue Referral Credit ---
-    @action(
-        description="Issue Referral Credit Manually", 
-        url_path="issue-referral", 
-        variant=ActionVariant.PRIMARY # বাটনটি নীল রঙের হবে
-    )
+    # --- CLIENT REQUEST: Manual Referral Credit ---
+    @action(description="Issue Referral Credit Manually", url_path="issue-referral", variant=ActionVariant.PRIMARY)
     def issue_referral_credit_manually(self, request, object_id):
         from decimal import Decimal
         from django.db import transaction
-
         user = self.get_queryset(request).get(pk=object_id)
 
         if not user.referred_by:
-            self.message_user(request, f"Error: User {user.email} was not referred by anyone.", level="error")
-            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
-
-        if user.has_referral_reward_awarded:
-            self.message_user(request, f"Notice: Referral credit already issued for {user.email}.", level="warning")
-            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
-
-        try:
+            self.message_user(
+                request, "Error: No referrer found.", level="error")
+        elif user.has_referral_reward_awarded:
+            self.message_user(
+                request, "Notice: Already awarded.", level="warning")
+        else:
             with transaction.atomic():
-                referrer = user.referred_by
-                credit_amount = Decimal('10.00') 
-
-                referrer.balance += credit_amount
-                referrer.save(update_fields=['balance'])
-
+                user.referred_by.balance += Decimal('10.00')
+                user.referred_by.save()
                 user.has_referral_reward_awarded = True
-                user.save(update_fields=['has_referral_reward_awarded'])
-
+                user.save()
                 self.message_user(
-                    request, 
-                    f"Success! ${credit_amount} credit issued to {referrer.email} for referring {user.email}."
-                )
-        except Exception as e:
-            self.message_user(request, f"Failed to issue credit: {str(e)}", level="error")
-        
+                    request, f"Success: Credit issued to {user.referred_by.email}")
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
     # --- Suspend User ---
@@ -83,7 +70,7 @@ class UserAdmin(ModelAdmin):
         user.is_active = False
         user.save()
         self.message_user(request, f"User {user.email} suspended.")
-        
+
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
     @action(description="Reinstate User", url_path="reinstate", variant=ActionVariant.SUCCESS)
@@ -92,7 +79,7 @@ class UserAdmin(ModelAdmin):
         user.is_active = True
         user.save()
         self.message_user(request, f"User {user.email} reinstated.")
-        
+
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
     @action(description="Delete Permanent", url_path="delete-permanent", variant=ActionVariant.DANGER)
@@ -100,9 +87,10 @@ class UserAdmin(ModelAdmin):
         user = self.get_queryset(request).get(pk=object_id)
         user.delete()
         self.message_user(request, "User deleted permanently.")
-        
+
         from django.urls import reverse
         return HttpResponseRedirect(reverse("admin:account_user_changelist"))
+
 
 @admin.register(Profile)
 class ProfileAdmin(ModelAdmin):
@@ -114,5 +102,3 @@ class ProfileAdmin(ModelAdmin):
         if obj.profile_picture:
             return format_html('<img src="{}" style="width: 40px; height: 40px; border-radius: 50%;" />', obj.profile_picture.url)
         return "No Image"
-    
-
