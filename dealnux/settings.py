@@ -358,7 +358,7 @@ STRIPE_SUCCESS_URL = os.getenv('STRIPE_SUCCESS_URL')
 STRIPE_CANCEL_URL = os.getenv('STRIPE_CANCEL_URL')
 STRIPE_CONNECT_REFRESH_URL = os.getenv('STRIPE_CONNECT_REFRESH_URL')
 STRIPE_CONNECT_RETURN_URL = os.getenv('STRIPE_CONNECT_RETURN_URL')
-STRIPE_RETURN_URL = 'http://localhost:3000/payment/success'
+STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
 
 
 # HTTPS Fix for Nginx Reverse Proxy
