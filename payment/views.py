@@ -120,46 +120,56 @@ class CreateCheckoutSessionView(APIView):
         items_data = request.data.get('items', [])
         shipping_address = request.data.get('shipping_address')
         root_coupon_code = (
-            request.data.get('coupon_code') or 
-            request.data.get('coupon') or ''
+            request.data.get('coupon_code')
+            or request.data.get('couponCode')
+            or request.data.get('coupon')
+            or ''
         ).strip()
 
-        if not items_data:
-            return Response({'error': 'Items are required.'}, status=400)
+        if not items_data or not shipping_address:
+            return Response({'error': 'Items and shipping address are required.'}, status=400)
 
-        total_before_discount = Decimal('0') # total_amount এর জন্য
-        total_after_discount = Decimal('0')  # item_total এর জন্য
-        total_discount = Decimal('0')
+        total_item_price = Decimal('0')
         total_shipping_fee = Decimal('0')
-        
+        total_discount = Decimal('0')
         line_items = []
         validated_items = []
 
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            c_code = item.get('coupon_code') or root_coupon_code
+            c_code = (
+                item.get('coupon_code')
+                or item.get('couponCode')
+                or item.get('coupon')
+                or root_coupon_code
+            )
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found.'}, status=404)
 
-            # ক্যালকুলেশন
+            # ১. বাগ ফিক্স: _calculate_order_amounts থেকে আসা ডিসকাউন্ট ব্যবহার করা
             res = _calculate_order_amounts(product, qty, c_code)
             
-            total_before_discount += (product.price * qty)
-            total_after_discount += res['item_total']
-            total_discount += res['discount_amount']
+            # ডিসকাউন্ট করা প্রাইস নিচ্ছি
+            item_total = res['item_total'] 
+            discount_amt = res['discount_amount']
+
+            total_item_price += item_total
             total_shipping_fee += res['shipping_fee']
+            total_discount += discount_amt
 
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int((res['item_total'] / qty) * 100),
+                    'unit_amount': int((item_total / qty) * 100), # ডিসকাউন্ট করা প্রাইস Stripe-এ যাবে
                     'product_data': {
                         'name': product.title,
+                        'images': [request.build_absolute_uri(product.main_image.url)] if product.main_image else [],
                     },
+                    'tax_behavior': 'exclusive', 
                 },
                 'quantity': qty,
             })
@@ -169,35 +179,34 @@ class CreateCheckoutSessionView(APIView):
                 'qty': qty, 
                 'c_code': c_code,
                 'shipping': float(res['shipping_fee']),
-                'item_total': float(res['item_total'])
+                'item_total': float(item_total)
             })
 
-        # সার্ভিস ফি (৮%)
-        service_fee = (total_after_discount + total_shipping_fee) * Decimal('0.08')
-        grand_total = total_after_discount + total_shipping_fee + service_fee
+        service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
+        pre_tax_grand_total = total_item_price + total_shipping_fee + service_fee
 
-        # পেমেন্ট রেকর্ড তৈরি (সংশোধিত)
+        # ২. বাগ ফিক্স (NotNullViolation): total_amount এবং shipping_address (JSON format)
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
-            shipping_address=json.dumps(shipping_address),
-            unit_price=total_after_discount, # অথবা গড় ইউনিট প্রাইস
-            total_amount=total_before_discount, # অরিজিনাল প্রাইস (ডিসকাউন্ট ছাড়া)
+            shipping_address=json.dumps(shipping_address), # টেক্সট ফিল্ডে ডাম্প করে রাখা নিরাপদ
+            unit_price=total_item_price,
+            total_amount=total_item_price + total_discount, # এটিই আপনার missing Not-Null কলাম
             discount_amount=total_discount,
-            item_total=total_after_discount,    # ডিসকাউন্ট সহ প্রাইস
+            quantity=len(items_data),
+            item_total=total_item_price,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            final_amount=grand_total,           # সবকিছু মিলিয়ে ফাইনাল বিল
+            final_amount=pre_tax_grand_total,
             currency='usd',
             status='PENDING',
         )
-
-        # সার্ভিস ফি লাইন আইটেম
+        
         line_items.append({
             'price_data': {
                 'currency': 'usd',
                 'unit_amount': int(service_fee * 100),
-                'product_data': {'name': 'Dealnux Service Fee (8%)'},
+                'product_data': {'name': 'Dealnux Service Fee'},
             },
             'quantity': 1,
         })
@@ -217,30 +226,39 @@ class CreateCheckoutSessionView(APIView):
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
+                automatic_tax={'enabled': True}, 
                 return_url=settings.STRIPE_RETURN_URL + "?session_id={CHECKOUT_SESSION_ID}", 
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
                     'items_json': json.dumps(validated_items) 
                 },
+                customer_email=request.user.email,
             )
+
+            # ৩. বাগ ফিক্স: Stripe Tax রিড করা
+            stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
+            final_grand_total = pre_tax_grand_total + stripe_tax
+
             payment.stripe_checkout_session_id = session.id
-            payment.save()
+            payment.final_amount = final_grand_total
+            payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
 
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
-                    "subtotal_original": float(total_before_discount),
-                    "discount": float(total_discount),
-                    "subtotal_after_discount": float(total_after_discount),
+                    "subtotal": float(total_item_price),
                     "shipping": float(total_shipping_fee),
                     "service_fee": float(service_fee),
-                    "grand_total": float(grand_total)
+                    "tax": float(stripe_tax), 
+                    "grand_total": float(final_grand_total)
                 }
             })
+
         except Exception as e:
-            payment.delete() # এরর হলে পেমেন্ট রেকর্ড রিমুভ করা ভালো
+            if payment.id:
+                payment.delete()
             return Response({'error': str(e)}, status=500)
 
 # ============================================================================
