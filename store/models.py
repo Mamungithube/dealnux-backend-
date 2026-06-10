@@ -324,26 +324,20 @@ class SellerProduct(models.Model):
         self.reviewed_at = timezone.now()
 
     def save(self, *args, **kwargs):
-        """Auto-create linked product and listing on first save when status is APPROVED."""
-        is_new = self.pk is None
-
-        if is_new:
-            super().save(*args, **kwargs)
-            if self.status == 'APPROVED':
-                try:
-                    self._ensure_linked_records()
-                    super().save(update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
-                except Exception:
-                    pass
-            return
-
+        if self.status not in ['APPROVED', 'DRAFT']:
+            self.status = 'APPROVED'
+            
         super().save(*args, **kwargs)
-        if self.status == 'APPROVED' and (not self.linked_product or not self.linked_listing):
-            try:
-                self._ensure_linked_records()
-                super().save(update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
-            except Exception:
-                pass
+
+        try:
+            self._ensure_linked_records()
+            # লিঙ্কগুলো আপডেট করে দেওয়া
+            SellerProduct.objects.filter(pk=self.pk).update(
+                linked_product=self.linked_product,
+                linked_listing=self.linked_listing
+            )
+        except Exception as e:
+            print(f"Sync failed during direct save: {e}")
 
     def approve(self, admin_user):
         """
