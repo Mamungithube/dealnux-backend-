@@ -172,7 +172,6 @@ def product_detail(request, pk):
         data.update(seller_product_data)
 
     data['related_products'] = ProductSerializer(related_products, many=True, context=context).data
-
     return success_response(data, message="Product details fetched successfully")
 # ============================================================================
 # Response Helpers
@@ -937,12 +936,6 @@ def compare_prices_api(request, slug):
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
-
-
-    from payment.utils import validate_and_increment_click
-    success, message = validate_and_increment_click(request.user, product_id=product.id)
-    if not success:
-        return error_response(message, code=403 if "subscribe" in message.lower() else 429)
 
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)

@@ -11,7 +11,9 @@ from .views import (
     ProfileDetailsView,
     ProfileUpdateView,
     DeleteAccountView,
-    ProfileSetupView
+    ProfileSetupView,
+     GoogleLogin,
+     AppleLogin,
 )
 from django.urls import path
 
@@ -43,5 +45,8 @@ urlpatterns = [
 
      path('device-token/', DeviceTokenView.as_view(), name='device-token'),
      path('notifications/', NotificationListView.as_view(), name='notifications'),
+
+     path('google/', GoogleLogin.as_view(), name='google_login'),
+     path('apple/', AppleLogin.as_view(), name='apple_login'),
 
 ]

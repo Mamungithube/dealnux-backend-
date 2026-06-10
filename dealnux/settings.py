@@ -94,6 +94,16 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    #auth and user management
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    'allauth.socialaccount.providers.apple',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
+
 
     # Local apps
     'account',
@@ -116,6 +126,37 @@ INSTALLED_APPS = [
 ]
 
 AUTH_USER_MODEL = 'account.User'
+
+SITE_ID = 1
+
+# Social Account Settings
+SOCIALACCOUNT_QUERY_EMAIL = True
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_USERNAME_REQUIRED = False
+
+# Google & Apple Credentials (এগুলো .env ফাইল থেকে আসবে)
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+        'APP': {
+            'client_id': os.getenv('GOOGLE_CLIENT_ID'),
+            'secret': os.getenv('GOOGLE_SECRET'),
+            'key': ''
+        }
+    },
+    'apple': {
+        'APP': {
+            'client_id': os.getenv('APPLE_CLIENT_ID'),      # e.g. com.dealnux.service
+            'secret': os.getenv('APPLE_SECRET'),            # Generated JWT or Key
+            'key': os.getenv('APPLE_KEY_ID'),               # e.g. 8PXXXXXX
+            'certificate_key': os.getenv('APPLE_CERTIFICATE_KEY'), # .p8 key content
+        }
+    }
+}
 
 REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'api_integration.utils.custom_exception_handler',

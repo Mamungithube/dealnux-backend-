@@ -810,17 +810,6 @@ class ProductClickTrackerView(APIView):
         except ProductListing.DoesNotExist:
             return Response({"error": "Listing not found."}, status=404)
 
-        # Local seller products should be accessible without subscription.
-        if listing.platform.api_enabled:
-            from payment.utils import validate_and_increment_click
-            success, message = validate_and_increment_click(
-                user, product_id=listing.id)
-            if not success:
-                return Response({
-                    "error": message,
-                    "message": message
-                }, status=429 if "limit" in message.lower() else 403)
-
         return Response({"redirect_url": listing.external_url})
 
 
