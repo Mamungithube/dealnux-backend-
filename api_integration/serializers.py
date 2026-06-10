@@ -342,13 +342,27 @@ class CartItemSerializer(serializers.ModelSerializer):
         
     def get_product_image(self, obj):
         request = self.context.get('request')
-        image = obj.product.main_image
+        product = obj.product
+        
+        image = product.main_image
+        
+        if not image:
+            from store.models import SellerProduct
+            seller_p = SellerProduct.objects.filter(linked_product=product).first()
+            if seller_p and seller_p.main_image:
+                image = seller_p.main_image
+
         if not image:
             return None
-        # If ImageField, use .url, if string, use directly
-        image_url = image if isinstance(image, str) else image.url
-        if request:
+
+        if isinstance(image, str):
+            image_url = image
+        else:
+            image_url = image.url
+
+        if request and not image_url.startswith('http'):
             return request.build_absolute_uri(image_url)
+            
         return image_url
 
     def get_listing(self, obj):
