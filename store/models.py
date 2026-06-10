@@ -260,8 +260,6 @@ class SellerProduct(models.Model):
         return None
 
     def _ensure_linked_records(self):
-        if self.linked_product and self.linked_listing:
-            return
 
         # Create local platform for this seller
         local_platform, _ = Platform.objects.update_or_create(
@@ -308,7 +306,7 @@ class SellerProduct(models.Model):
                 'estimated_delivery_days': self.estimated_delivery_days,
                 'returns_accepted': self.returns_accepted,
                 'return_period_days': self.return_period_days,
-                'is_available': True,
+                'is_available': True if self.quantity > 0 else False, 
             }
         )
 
