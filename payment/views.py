@@ -119,7 +119,6 @@ class CreateCheckoutSessionView(APIView):
     def post(self, request):
         items_data = request.data.get('items', [])
         shipping_address = request.data.get('shipping_address')
-        # মেইন কোপন কোড রিসিভ করা
         root_coupon_code = (
             request.data.get('coupon_code') or 
             request.data.get('coupon') or ''
@@ -128,16 +127,17 @@ class CreateCheckoutSessionView(APIView):
         if not items_data:
             return Response({'error': 'Items are required.'}, status=400)
 
+        total_before_discount = Decimal('0') # total_amount এর জন্য
+        total_after_discount = Decimal('0')  # item_total এর জন্য
         total_discount = Decimal('0')
-        total_item_price_after_discount = Decimal('0')
         total_shipping_fee = Decimal('0')
+        
         line_items = []
         validated_items = []
 
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            # আইটেম লেভেলে কোপন থাকলে সেটা নেবে, না থাকলে মেইনটা নেবে
             c_code = item.get('coupon_code') or root_coupon_code
 
             try:
@@ -145,18 +145,18 @@ class CreateCheckoutSessionView(APIView):
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found.'}, status=404)
 
-            # ব্যাকএন্ডে পুনরায় ক্যালকুলেট করা (সুরক্ষার জন্য)
+            # ক্যালকুলেশন
             res = _calculate_order_amounts(product, qty, c_code)
             
-            total_item_price_after_discount += res['item_total']
-            total_shipping_fee += res['shipping_fee']
+            total_before_discount += (product.price * qty)
+            total_after_discount += res['item_total']
             total_discount += res['discount_amount']
+            total_shipping_fee += res['shipping_fee']
 
-            # Stripe Line Items - এখানে res['item_total'] পাঠাতে হবে যা ডিসকাউন্ট করা
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int((res['item_total'] / qty) * 100), # প্রতি ইউনিটের ডিসকাউন্টেড দাম
+                    'unit_amount': int((res['item_total'] / qty) * 100),
                     'product_data': {
                         'name': product.title,
                     },
@@ -172,28 +172,32 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(res['item_total'])
             })
 
-        # সার্ভিস ফি ৮% (টোটাল ডিসকাউন্টেড প্রাইস + শিপিং এর ওপর)
-        service_fee = (total_item_price_after_discount + total_shipping_fee) * Decimal('0.08')
-        
-        # পেমেন্ট রেকর্ড তৈরি
+        # সার্ভিস ফি (৮%)
+        service_fee = (total_after_discount + total_shipping_fee) * Decimal('0.08')
+        grand_total = total_after_discount + total_shipping_fee + service_fee
+
+        # পেমেন্ট রেকর্ড তৈরি (সংশোধিত)
         payment = Payment.objects.create(
             buyer=request.user,
+            payment_type='STORE',
             shipping_address=json.dumps(shipping_address),
-            unit_price=total_item_price_after_discount,
+            unit_price=total_after_discount, # অথবা গড় ইউনিট প্রাইস
+            total_amount=total_before_discount, # অরিজিনাল প্রাইস (ডিসকাউন্ট ছাড়া)
             discount_amount=total_discount,
-            item_total=total_item_price_after_discount,
+            item_total=total_after_discount,    # ডিসকাউন্ট সহ প্রাইস
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            final_amount=total_item_price_after_discount + total_shipping_fee + service_fee,
+            final_amount=grand_total,           # সবকিছু মিলিয়ে ফাইনাল বিল
+            currency='usd',
             status='PENDING',
         )
 
-        # সার্ভিস ফি লাইন আইটেম হিসেবে যোগ করা
+        # সার্ভিস ফি লাইন আইটেম
         line_items.append({
             'price_data': {
                 'currency': 'usd',
                 'unit_amount': int(service_fee * 100),
-                'product_data': {'name': 'Service Fee (8%)'},
+                'product_data': {'name': 'Dealnux Service Fee (8%)'},
             },
             'quantity': 1,
         })
@@ -208,7 +212,6 @@ class CreateCheckoutSessionView(APIView):
                 'quantity': 1,
             })
 
-        # Stripe Session তৈরি
         try:
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
@@ -228,14 +231,16 @@ class CreateCheckoutSessionView(APIView):
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
-                    "subtotal": float(total_item_price_after_discount),
+                    "subtotal_original": float(total_before_discount),
+                    "discount": float(total_discount),
+                    "subtotal_after_discount": float(total_after_discount),
                     "shipping": float(total_shipping_fee),
                     "service_fee": float(service_fee),
-                    "discount": float(total_discount),
-                    "grand_total": float(payment.final_amount)
+                    "grand_total": float(grand_total)
                 }
             })
         except Exception as e:
+            payment.delete() # এরর হলে পেমেন্ট রেকর্ড রিমুভ করা ভালো
             return Response({'error': str(e)}, status=500)
 
 # ============================================================================
