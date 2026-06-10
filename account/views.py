@@ -848,72 +848,72 @@ def start_free_trial(user):
 
 
 
-from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
-from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
-from allauth.socialaccount.providers.oauth2.client import OAuth2Client
-from dj_rest_auth.registration.views import SocialLoginView
-from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Profile
+# from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+# from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
+# from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+# from dj_rest_auth.registration.views import SocialLoginView
+# from rest_framework_simplejwt.tokens import RefreshToken
+# from .models import Profile
 
-class GoogleLogin(SocialLoginView):
-    adapter_class = GoogleOAuth2Adapter
-    callback_url = "https://www.dealnux.shop" 
-    client_class = OAuth2Client
+# class GoogleLogin(SocialLoginView):
+#     adapter_class = GoogleOAuth2Adapter
+#     callback_url = "https://www.dealnux.shop" 
+#     client_class = OAuth2Client
 
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            user = self.user
-            if not user.is_active:
-                user.is_active = True
-                user.save()
+#     def post(self, request, *args, **kwargs):
+#         response = super().post(request, *args, **kwargs)
+#         if response.status_code == 200:
+#             user = self.user
+#             if not user.is_active:
+#                 user.is_active = True
+#                 user.save()
             
-            Profile.objects.get_or_create(user=user)
+#             Profile.objects.get_or_create(user=user)
             
-            refresh = RefreshToken.for_user(user)
+#             refresh = RefreshToken.for_user(user)
             
-            return Response({
-                "success": True,
-                "code": 200,
-                "message": "Google login successful",
-                "data": {
-                    "access": str(refresh.access_token),
-                    "refresh": str(refresh),
-                    "user": {
-                        "id": user.id,
-                        "email": user.email,
-                        "profile_setup_completed": user.profile_setup_completed
-                    }
-                }
-            })
-        return response
+#             return Response({
+#                 "success": True,
+#                 "code": 200,
+#                 "message": "Google login successful",
+#                 "data": {
+#                     "access": str(refresh.access_token),
+#                     "refresh": str(refresh),
+#                     "user": {
+#                         "id": user.id,
+#                         "email": user.email,
+#                         "profile_setup_completed": user.profile_setup_completed
+#                     }
+#                 }
+#             })
+#         return response
 
-class AppleLogin(SocialLoginView):
-    adapter_class = AppleOAuth2Adapter
-    callback_url = "https://www.dealnux.shop"
-    client_class = OAuth2Client
+# class AppleLogin(SocialLoginView):
+#     adapter_class = AppleOAuth2Adapter
+#     callback_url = "https://www.dealnux.shop"
+#     client_class = OAuth2Client
 
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            user = self.user
-            user.is_active = True
-            user.save()
-            Profile.objects.get_or_create(user=user)
+#     def post(self, request, *args, **kwargs):
+#         response = super().post(request, *args, **kwargs)
+#         if response.status_code == 200:
+#             user = self.user
+#             user.is_active = True
+#             user.save()
+#             Profile.objects.get_or_create(user=user)
             
-            refresh = RefreshToken.for_user(user)
-            return Response({
-                "success": True,
-                "code": 200,
-                "message": "Apple login successful",
-                "data": {
-                    "access": str(refresh.access_token),
-                    "refresh": str(refresh),
-                    "user": {
-                        "id": user.id,
-                        "email": user.email,
-                        "profile_setup_completed": user.profile_setup_completed
-                    }
-                }
-            })
-        return response
+#             refresh = RefreshToken.for_user(user)
+#             return Response({
+#                 "success": True,
+#                 "code": 200,
+#                 "message": "Apple login successful",
+#                 "data": {
+#                     "access": str(refresh.access_token),
+#                     "refresh": str(refresh),
+#                     "user": {
+#                         "id": user.id,
+#                         "email": user.email,
+#                         "profile_setup_completed": user.profile_setup_completed
+#                     }
+#                 }
+#             })
+#         return response

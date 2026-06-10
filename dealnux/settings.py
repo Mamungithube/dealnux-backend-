@@ -95,14 +95,14 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     #auth and user management
-    'django.contrib.sites',
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
-    'allauth.socialaccount.providers.apple',
-    'dj_rest_auth',
-    'dj_rest_auth.registration',
+    # 'django.contrib.sites',
+    # 'allauth',
+    # 'allauth.account',
+    # 'allauth.socialaccount',
+    # 'allauth.socialaccount.providers.google',
+    # 'allauth.socialaccount.providers.apple',
+    # 'dj_rest_auth',
+    # 'dj_rest_auth.registration',
 
 
     # Local apps
