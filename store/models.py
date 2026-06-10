@@ -260,8 +260,7 @@ class SellerProduct(models.Model):
         return None
 
     def _ensure_linked_records(self):
-
-        # Create local platform for this seller
+        # ১. লোকাল প্ল্যাটফর্ম ঠিক করা (এটি ঠিক আছে)
         local_platform, _ = Platform.objects.update_or_create(
             code=f"local-seller-{self.seller.id}",
             defaults={
@@ -273,24 +272,36 @@ class SellerProduct(models.Model):
             local_platform.name = self.seller.shop_name
             local_platform.save(update_fields=['name'])
 
-        # Create/get product
-        product, _ = Product.objects.get_or_create(
-            title=self.title,
-            defaults={
-                'description': self.description,
-                'brand': self.brand,
-                'model_number': self.model_number,
-                'main_image': self.main_image.url if self.main_image else '',
-                'category': self.category,
-            }
-        )
+        # ২. গ্লোবাল প্রোডাক্ট আপডেট বা তৈরি করা (এখানেই আপনার মেইন ভুল ছিল)
+        product_data = {
+            'title': self.title,
+            'description': self.description,
+            'brand': self.brand,
+            'model_number': self.model_number,
+            'main_image': self.main_image.url if self.main_image else '',
+            'category': self.category,
+        }
 
-        # Create/update listing
+        if self.linked_product:
+            # যদি অলরেডি লিঙ্ক করা থাকে, তবে ফিল্ডগুলো আপডেট করো
+            product = self.linked_product
+            for key, value in product_data.items():
+                setattr(product, key, value)
+            product.save() # এটি আপডেট ডাটা সেভ করবে
+        else:
+            # যদি লিঙ্ক করা না থাকে, তবে টাইটেল দিয়ে খুঁজে বের করো অথবা নতুন বানাও
+            product, _ = Product.objects.get_or_create(
+                title=self.title,
+                defaults=product_data
+            )
+            self.linked_product = product
+
+        # ৩. লিস্টিং আপডেট বা তৈরি করা (এটি সবসময় update_or_create হওয়া উচিত)
         listing, _ = ProductListing.objects.update_or_create(
-            product=product,
             platform=local_platform,
             external_id=f"seller-{self.seller.id}-product-{self.pk}",
             defaults={
+                'product': product, # প্রোডাক্ট অবজেক্টটি পাস করা
                 'external_url': '',
                 'price': self.price,
                 'currency': self.currency,
@@ -299,7 +310,6 @@ class SellerProduct(models.Model):
                 'condition': self.condition,
                 'quantity': self.quantity,
                 'seller_username': self.seller.shop_name,
-                'seller_rating': None,
                 'item_location': 'Local',
                 'shipping_cost': self.shipping_cost,
                 'free_shipping': self.free_shipping,
@@ -310,7 +320,6 @@ class SellerProduct(models.Model):
             }
         )
 
-        self.linked_product = product
         self.linked_listing = listing
         self.reviewed_at = timezone.now()
 
