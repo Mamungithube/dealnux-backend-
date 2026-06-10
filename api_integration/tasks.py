@@ -354,3 +354,29 @@ def hourly_fixed_category_sync():
     fix_coupon_flags.apply_async(countdown=len(categories) * 300 + 60)
 
     return f"Scheduled {len(categories)} categories for sync."
+
+
+@shared_task(bind=True, max_retries=0)
+def safe_category_sync():
+    """One category at a time — VPS friendly"""
+    from api_integration.models import Category
+    import time
+
+    categories = list(
+        Category.objects.filter(parent__isnull=True).only('name', 'slug')
+    )
+
+    for category in categories:
+        try:
+            # ৮টা platform একে একে চালাও, একসাথে না
+            for task_fn in [
+                sync_amazon_task, sync_walmart_task, sync_ebay_task,
+                sync_target_task, sync_aliexpress_task, sync_bestbuy_task,
+                sync_sephora_task, sync_wayfair_task,
+            ]:
+                task_fn.apply_async(args=[category.name, 10])
+                time.sleep(30)  # প্রতি task এর মাঝে ৩০ সেকেন্ড বিরতি
+        except Exception as e:
+            logger.error(f"Category sync failed for {category.name}: {e}")
+
+    return f"Safe sync completed for {len(categories)} categories."
