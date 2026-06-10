@@ -26,7 +26,6 @@ from unfold.enums import ActionVariant
 from django.core.mail import send_mail # ইমেল পাঠানোর জন্য
 
 @admin.register(User)
-@admin.register(User)
 class UserAdmin(ModelAdmin):
     list_display = ('email', 'name', 'is_active', 'balance', 'has_referral_reward_awarded')
     
