@@ -73,14 +73,17 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     if coupon_code:
         try:
             coupon = Coupon.objects.get(
-                code=coupon_code.upper().strip(), seller=seller_product.seller)
+                code=coupon_code.upper().strip(), 
+                seller=seller_product.seller,
+                is_active=True
+            )
             if coupon.is_valid and subtotal >= coupon.min_order_amount:
                 if coupon.discount_type == 'PERCENTAGE':
                     discount = subtotal * (coupon.discount_value / 100)
                 else:
                     discount = min(coupon.discount_value, subtotal)
-                print(
-                    f"✅ Discount Applied: {discount} for coupon {coupon_code}")
+                print(f"✅ Discount Applied: {discount} for coupon {coupon_code}")
+                
             else:
                 print(f"⚠️ Coupon invalid or min amount not met.")
         except Coupon.DoesNotExist:
@@ -116,62 +119,47 @@ class CreateCheckoutSessionView(APIView):
     def post(self, request):
         items_data = request.data.get('items', [])
         shipping_address = request.data.get('shipping_address')
+        # মেইন কোপন কোড রিসিভ করা
         root_coupon_code = (
-            request.data.get('coupon_code')
-            or request.data.get('couponCode')
-            or request.data.get('coupon')
-            or ''
+            request.data.get('coupon_code') or 
+            request.data.get('coupon') or ''
         ).strip()
 
-        if not items_data or not shipping_address:
-            return Response({'error': 'Items and shipping address are required.'}, status=400)
+        if not items_data:
+            return Response({'error': 'Items are required.'}, status=400)
 
-        total_item_price = Decimal('0')
-        total_shipping_fee = Decimal('0')
         total_discount = Decimal('0')
+        total_item_price_after_discount = Decimal('0')
+        total_shipping_fee = Decimal('0')
         line_items = []
         validated_items = []
 
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
-            c_code = (
-                item.get('coupon_code')
-                or item.get('couponCode')
-                or item.get('coupon')
-                or root_coupon_code
-            )
+            # আইটেম লেভেলে কোপন থাকলে সেটা নেবে, না থাকলে মেইনটা নেবে
+            c_code = item.get('coupon_code') or root_coupon_code
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found.'}, status=404)
 
+            # ব্যাকএন্ডে পুনরায় ক্যালকুলেট করা (সুরক্ষার জন্য)
             res = _calculate_order_amounts(product, qty, c_code)
-            requested_item_total = item.get('item_total')
-            requested_discount_amount = item.get('discount_amount')
-
-            if requested_item_total is not None:
-                res['item_total'] = Decimal(str(requested_item_total))
-                if requested_discount_amount is not None:
-                    res['discount_amount'] = Decimal(str(requested_discount_amount))
-                else:
-                    res['discount_amount'] = (product.price * qty) - res['item_total']
             
-            total_item_price += res['item_total']
+            total_item_price_after_discount += res['item_total']
             total_shipping_fee += res['shipping_fee']
             total_discount += res['discount_amount']
 
+            # Stripe Line Items - এখানে res['item_total'] পাঠাতে হবে যা ডিসকাউন্ট করা
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int((res['item_total'] / qty) * 100),
+                    'unit_amount': int((res['item_total'] / qty) * 100), # প্রতি ইউনিটের ডিসকাউন্টেড দাম
                     'product_data': {
                         'name': product.title,
-                        'images': [request.build_absolute_uri(product.main_image.url)] if product.main_image else [],
                     },
-                    # ✅ এই আইটেমটির জন্য ট্যাক্স ক্যালকুলেশন এনাবল করা
-                    'tax_behavior': 'exclusive', 
                 },
                 'quantity': qty,
             })
@@ -184,31 +172,28 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(res['item_total'])
             })
 
-        # সার্ভিস ফি এবং শিপিং ফি লাইন আইটেম হিসেবে যোগ করা
-        service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
-        pre_tax_grand_total = total_item_price + total_shipping_fee + service_fee
-
+        # সার্ভিস ফি ৮% (টোটাল ডিসকাউন্টেড প্রাইস + শিপিং এর ওপর)
+        service_fee = (total_item_price_after_discount + total_shipping_fee) * Decimal('0.08')
+        
+        # পেমেন্ট রেকর্ড তৈরি
         payment = Payment.objects.create(
             buyer=request.user,
-            payment_type='STORE',
-            shipping_address=shipping_address,
-            unit_price=total_item_price,
-            total_amount=total_item_price + total_discount,
+            shipping_address=json.dumps(shipping_address),
+            unit_price=total_item_price_after_discount,
             discount_amount=total_discount,
-            quantity=len(items_data),
-            item_total=total_item_price,
+            item_total=total_item_price_after_discount,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            final_amount=pre_tax_grand_total,
-            currency='usd',
+            final_amount=total_item_price_after_discount + total_shipping_fee + service_fee,
             status='PENDING',
         )
-        
+
+        # সার্ভিস ফি লাইন আইটেম হিসেবে যোগ করা
         line_items.append({
             'price_data': {
                 'currency': 'usd',
                 'unit_amount': int(service_fee * 100),
-                'product_data': {'name': 'Dealnux Service Fee'},
+                'product_data': {'name': 'Service Fee (8%)'},
             },
             'quantity': 1,
         })
@@ -223,43 +208,34 @@ class CreateCheckoutSessionView(APIView):
                 'quantity': 1,
             })
 
+        # Stripe Session তৈরি
         try:
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                automatic_tax={'enabled': True}, 
                 return_url=settings.STRIPE_RETURN_URL + "?session_id={CHECKOUT_SESSION_ID}", 
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
                     'items_json': json.dumps(validated_items) 
                 },
-                customer_email=request.user.email,
             )
-
-            stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
-            
-            final_grand_total = pre_tax_grand_total + stripe_tax
-
             payment.stripe_checkout_session_id = session.id
-            payment.final_amount = final_grand_total
-            payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
+            payment.save()
 
             return Response({
                 'client_secret': session.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
-                    "subtotal": float(total_item_price),
+                    "subtotal": float(total_item_price_after_discount),
                     "shipping": float(total_shipping_fee),
                     "service_fee": float(service_fee),
-                    "tax": float(stripe_tax), 
-                    "grand_total": float(final_grand_total)
+                    "discount": float(total_discount),
+                    "grand_total": float(payment.final_amount)
                 }
             })
-
         except Exception as e:
-            payment.delete()
             return Response({'error': str(e)}, status=500)
 
 # ============================================================================
