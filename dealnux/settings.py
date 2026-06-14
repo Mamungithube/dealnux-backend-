@@ -137,7 +137,6 @@ ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_USERNAME_REQUIRED = False
 
-# Google & Apple Credentials (এগুলো .env ফাইল থেকে আসবে)
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'SCOPE': ['profile', 'email'],
@@ -150,10 +149,10 @@ SOCIALACCOUNT_PROVIDERS = {
     },
     'apple': {
         'APP': {
-            'client_id': os.getenv('APPLE_CLIENT_ID'),      # e.g. com.dealnux.service
-            'secret': os.getenv('APPLE_SECRET'),            # Generated JWT or Key
-            'key': os.getenv('APPLE_KEY_ID'),               # e.g. 8PXXXXXX
-            'certificate_key': os.getenv('APPLE_CERTIFICATE_KEY'), # .p8 key content
+            'client_id': os.getenv('APPLE_CLIENT_ID'),     
+            'secret': os.getenv('APPLE_SECRET'),         
+            'key': os.getenv('APPLE_KEY_ID'),              
+            'certificate_key': os.getenv('APPLE_CERTIFICATE_KEY'), 
         }
     }
 }
@@ -231,33 +230,7 @@ TEMPLATES = [
 ]
 
 from .unfold_conf import UNFOLD_CONFIG
-
 UNFOLD = UNFOLD_CONFIG
-
-def dashboard_callback(request, context):
-    from payment.models import Payment, SellerPayout
-    from store.models import Order
-    from django.db.models import Sum
-
-    # ক্লায়েন্টের চাহিদা অনুযায়ী ডাটা
-    revenue = Payment.objects.filter(status='PAID').aggregate(
-        Sum('final_amount'))['final_amount__sum'] or 0
-    fees = SellerPayout.objects.aggregate(Sum('platform_fee_amount'))[
-        'platform_fee_amount__sum'] or 0
-
-    context.update({
-        "kpi_cards": [
-            {"title": "Total Revenue", "metric": f"${revenue}",
-                "footer": "Total marketplace sales"},
-            {"title": "Platform Fees", "metric": f"${fees}",
-                "footer": "DealNux earnings"},
-            {"title": "Open Orders", "metric": Order.objects.filter(
-                status='PENDING').count(), "footer": "Awaiting processing"},
-        ]
-    })
-    return context
-
-
 
 # Add this to settings.py
 
@@ -319,8 +292,8 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
-CELERY_TASK_TIME_LIMIT = 300  # 5 minutes max per task
-CELERY_TASK_SOFT_TIME_LIMIT = 240  # 4 minutes soft limit
+CELERY_TASK_TIME_LIMIT = 300  
+CELERY_TASK_SOFT_TIME_LIMIT = 240 
 
 CHANNEL_LAYERS = {
     "default": {
@@ -405,3 +378,4 @@ STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
 # HTTPS Fix for Nginx Reverse Proxy
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
