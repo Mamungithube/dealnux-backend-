@@ -676,20 +676,19 @@ class ProductViewSet(viewsets.ModelViewSet):
             listings__is_available=True,
         ).exclude(title='', main_image='')
 
-        # --- Category filter (unchanged) ---
         category_input = self.request.query_params.getlist('category')
+        explicit_category_ids = set()
         if category_input:
             slugs = []
             for item in category_input:
                 slugs.extend([s.strip() for s in item.split(',') if s.strip()])
             if slugs:
                 matching_cats = Category.objects.filter(slug__in=slugs)
-                all_ids = set()
                 for cat in matching_cats:
-                    all_ids.add(cat.id)
-                    all_ids.update(cat.children.values_list('id', flat=True))
-                if all_ids:
-                    queryset = queryset.filter(category__id__in=all_ids)
+                    explicit_category_ids.add(cat.id)
+                    explicit_category_ids.update(cat.children.values_list('id', flat=True))
+                if explicit_category_ids:
+                    queryset = queryset.filter(category__id__in=explicit_category_ids)
                 else:
                     return queryset.none()
 
@@ -700,31 +699,62 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             sq = re.escape(search_query)
 
-            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
+            # ---------------------------------------------------------
+            # STEP 0: Category Intent Mapping
+            # যেসব search query device/product category নির্দেশ করে,
+            # তাদের জন্য সরাসরি category slug-এ ম্যাপ করো
+            # ---------------------------------------------------------
+            CATEGORY_INTENT_MAP = {
+                'mobile phone': ['smartphones-cell-phones'],
+                'smartphone': ['smartphones-cell-phones'],
+                'cell phone': ['smartphones-cell-phones'],
+                'laptop': ['laptops', 'computers'],
+                'tablet': ['tablets'],
+                'headphone': ['headphones-audio'],
+                'earbuds': ['headphones-audio'],
+                'tv': ['televisions'],
+                'watch': ['smartwatches', 'watches'],
+                # প্রজেক্টের actual category slug অনুযায়ী আপডেট করো
+            }
 
             accessory_keywords = [
                 'power bank', 'solar', 'cable', 'charger', 'case', 'cover', 'box', 'station', 'stand',
                 'desk', 'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
                 'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
-                'protector', 'holder', 'adapter', 'screen guard'
+                'protector', 'holder', 'adapter', 'screen guard', 'controller', 'gaming controller',
+                'printer', 'cutting machine', 'sticker', 'poster', 'aux', 'usb board', 'connector',
+                'price tag', 'thermal printer', 'cup holder', 'attachment lens'
             ]
 
+            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
             phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
 
             is_searching_accessory = any(word in search_query.lower() for word in accessory_keywords)
 
             # ---------------------------------------------------------
-            # STEP 1: STRICT FILTER — ALL terms must appear in title
+            # STEP 1: Auto Category Lock (যদি explicit category না দেওয়া হয়)
+            # ---------------------------------------------------------
+            normalized_query = search_query.lower().strip()
+            if not explicit_category_ids and normalized_query in CATEGORY_INTENT_MAP and not is_searching_accessory:
+                mapped_slugs = CATEGORY_INTENT_MAP[normalized_query]
+                mapped_cats = Category.objects.filter(slug__in=mapped_slugs)
+                mapped_ids = set()
+                for cat in mapped_cats:
+                    mapped_ids.add(cat.id)
+                    mapped_ids.update(cat.children.values_list('id', flat=True))
+                if mapped_ids:
+                    queryset = queryset.filter(category__id__in=mapped_ids)
+
+            # ---------------------------------------------------------
+            # STEP 2: Strict term filter
             # ---------------------------------------------------------
             strict_q = Q()
             for term in search_terms:
                 strict_q &= Q(title__icontains=term)
-
             queryset = queryset.filter(strict_q)
 
             # ---------------------------------------------------------
-            # STEP 2: EXCLUDE accessories at QUERY LEVEL (not just penalty)
-            # only when user is NOT explicitly searching for an accessory
+            # STEP 3: Accessory exclusion at query level
             # ---------------------------------------------------------
             if not is_searching_accessory:
                 accessory_exclude_q = Q()
@@ -733,14 +763,11 @@ class ProductViewSet(viewsets.ModelViewSet):
                 queryset = queryset.exclude(accessory_exclude_q)
 
             # ---------------------------------------------------------
-            # STEP 3: Scoring (for ranking only, no exclusion logic here)
+            # STEP 4: Scoring (ranking only)
             # ---------------------------------------------------------
             queryset = queryset.annotate(
                 brand_boost=Case(
-                    When(
-                        Q(title__iregex=rf"^({'|'.join(phone_brands)})"),
-                        then=Value(80.0)
-                    ),
+                    When(Q(title__iregex=rf"^({'|'.join(phone_brands)})"), then=Value(80.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
@@ -751,13 +778,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                     output_field=FloatField(),
                 ),
                 specs_boost=Case(
-                    When(
-                        Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"),
-                        then=Value(30.0)
-                    ) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
+                    When(Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"), then=Value(30.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
-                )
+                ) if not is_searching_accessory else Value(0.0, output_field=FloatField()),
             ).annotate(
                 final_relevance=F('brand_boost') + F('direct_match') + F('specs_boost')
             )
