@@ -45,20 +45,7 @@ from rest_framework.response import Response
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
-import re
-from functools import reduce
-from operator import and_
 
-from django.db.models import (
-    Q,
-    F,
-    Value,
-    Case,
-    When,
-    FloatField,
-    Min,
-)
-from django.db.models.functions import Lower
 logger = logging.getLogger(__name__)
 
 
@@ -677,122 +664,113 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     #     return queryset.distinct()
 
-
     def get_queryset(self):
         queryset = super().get_queryset()
+        search_query = self.request.query_params.get('search', '').strip()
+        sort = self.request.query_params.get('sort', 'newest').strip()
 
-        search_query = self.request.query_params.get('search', '').strip().lower()
-        sort = self.request.query_params.get('sort', 'newest')
-
-        # ---------------- BASE FILTER ----------------
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
             listings__price__gt=0,
             listings__is_available=True,
-        ).exclude(
-            title='',
-            main_image=''
-        ).distinct()
+        ).exclude(title='', main_image='')
 
+        # --- Category filter (unchanged) ---
         category_input = self.request.query_params.getlist('category')
         if category_input:
-            # তোমার existing category logic এখানে রাখো
-            pass
+            slugs = []
+            for item in category_input:
+                slugs.extend([s.strip() for s in item.split(',') if s.strip()])
+            if slugs:
+                matching_cats = Category.objects.filter(slug__in=slugs)
+                all_ids = set()
+                for cat in matching_cats:
+                    all_ids.add(cat.id)
+                    all_ids.update(cat.children.values_list('id', flat=True))
+                if all_ids:
+                    queryset = queryset.filter(category__id__in=all_ids)
+                else:
+                    return queryset.none()
 
-        # ---------------- NO SEARCH ----------------
-        if not search_query:
-            return queryset.order_by('-created_at')
+        if search_query:
+            search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
+            if not search_terms:
+                return queryset.none()
 
-        # ---------------- TOKENIZE ----------------
-        search_terms = [
-            t for t in re.split(r'\s+', search_query)
-            if len(t) > 1
-        ]
+            sq = re.escape(search_query)
 
-        if not search_terms:
-            return queryset.none()
+            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
 
-        # ---------------- KEYWORDS ----------------
-        phone_keywords = ['phone', 'mobile', 'iphone', 'samsung']
-        laptop_keywords = ['laptop', 'macbook', 'notebook']
+            accessory_keywords = [
+                'power bank', 'solar', 'cable', 'charger', 'case', 'cover', 'box', 'station', 'stand',
+                'desk', 'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
+                'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
+                'protector', 'holder', 'adapter', 'screen guard'
+            ]
 
-        clutter_keywords = [
-            'calculator', 'earbuds', 'headphones', 'power bank',
-            'cable', 'case', 'cover', 'charger', 'adapter',
-            'lens', 'tripod', 'stand', 'holder'
-        ]
+            phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
 
-        is_phone_search = any(k in search_query for k in phone_keywords)
-        is_laptop_search = any(k in search_query for k in laptop_keywords)
+            is_searching_accessory = any(word in search_query.lower() for word in accessory_keywords)
 
-        # ---------------- STRICT MATCH (IMPORTANT FIX) ----------------
-        # ALL words must match (this is your MAIN FIX)
-        queryset = queryset.filter(
-            reduce(
-                and_,
-                [Q(title__icontains=t) for t in search_terms]
+            # ---------------------------------------------------------
+            # STEP 1: STRICT FILTER — ALL terms must appear in title
+            # ---------------------------------------------------------
+            strict_q = Q()
+            for term in search_terms:
+                strict_q &= Q(title__icontains=term)
+
+            queryset = queryset.filter(strict_q)
+
+            # ---------------------------------------------------------
+            # STEP 2: EXCLUDE accessories at QUERY LEVEL (not just penalty)
+            # only when user is NOT explicitly searching for an accessory
+            # ---------------------------------------------------------
+            if not is_searching_accessory:
+                accessory_exclude_q = Q()
+                for word in accessory_keywords:
+                    accessory_exclude_q |= Q(title__iregex=rf"(?i)\b{re.escape(word)}\b")
+                queryset = queryset.exclude(accessory_exclude_q)
+
+            # ---------------------------------------------------------
+            # STEP 3: Scoring (for ranking only, no exclusion logic here)
+            # ---------------------------------------------------------
+            queryset = queryset.annotate(
+                brand_boost=Case(
+                    When(
+                        Q(title__iregex=rf"^({'|'.join(phone_brands)})"),
+                        then=Value(80.0)
+                    ),
+                    default=Value(0.0),
+                    output_field=FloatField(),
+                ),
+                direct_match=Case(
+                    When(title__iregex=rf'^{sq}', then=Value(50.0)),
+                    When(title__icontains=search_query, then=Value(20.0)),
+                    default=Value(0.0),
+                    output_field=FloatField(),
+                ),
+                specs_boost=Case(
+                    When(
+                        Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"),
+                        then=Value(30.0)
+                    ) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
+                    default=Value(0.0),
+                    output_field=FloatField(),
+                )
+            ).annotate(
+                final_relevance=F('brand_boost') + F('direct_match') + F('specs_boost')
             )
-        )
 
-        # ---------------- REMOVE CLUTTER ----------------
-        if is_phone_search or is_laptop_search:
-            queryset = queryset.exclude(
-                title__iregex=rf"(?i)\b({'|'.join(clutter_keywords)})\b"
-            )
-
-        # ---------------- CATEGORY BOOST FILTER ----------------
-        if is_phone_search:
-            queryset = queryset.filter(
-                Q(category__name__icontains='phone') |
-                Q(category__name__icontains='mobile') |
-                Q(category__name__icontains='smartphone')
-            )
-
-        if is_laptop_search:
-            queryset = queryset.filter(
-                Q(category__name__icontains='laptop') |
-                Q(category__name__icontains='notebook')
-            )
-
-        # ---------------- SCORING ----------------
-        escaped = re.escape(search_query)
-
-        queryset = queryset.annotate(
-            exact_match=Case(
-                When(title__iexact=search_query, then=Value(200.0)),
-                default=Value(0.0),
-                output_field=FloatField()
-            ),
-
-            starts_with=Case(
-                When(title__iregex=rf'^{escaped}', then=Value(120.0)),
-                default=Value(0.0),
-                output_field=FloatField()
-            ),
-
-            phrase_match=Case(
-                When(title__iregex=rf'\b{escaped}\b', then=Value(80.0)),
-                default=Value(0.0),
-                output_field=FloatField()
-            ),
-
-            final_score=(
-                F('exact_match') +
-                F('starts_with') +
-                F('phrase_match')
-            )
-        )
-
-        # ---------------- SORT ----------------
-        if sort == 'price_low':
-            queryset = queryset.order_by('listings__price', '-final_score')
-
-        elif sort == 'price_high':
-            queryset = queryset.order_by('-listings__price', '-final_score')
+            if sort == 'price_low':
+                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_relevance')
+            elif sort == 'price_high':
+                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_relevance')
+            else:
+                queryset = queryset.order_by('-final_relevance', '-created_at')
 
         else:
-            queryset = queryset.order_by('-final_score', '-created_at')
+            queryset = queryset.order_by('-created_at')
 
         return queryset.distinct()
 
