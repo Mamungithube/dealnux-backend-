@@ -303,11 +303,23 @@ CHANNEL_LAYERS = {
         },
     },
 }
-
+from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
     'daily-category-sync': {
         'task': 'api_integration.tasks.safe_category_sync',
-        'schedule': crontab(hour=2, minute=0), 
+        'schedule': crontab(hour=2, minute=0),
+    },
+    'sync-sephora': {
+        'task': 'api_integration.tasks.sync_sephora_task',
+        'schedule': crontab(hour=3, minute=0),  # 71 min runtime
+    },
+    'sync-aliexpress': {
+        'task': 'api_integration.tasks.sync_aliexpress_task',
+        'schedule': crontab(hour=5, minute=0, day_of_week='mon,thu'),  # 197 min — সপ্তাহে ২ বার
+    },
+    'sync-ebay': {
+        'task': 'api_integration.tasks.sync_ebay_task',
+        'schedule': crontab(hour=9, minute=0),  # 139 min runtime
     },
 }
 
