@@ -392,3 +392,39 @@ USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 AI_ENGINE_URL = "http://dealnux-ai--web-1:8001"
+# Product sync schedules - Added
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE.update({
+    'sync-ebay': {
+        'task': 'api_integration.tasks.sync_ebay_task',
+        'schedule': crontab(hour=9, minute=0),
+    },
+    'sync-amazon': {
+        'task': 'api_integration.tasks.sync_amazon_task',
+        'schedule': crontab(hour=10, minute=0),
+    },
+    'sync-walmart': {
+        'task': 'api_integration.tasks.sync_walmart_task',
+        'schedule': crontab(hour=11, minute=0),
+    },
+    'sync-target': {
+        'task': 'api_integration.tasks.sync_target_task',
+        'schedule': crontab(hour=12, minute=0),
+    },
+    'sync-aliexpress': {
+        'task': 'api_integration.tasks.sync_aliexpress_task',
+        'schedule': crontab(hour=5, minute=0, day_of_week='mon,thu'),
+    },
+    'sync-bestbuy': {
+        'task': 'api_integration.tasks.sync_bestbuy_task',
+        'schedule': crontab(hour=13, minute=0),
+    },
+    'sync-wayfair': {
+        'task': 'api_integration.tasks.sync_wayfair_task',
+        'schedule': crontab(hour=14, minute=0),
+    },
+    'sync-sephora': {
+        'task': 'api_integration.tasks.sync_sephora_task',
+        'schedule': crontab(hour=3, minute=0),
+    },
+})

@@ -16,7 +16,9 @@ services:
     depends_on:
       - db
       - redis
-
+    networks:
+      - default
+      - dealnux_network
   db:
     image: postgres:16
     container_name: dealnux_db
@@ -29,14 +31,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
-
   redis:
     image: redis:alpine
     container_name: dealnux_redis
     restart: always
     ports:
       - "6379:6379"
-
   celery_worker:
     image: dealnux-backend
     container_name: dealnux_celery_worker
@@ -50,7 +50,6 @@ services:
       - db
       - redis
       - web
-
   celery_beat:
     image: dealnux-backend
     container_name: dealnux_celery_beat
@@ -64,6 +63,10 @@ services:
       - db
       - redis
       - web
-
 volumes:
   postgres_data:
+
+networks:
+  default: {}
+  dealnux_network:
+    external: true
