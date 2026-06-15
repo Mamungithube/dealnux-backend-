@@ -671,7 +671,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         search_query = self.request.query_params.get('search', '').strip()
         sort = self.request.query_params.get('sort', 'newest').strip()
 
-        # Step 0: Ensure valid data
+        # --- Step 0: Base filters for data quality ---
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -679,109 +679,78 @@ class ProductViewSet(viewsets.ModelViewSet):
             listings__is_available=True,
         ).exclude(title='', main_image='')
 
-        # Existing Category Filter
-        category_input = self.request.query_params.getlist('category')
-        if category_input:
-            slugs = []
-            for item in category_input:
-                slugs.extend([s.strip() for s in item.split(',') if s.strip()])
-            if slugs:
-                matching_cats = Category.objects.filter(slug__in=slugs)
-                all_ids = set()
-                for cat in matching_cats:
-                    all_ids.add(cat.id)
-                    all_ids.update(cat.children.values_list('id', flat=True))
-                queryset = queryset.filter(category__id__in=all_ids)
-
         if search_query:
-            search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
+            search_query_lower = search_query.lower()
+            search_terms = [t for t in re.split(r'\s+', search_query_lower) if len(t) > 1]
+            
             if not search_terms:
                 return queryset.none()
 
-            sq = re.escape(search_query)
-            
-            # --- Step 1: Industry Lists ---
-            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
-            
-            # Accessory words (to penalize if not searched)
-            accessory_killers = [
-                'power bank', 'solar', 'cable', 'charger', 'case', 'box', 'station', 'stand', 'desk', 
-                'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal', 
-                'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'musical', 'cord'
+            # --- Step 1: Forbidden Words (HARD BLOCK) ---
+            # টাইটেলের কোথাও এই শব্দগুলো থাকলে রেজাল্ট থেকে সাথে সাথে বাদ (Exclude)
+            forbidden_accessories = [
+                'cable', 'case', 'cover', 'box', 'station', 'stand', 'holder', 'tag', 'sticker', 
+                'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal', 'replacement', 
+                'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'musical', 'cord', 
+                'adapter', 'charger', 'manual', 'guide', 'tutorial', 'toy', 'dummy', 'calculator'
             ]
+
+            # যদি ইউজার নিজে থেকে 'cable' বা 'case' সার্চ না করে, তবে এগুলো পুরোপুরি বাদ
+            is_searching_accessory = any(word in search_query_lower for word in forbidden_accessories)
             
-            # Clutter words (Things that are NOT mobile phones but match the keywords)
-            clutter_killers = ['calculator', 'manual', 'guide', 'ebook', 'software', 'tutorial', 'toy', 'dummy', 'fake']
+            if not is_searching_accessory:
+                # HARD EXCLUSION: Remove anything that looks like an accessory
+                queryset = queryset.exclude(title__iregex=rf"(?i)({'|'.join(forbidden_accessories)})")
 
-            is_searching_accessory = any(word in search_query.lower() for word in accessory_killers)
-            is_searching_phone = any(word in search_query.lower() for word in ['phone', 'mobile', 'cell'])
+            # --- Step 2: Quality & Rating Filter ---
+            # কম রেটিং এর প্রডাক্ট একদম দেখানোর দরকার নেই (Rating >= 3.5)
+            # Note: যেসব প্রডাক্টের রেটিং এখনো ০, সেগুলো নতুন হতে পারে তাই রাখা হয়েছে
+            queryset = queryset.filter(Q(rating__gte=3.5) | Q(rating=0))
 
-            # --- Step 2: Ranking with "Ecommerce Brain" ---
+            # --- Step 3: Intent-Based Filtering ---
+            if 'phone' in search_query_lower or 'mobile' in search_query_lower:
+                # শুধু মোবাইল ফোন এবং স্মার্টফোন ক্যাটাগরিই দেখাবে, বাকি সব বাদ
+                queryset = queryset.filter(
+                    Q(category__name__icontains='Smartphones') | 
+                    Q(category__name__icontains='Cell Phones') |
+                    Q(title__iregex=r'(?i)iphone|samsung|pixel|nokia|oneplus|motorola')
+                )
+
+            # --- Step 4: Final Relevance Scoring ---
+            sq = re.escape(search_query)
             queryset = queryset.annotate(
-                # 1. Exact Word Proximity (If terms are next to each other like "Mobile Phone")
-                proximity_boost=Case(
-                    When(title__iregex=rf"(?i)\b{sq}\b", then=Value(100.0)),
-                    default=Value(0.0),
-                    output_field=FloatField(),
-                ),
-
-                # 2. Brand Integrity Boost (Phones starting with real brands)
+                # ১ নম্বরে থাকবে যারা মেইন ব্র্যান্ড দিয়ে শুরু হয়
                 brand_boost=Case(
-                    When(
-                        Q(title__iregex=rf"^({'|'.join(phone_brands)})") & 
-                        ~Q(title__iregex=rf"(?i)({'|'.join(accessory_killers + clutter_killers)})"), 
-                        then=Value(80.0)
-                    ),
+                    When(title__iregex=rf"^(?i)(apple|iphone|samsung|pixel|google|motorola|oneplus)", then=Value(100.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
-
-                # 3. Category Smart Boost (If search is 'phone', boost 'Smartphones' category)
-                category_boost=Case(
-                    When(
-                        Value(is_searching_phone) & 
-                        (Q(category__name__icontains='Smartphones') | Q(category__name__icontains='Cell Phones')),
-                        then=Value(60.0)
-                    ),
+                # ২ নম্বরে থাকবে যাদের টাইটেল সার্চ কুয়েরি দিয়ে শুরু হয়
+                exact_start=Case(
+                    When(title__iregex=rf"^{sq}", then=Value(50.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
-                ),
-
-                # 4. Anti-Accessory & Anti-Clutter Penalty
-                accessory_score=Case(
-                    When(
-                        Q(title__iregex=rf"(?i)({'|'.join(accessory_killers + clutter_killers)})"),
-                        then=Value(50.0 if is_searching_accessory else -250.0) # Massive penalty to override everything
-                    ),
-                    default=Value(0.0),
-                    output_field=FloatField(),
-                ),
-
-                # 5. Typo & Title Match (Postgres Trigram)
-                trigram_rank=TrigramSimilarity('title', search_query) * 50
+                )
             ).annotate(
-                # Final Relevancy Formula
-                final_relevance=F('proximity_boost') + F('brand_boost') + F('category_boost') + F('accessory_score') + F('trigram_rank')
+                final_score=F('brand_boost') + F('exact_start') + F('rating')
             )
 
-            # Filtering: Result MUST contain the search terms to be relevant
-            queryset = queryset.filter(Q(title__icontains=search_terms[0]))
+            # রেজাল্টে অবশ্যই সার্চ করা শব্দটা থাকতে হবে
+            queryset = queryset.filter(title__icontains=search_terms[0])
 
-            # --- Step 3: Sorting Logic ---
+            # --- Step 5: Sorting ---
             if sort == 'price_low':
-                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_relevance')
+                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_score')
             elif sort == 'price_high':
-                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_relevance')
+                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_score')
             else:
-                # Relevancy is king
-                queryset = queryset.order_by('-final_relevance', '-created_at')
+                queryset = queryset.order_by('-final_score', '-created_at')
 
         else:
-            # Default when no search
+            # Default order
             queryset = queryset.order_by('-created_at')
 
         return queryset.distinct()
-
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
