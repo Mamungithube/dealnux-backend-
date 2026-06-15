@@ -677,19 +677,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     #     return queryset.distinct()
 
+
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        search_query = self.request.query_params.get(
-            'search', ''
-        ).strip().lower()
+        search_query = self.request.query_params.get('search', '').strip().lower()
+        sort = self.request.query_params.get('sort', 'newest')
 
-        sort = self.request.query_params.get(
-            'sort',
-            'newest'
-        ).strip()
-
-        # Base filter
+        # ---------------- BASE FILTER ----------------
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -698,188 +693,106 @@ class ProductViewSet(viewsets.ModelViewSet):
         ).exclude(
             title='',
             main_image=''
-        )
+        ).distinct()
 
-        # Existing category filter
         category_input = self.request.query_params.getlist('category')
         if category_input:
-            # তোমার আগের category logic এখানে থাকবে
+            # তোমার existing category logic এখানে রাখো
             pass
 
+        # ---------------- NO SEARCH ----------------
         if not search_query:
-            return queryset.order_by('-created_at').distinct()
+            return queryset.order_by('-created_at')
 
-        # Split search terms
+        # ---------------- TOKENIZE ----------------
         search_terms = [
-            term.strip()
-            for term in re.split(r'\s+', search_query)
-            if len(term.strip()) > 1
+            t for t in re.split(r'\s+', search_query)
+            if len(t) > 1
         ]
 
         if not search_terms:
             return queryset.none()
 
-        # Product categories
-        phone_cat_keywords = [
-            'phone',
-            'mobile',
-            'smartphone',
-            'iphone',
-            'android',
-        ]
+        # ---------------- KEYWORDS ----------------
+        phone_keywords = ['phone', 'mobile', 'iphone', 'samsung']
+        laptop_keywords = ['laptop', 'macbook', 'notebook']
 
-        laptop_cat_keywords = [
-            'laptop',
-            'macbook',
-            'notebook',
-        ]
-
-        # Accessory / clutter keywords
         clutter_keywords = [
-            'calculator',
-            'earbuds',
-            'headphones',
-            'power bank',
-            'cable',
-            'case',
-            'cover',
-            'station',
-            'stand',
-            'box',
-            'musical',
-            'tag',
-            'holder',
-            'stabilizer',
-            'gimbal',
-            'repair',
-            'parts',
-            'replacement',
-            'adapter',
-            'charger',
-            'lens',
-            'tripod',
+            'calculator', 'earbuds', 'headphones', 'power bank',
+            'cable', 'case', 'cover', 'charger', 'adapter',
+            'lens', 'tripod', 'stand', 'holder'
         ]
 
-        is_searching_phone = any(
-            keyword in search_query
-            for keyword in phone_cat_keywords
+        is_phone_search = any(k in search_query for k in phone_keywords)
+        is_laptop_search = any(k in search_query for k in laptop_keywords)
+
+        # ---------------- STRICT MATCH (IMPORTANT FIX) ----------------
+        # ALL words must match (this is your MAIN FIX)
+        queryset = queryset.filter(
+            reduce(
+                and_,
+                [Q(title__icontains=t) for t in search_terms]
+            )
         )
 
-        is_searching_laptop = any(
-            keyword in search_query
-            for keyword in laptop_cat_keywords
-        )
-
-        is_searching_clutter = any(
-            keyword in search_query
-            for keyword in clutter_keywords
-        )
-
-        # ALL search terms must exist
-        title_filters = reduce(
-            and_,
-            [
-                Q(title__icontains=term)
-                for term in search_terms
-            ]
-        )
-
-        queryset = queryset.filter(title_filters)
-
-        # Exclude accessories if user searches for main products
-        if not is_searching_clutter:
-
-            clutter_regex = (
-                r'(?i)\b(' +
-                '|'.join(map(re.escape, clutter_keywords)) +
-                r')\b'
+        # ---------------- REMOVE CLUTTER ----------------
+        if is_phone_search or is_laptop_search:
+            queryset = queryset.exclude(
+                title__iregex=rf"(?i)\b({'|'.join(clutter_keywords)})\b"
             )
 
-            if is_searching_phone:
-                queryset = queryset.exclude(
-                    title__iregex=clutter_regex
-                ).filter(
-                    Q(category__name__icontains='phone') |
-                    Q(category__name__icontains='mobile') |
-                    Q(category__name__icontains='smartphone')
-                )
+        # ---------------- CATEGORY BOOST FILTER ----------------
+        if is_phone_search:
+            queryset = queryset.filter(
+                Q(category__name__icontains='phone') |
+                Q(category__name__icontains='mobile') |
+                Q(category__name__icontains='smartphone')
+            )
 
-            elif is_searching_laptop:
-                queryset = queryset.exclude(
-                    title__iregex=clutter_regex
-                ).filter(
-                    Q(category__name__icontains='laptop') |
-                    Q(category__name__icontains='notebook')
-                )
+        if is_laptop_search:
+            queryset = queryset.filter(
+                Q(category__name__icontains='laptop') |
+                Q(category__name__icontains='notebook')
+            )
 
-        escaped_query = re.escape(search_query)
+        # ---------------- SCORING ----------------
+        escaped = re.escape(search_query)
 
         queryset = queryset.annotate(
-
-            positional_boost=Case(
-                When(
-                    title__iregex=rf'^{escaped_query}',
-                    then=Value(100.0)
-                ),
-                When(
-                    title__iregex=rf'^(?:\w+\s+){{0,2}}{escaped_query}',
-                    then=Value(60.0)
-                ),
+            exact_match=Case(
+                When(title__iexact=search_query, then=Value(200.0)),
                 default=Value(0.0),
-                output_field=FloatField(),
+                output_field=FloatField()
             ),
 
-            exact_match_boost=Case(
-                When(
-                    title__iexact=search_query,
-                    then=Value(200.0)
-                ),
+            starts_with=Case(
+                When(title__iregex=rf'^{escaped}', then=Value(120.0)),
                 default=Value(0.0),
-                output_field=FloatField(),
+                output_field=FloatField()
             ),
 
-            proximity_boost=Case(
-                When(
-                    title__iregex=rf'\b{escaped_query}\b',
-                    then=Value(40.0)
-                ),
+            phrase_match=Case(
+                When(title__iregex=rf'\b{escaped}\b', then=Value(80.0)),
                 default=Value(0.0),
-                output_field=FloatField(),
+                output_field=FloatField()
             ),
 
-        ).annotate(
-
-            final_relevance=(
-                F('exact_match_boost') +
-                F('positional_boost') +
-                F('proximity_boost')
+            final_score=(
+                F('exact_match') +
+                F('starts_with') +
+                F('phrase_match')
             )
-
         )
 
+        # ---------------- SORT ----------------
         if sort == 'price_low':
-            queryset = queryset.annotate(
-                min_price=Min('listings__price')
-            ).order_by(
-                'min_price',
-                '-final_relevance',
-                '-created_at'
-            )
+            queryset = queryset.order_by('listings__price', '-final_score')
 
         elif sort == 'price_high':
-            queryset = queryset.annotate(
-                min_price=Min('listings__price')
-            ).order_by(
-                '-min_price',
-                '-final_relevance',
-                '-created_at'
-            )
+            queryset = queryset.order_by('-listings__price', '-final_score')
 
         else:
-            queryset = queryset.order_by(
-                '-final_relevance',
-                '-created_at'
-            )
+            queryset = queryset.order_by('-final_score', '-created_at')
 
         return queryset.distinct()
 
