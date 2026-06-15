@@ -45,6 +45,9 @@ from rest_framework.response import Response
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank, TrigramSimilarity
+from django.db.models import Q, F, Case, When, Value, FloatField, Count, Min
+
 
 logger = logging.getLogger(__name__)
 
@@ -664,123 +667,123 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     #     return queryset.distinct()
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        search_query = self.request.query_params.get('search', '').strip()
-        sort = self.request.query_params.get('sort', 'newest').strip()
 
-        # --- Step 0: Base filters ---
-        queryset = queryset.filter(
-            title__isnull=False,
-            main_image__isnull=False,
-            listings__price__gt=0,
-            listings__is_available=True,
-        ).exclude(title='', main_image='')
 
-        # Category Filter Logic (Existing)
-        category_input = self.request.query_params.getlist('category')
-        if category_input:
-            slugs = []
-            for item in category_input:
-                slugs.extend([s.strip() for s in item.split(',') if s.strip()])
-            if slugs:
-                matching_cats = Category.objects.filter(slug__in=slugs)
-                all_ids = set()
-                for cat in matching_cats:
-                    all_ids.add(cat.id)
-                    all_ids.update(cat.children.values_list('id', flat=True))
-                if all_ids:
-                    queryset = queryset.filter(category__id__in=all_ids)
-                else:
-                    return queryset.none()
+def get_queryset(self):
+    queryset = super().get_queryset()
+    search_query = self.request.query_params.get('search', '').strip()
+    sort = self.request.query_params.get('sort', 'newest').strip()
 
-        if search_query:
-            search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
-            if not search_terms:
-                return queryset.none()
+    # Step 0: Ensure valid data
+    queryset = queryset.filter(
+        title__isnull=False,
+        main_image__isnull=False,
+        listings__price__gt=0,
+        listings__is_available=True,
+    ).exclude(title='', main_image='')
 
-            sq = re.escape(search_query)
-            
-            # --- Step 1: Improved Keywords Lists ---
-            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
-            
-            # Extended Accessory Killers
-            accessory_killers = [
-                'power bank', 'solar', 'cable', 'charger', 'case', 'box', 'station', 'stand', 'desk', 
-                'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal', 
-                'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'musical', 'cord'
-            ]
-            
-            phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
+    # Existing Category Filter
+    category_input = self.request.query_params.getlist('category')
+    if category_input:
+        slugs = []
+        for item in category_input:
+            slugs.extend([s.strip() for s in item.split(',') if s.strip()])
+        if slugs:
+            matching_cats = Category.objects.filter(slug__in=slugs)
+            all_ids = set()
+            for cat in matching_cats:
+                all_ids.add(cat.id)
+                all_ids.update(cat.children.values_list('id', flat=True))
+            queryset = queryset.filter(category__id__in=all_ids)
 
-            # Determine if user is searching for an accessory
-            # Example: "Fast Cable" -> is_searching_accessory = True
-            is_searching_accessory = any(word in search_query.lower() for word in accessory_killers)
+    if search_query:
+        search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
+        if not search_terms:
+            return queryset.none()
 
-            # --- Step 2: Aggressive Scoring ---
-            queryset = queryset.annotate(
-                # 1. Brand Integrity Boost (ONLY if not an accessory)
-                # If "OnePlus" is at start but it's a "Power Bank", don't give this 60 points
-                brand_boost=Case(
-                    When(
-                        Q(title__iregex=rf"^({'|'.join(phone_brands)})") & 
-                        ~Q(title__iregex=rf"(?i)({'|'.join(accessory_killers)})"), 
-                        then=Value(80.0)
-                    ),
-                    default=Value(0.0),
-                    output_field=FloatField(),
+        sq = re.escape(search_query)
+        
+        # --- Step 1: Industry Lists ---
+        phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
+        
+        # Accessory words (to penalize if not searched)
+        accessory_killers = [
+            'power bank', 'solar', 'cable', 'charger', 'case', 'box', 'station', 'stand', 'desk', 
+            'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal', 
+            'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'musical', 'cord'
+        ]
+        
+        # Clutter words (Things that are NOT mobile phones but match the keywords)
+        clutter_killers = ['calculator', 'manual', 'guide', 'ebook', 'software', 'tutorial', 'toy', 'dummy', 'fake']
+
+        is_searching_accessory = any(word in search_query.lower() for word in accessory_killers)
+        is_searching_phone = any(word in search_query.lower() for word in ['phone', 'mobile', 'cell'])
+
+        # --- Step 2: Ranking with "Ecommerce Brain" ---
+        queryset = queryset.annotate(
+            # 1. Exact Word Proximity (If terms are next to each other like "Mobile Phone")
+            proximity_boost=Case(
+                When(title__iregex=rf"(?i)\b{sq}\b", then=Value(100.0)),
+                default=Value(0.0),
+                output_field=FloatField(),
+            ),
+
+            # 2. Brand Integrity Boost (Phones starting with real brands)
+            brand_boost=Case(
+                When(
+                    Q(title__iregex=rf"^({'|'.join(phone_brands)})") & 
+                    ~Q(title__iregex=rf"(?i)({'|'.join(accessory_killers + clutter_killers)})"), 
+                    then=Value(80.0)
                 ),
+                default=Value(0.0),
+                output_field=FloatField(),
+            ),
 
-                # 2. Direct Query Match (Boost for "Fast Cable" search)
-                # If searching for "Fast Cable", items starting with "Fast Cable" get high priority
-                direct_match=Case(
-                    When(title__iregex=rf'^{sq}', then=Value(50.0)),
-                    When(title__icontains=search_query, then=Value(20.0)),
-                    default=Value(0.0),
-                    output_field=FloatField(),
+            # 3. Category Smart Boost (If search is 'phone', boost 'Smartphones' category)
+            category_boost=Case(
+                When(
+                    Value(is_searching_phone) & 
+                    (Q(category__name__icontains='Smartphones') | Q(category__name__icontains='Cell Phones')),
+                    then=Value(60.0)
                 ),
+                default=Value(0.0),
+                output_field=FloatField(),
+            ),
 
-                # 3. GLOBAL Accessory Penalty / Priority
-                # If NOT searching for accessory, penalize them (-200)
-                # If SEARCHING for accessory, boost them (+50)
-                accessory_score=Case(
-                    When(
-                        Q(title__iregex=rf"(?i)({'|'.join(accessory_killers)})"),
-                        then=Value(50.0 if is_searching_accessory else -200.0)
-                    ),
-                    default=Value(0.0),
-                    output_field=FloatField(),
+            # 4. Anti-Accessory & Anti-Clutter Penalty
+            accessory_score=Case(
+                When(
+                    Q(title__iregex=rf"(?i)({'|'.join(accessory_killers + clutter_killers)})"),
+                    then=Value(50.0 if is_searching_accessory else -250.0) # Massive penalty to override everything
                 ),
+                default=Value(0.0),
+                output_field=FloatField(),
+            ),
 
-                # 4. Technical Specs (Boost for real phones)
-                specs_boost=Case(
-                    When(
-                        Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})") & 
-                        Value(not is_searching_accessory),
-                        then=Value(30.0)
-                    ),
-                    default=Value(0.0),
-                    output_field=FloatField(),
-                )
-            ).annotate(
-                final_relevance=F('brand_boost') + F('direct_match') + F('accessory_score') + F('specs_boost')
-            )
+            # 5. Typo & Title Match (Postgres Trigram)
+            trigram_rank=TrigramSimilarity('title', search_query) * 50
+        ).annotate(
+            # Final Relevancy Formula
+            final_relevance=F('proximity_boost') + F('brand_boost') + F('category_boost') + F('accessory_score') + F('trigram_rank')
+        )
 
-            # Final Filter
-            queryset = queryset.filter(Q(title__icontains=search_terms[0]))
+        # Filtering: Result MUST contain the search terms to be relevant
+        queryset = queryset.filter(Q(title__icontains=search_terms[0]))
 
-            # --- Step 3: Sorting ---
-            if sort == 'price_low':
-                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_relevance')
-            elif sort == 'price_high':
-                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_relevance')
-            else:
-                queryset = queryset.order_by('-final_relevance', '-created_at')
-
+        # --- Step 3: Sorting Logic ---
+        if sort == 'price_low':
+            queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_relevance')
+        elif sort == 'price_high':
+            queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_relevance')
         else:
-            queryset = queryset.order_by('-created_at')
+            # Relevancy is king
+            queryset = queryset.order_by('-final_relevance', '-created_at')
 
-        return queryset.distinct()
+    else:
+        # Default when no search
+        queryset = queryset.order_by('-created_at')
+
+    return queryset.distinct()
 
 
     def list(self, request, *args, **kwargs):
