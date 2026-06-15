@@ -379,3 +379,4 @@ STRIPE_RETURN_URL = 'https://www.dealnux.shop/payment/success'
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+AI_ENGINE_URL = "http://dealnux-ai--web-1:8001"

@@ -669,7 +669,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         search_query = self.request.query_params.get('search', '').strip()
         sort = self.request.query_params.get('sort', 'newest').strip()
 
-        # --- Step 0: Base filters ---
+        # Base filters
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -701,73 +701,71 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             sq = re.escape(search_query)
             
-            # --- Step 1: Improved Keywords Lists ---
+            # --- Keywords Configuration ---
             phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
+            laptop_brands = ['macbook', 'dell', 'hp', 'lenovo', 'asus', 'acer', 'msi', 'razer']
             
-            # Extended Accessory Killers
-            accessory_killers = [
-                'power bank', 'solar', 'cable', 'charger', 'case', 'box', 'station', 'stand', 'desk', 
-                'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal', 
-                'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'musical', 'cord'
+            # Words that define accessories
+            accessory_words = [
+                'cover', 'case', 'cable', 'charger', 'power bank', 'screen protector', 'glass', 
+                'strap', 'stand', 'holder', 'station', 'bag', 'sleeve', 'mouse', 'keyboard'
             ]
-            
-            phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
 
-            # Determine if user is searching for an accessory
-            # Example: "Fast Cable" -> is_searching_accessory = True
-            is_searching_accessory = any(word in search_query.lower() for word in accessory_killers)
+            # Identify User Intent
+            # Example: "mobile cover" -> searched_accessory = "cover"
+            searched_accessory = next((word for word in accessory_words if word in search_query.lower()), None)
+            is_searching_accessory = searched_accessory is not None
 
-            # --- Step 2: Aggressive Scoring ---
+            # --- Aggressive Intent-Based Scoring ---
             queryset = queryset.annotate(
-                # 1. Brand Integrity Boost (ONLY if not an accessory)
-                # If "OnePlus" is at start but it's a "Power Bank", don't give this 60 points
+                # 1. Intent Match Boost (Most Important)
+                # If searching for "cover", items with "cover" in title get 150 points!
+                intent_boost=Case(
+                    When(
+                        Value(is_searching_accessory) & Q(title__icontains=searched_accessory if is_searching_accessory else ''), 
+                        then=Value(150.0)
+                    ),
+                    default=Value(0.0),
+                    output_field=FloatField(),
+                ),
+
+                # 2. Brand Boost (Conditional)
+                # Only boost brands if the user IS NOT searching for an accessory
                 brand_boost=Case(
                     When(
-                        Q(title__iregex=rf"^({'|'.join(phone_brands)})") & 
-                        ~Q(title__iregex=rf"(?i)({'|'.join(accessory_killers)})"), 
+                        ~Value(is_searching_accessory) & Q(title__iregex=rf"^({'|'.join(phone_brands + laptop_brands)})"), 
                         then=Value(80.0)
                     ),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
 
-                # 2. Direct Query Match (Boost for "Fast Cable" search)
-                # If searching for "Fast Cable", items starting with "Fast Cable" get high priority
-                direct_match=Case(
-                    When(title__iregex=rf'^{sq}', then=Value(50.0)),
-                    When(title__icontains=search_query, then=Value(20.0)),
-                    default=Value(0.0),
-                    output_field=FloatField(),
-                ),
-
-                # 3. GLOBAL Accessory Penalty / Priority
-                # If NOT searching for accessory, penalize them (-200)
-                # If SEARCHING for accessory, boost them (+50)
-                accessory_score=Case(
+                # 3. Main Device Penalty
+                # If searching for "cover", actual phones/laptops should be penalized (-100)
+                # We detect devices by shorter titles or specific keywords without "cover"
+                device_penalty=Case(
                     When(
-                        Q(title__iregex=rf"(?i)({'|'.join(accessory_killers)})"),
-                        then=Value(50.0 if is_searching_accessory else -200.0)
+                        Value(is_searching_accessory) & ~Q(title__icontains=searched_accessory if is_searching_accessory else ''),
+                        then=Value(-100.0)
                     ),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
 
-                # 4. Technical Specs (Boost for real phones)
-                specs_boost=Case(
-                    When(
-                        Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})") & 
-                        Value(not is_searching_accessory),
-                        then=Value(30.0)
-                    ),
+                # 4. Phrase Proximity (Exact search string match)
+                phrase_match=Case(
+                    When(title__iregex=rf"{sq}", then=Value(50.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 )
             ).annotate(
-                final_relevance=F('brand_boost') + F('direct_match') + F('accessory_score') + F('specs_boost')
+                final_relevance=F('intent_boost') + F('brand_boost') + F('device_penalty') + F('phrase_match')
             )
 
-            # Final Filter
-            queryset = queryset.filter(Q(title__icontains=search_terms[0]))
+            # Filter items that match at least the main device type (mobile/laptop) or the accessory
+            queryset = queryset.filter(
+                Q(title__icontains=search_terms[0]) | Q(title__icontains=searched_accessory if is_searching_accessory else '')
+            )
 
             # --- Step 3: Sorting ---
             if sort == 'price_low':
