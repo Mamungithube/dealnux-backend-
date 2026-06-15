@@ -664,12 +664,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     #     return queryset.distinct()
 
+
+
     def get_queryset(self):
         queryset = super().get_queryset()
         search_query = self.request.query_params.get('search', '').strip()
         sort = self.request.query_params.get('sort', 'newest').strip()
 
-        # Base filters
+        # Step 0: Ensure valid data
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -677,7 +679,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             listings__is_available=True,
         ).exclude(title='', main_image='')
 
-        # Category Filter Logic (Existing)
+        # Existing Category Filter
         category_input = self.request.query_params.getlist('category')
         if category_input:
             slugs = []
@@ -689,10 +691,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 for cat in matching_cats:
                     all_ids.add(cat.id)
                     all_ids.update(cat.children.values_list('id', flat=True))
-                if all_ids:
-                    queryset = queryset.filter(category__id__in=all_ids)
-                else:
-                    return queryset.none()
+                queryset = queryset.filter(category__id__in=all_ids)
 
         if search_query:
             search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
@@ -701,81 +700,84 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             sq = re.escape(search_query)
             
-            # --- Keywords Configuration ---
+            # --- Step 1: Industry Lists ---
             phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
-            laptop_brands = ['macbook', 'dell', 'hp', 'lenovo', 'asus', 'acer', 'msi', 'razer']
             
-            # Words that define accessories
-            accessory_words = [
-                'cover', 'case', 'cable', 'charger', 'power bank', 'screen protector', 'glass', 
-                'strap', 'stand', 'holder', 'station', 'bag', 'sleeve', 'mouse', 'keyboard'
+            # Accessory words (to penalize if not searched)
+            accessory_killers = [
+                'power bank', 'solar', 'cable', 'charger', 'case', 'box', 'station', 'stand', 'desk', 
+                'tag', 'sticker', 'bag', 'mount', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal', 
+                'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'musical', 'cord'
             ]
+            
+            # Clutter words (Things that are NOT mobile phones but match the keywords)
+            clutter_killers = ['calculator', 'manual', 'guide', 'ebook', 'software', 'tutorial', 'toy', 'dummy', 'fake']
 
-            # Identify User Intent
-            # Example: "mobile cover" -> searched_accessory = "cover"
-            searched_accessory = next((word for word in accessory_words if word in search_query.lower()), None)
-            is_searching_accessory = searched_accessory is not None
+            is_searching_accessory = any(word in search_query.lower() for word in accessory_killers)
+            is_searching_phone = any(word in search_query.lower() for word in ['phone', 'mobile', 'cell'])
 
-            # --- Aggressive Intent-Based Scoring ---
+            # --- Step 2: Ranking with "Ecommerce Brain" ---
             queryset = queryset.annotate(
-                # 1. Intent Match Boost (Most Important)
-                # If searching for "cover", items with "cover" in title get 150 points!
-                intent_boost=Case(
-                    When(
-                        Value(is_searching_accessory) & Q(title__icontains=searched_accessory if is_searching_accessory else ''), 
-                        then=Value(150.0)
-                    ),
+                # 1. Exact Word Proximity (If terms are next to each other like "Mobile Phone")
+                proximity_boost=Case(
+                    When(title__iregex=rf"(?i)\b{sq}\b", then=Value(100.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
 
-                # 2. Brand Boost (Conditional)
-                # Only boost brands if the user IS NOT searching for an accessory
+                # 2. Brand Integrity Boost (Phones starting with real brands)
                 brand_boost=Case(
                     When(
-                        ~Value(is_searching_accessory) & Q(title__iregex=rf"^({'|'.join(phone_brands + laptop_brands)})"), 
+                        Q(title__iregex=rf"^({'|'.join(phone_brands)})") & 
+                        ~Q(title__iregex=rf"(?i)({'|'.join(accessory_killers + clutter_killers)})"), 
                         then=Value(80.0)
                     ),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
 
-                # 3. Main Device Penalty
-                # If searching for "cover", actual phones/laptops should be penalized (-100)
-                # We detect devices by shorter titles or specific keywords without "cover"
-                device_penalty=Case(
+                # 3. Category Smart Boost (If search is 'phone', boost 'Smartphones' category)
+                category_boost=Case(
                     When(
-                        Value(is_searching_accessory) & ~Q(title__icontains=searched_accessory if is_searching_accessory else ''),
-                        then=Value(-100.0)
+                        Value(is_searching_phone) & 
+                        (Q(category__name__icontains='Smartphones') | Q(category__name__icontains='Cell Phones')),
+                        then=Value(60.0)
                     ),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
 
-                # 4. Phrase Proximity (Exact search string match)
-                phrase_match=Case(
-                    When(title__iregex=rf"{sq}", then=Value(50.0)),
+                # 4. Anti-Accessory & Anti-Clutter Penalty
+                accessory_score=Case(
+                    When(
+                        Q(title__iregex=rf"(?i)({'|'.join(accessory_killers + clutter_killers)})"),
+                        then=Value(50.0 if is_searching_accessory else -250.0) # Massive penalty to override everything
+                    ),
                     default=Value(0.0),
                     output_field=FloatField(),
-                )
+                ),
+
+                # 5. Typo & Title Match (Postgres Trigram)
+                trigram_rank=TrigramSimilarity('title', search_query) * 50
             ).annotate(
-                final_relevance=F('intent_boost') + F('brand_boost') + F('device_penalty') + F('phrase_match')
+                # Final Relevancy Formula
+                final_relevance=F('proximity_boost') + F('brand_boost') + F('category_boost') + F('accessory_score') + F('trigram_rank')
             )
 
-            # Filter items that match at least the main device type (mobile/laptop) or the accessory
-            queryset = queryset.filter(
-                Q(title__icontains=search_terms[0]) | Q(title__icontains=searched_accessory if is_searching_accessory else '')
-            )
+            # Filtering: Result MUST contain the search terms to be relevant
+            queryset = queryset.filter(Q(title__icontains=search_terms[0]))
 
-            # --- Step 3: Sorting ---
+            # --- Step 3: Sorting Logic ---
             if sort == 'price_low':
                 queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_relevance')
             elif sort == 'price_high':
                 queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_relevance')
             else:
+                # Relevancy is king
                 queryset = queryset.order_by('-final_relevance', '-created_at')
 
         else:
+            # Default when no search
             queryset = queryset.order_by('-created_at')
 
         return queryset.distinct()
