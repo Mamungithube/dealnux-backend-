@@ -848,8 +848,7 @@ def start_free_trial(user):
 
 
 
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+import requests
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -859,25 +858,33 @@ from .models import User, Profile
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def google_login(request):
-    token = request.data.get('access_token')
-    if not token:
+    access_token = request.data.get('access_token')
+    if not access_token:
         return Response({'error': 'Token required'}, status=400)
     
     try:
-        idinfo = id_token.verify_oauth2_token(
-            token, 
-            google_requests.Request(), 
-            os.environ.get('GOOGLE_CLIENT_ID')
+        # access_token দিয়ে Google থেকে user info নাও
+        userinfo_response = requests.get(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            headers={'Authorization': f'Bearer {access_token}'}
         )
-        email = idinfo.get('email')
-        name = idinfo.get('name', '')
+        
+        if userinfo_response.status_code != 200:
+            return Response({'error': 'Invalid token'}, status=400)
+        
+        userinfo = userinfo_response.json()
+        email = userinfo.get('email')
+        name = userinfo.get('name', '')
+        
+        if not email:
+            return Response({'error': 'Email not found'}, status=400)
         
         user, created = User.objects.get_or_create(
             email=email,
             defaults={'is_active': True}
         )
-        if created:
-            user.first_name = name.split()[0] if name else ''
+        if created and name:
+            user.name = name
             user.save()
         
         Profile.objects.get_or_create(user=user)
@@ -897,7 +904,7 @@ def google_login(request):
                 }
             }
         })
-    except ValueError as e:
+    except Exception as e:
         return Response({'error': str(e)}, status=400)
 
 import jwt
