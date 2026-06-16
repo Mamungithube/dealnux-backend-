@@ -848,72 +848,112 @@ def start_free_trial(user):
 
 
 
-# from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
-# from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
-# from allauth.socialaccount.providers.oauth2.client import OAuth2Client
-# from dj_rest_auth.registration.views import SocialLoginView
-# from rest_framework_simplejwt.tokens import RefreshToken
-# from .models import Profile
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import User, Profile
 
-# class GoogleLogin(SocialLoginView):
-#     adapter_class = GoogleOAuth2Adapter
-#     callback_url = "https://www.dealnux.shop" 
-#     client_class = OAuth2Client
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def google_login(request):
+    token = request.data.get('access_token')
+    if not token:
+        return Response({'error': 'Token required'}, status=400)
+    
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(), 
+            os.environ.get('GOOGLE_CLIENT_ID')
+        )
+        email = idinfo.get('email')
+        name = idinfo.get('name', '')
+        
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={'is_active': True}
+        )
+        if created:
+            user.first_name = name.split()[0] if name else ''
+            user.save()
+        
+        Profile.objects.get_or_create(user=user)
+        
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Google login successful",
+            "data": {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "profile_setup_completed": user.profile_setup_completed
+                }
+            }
+        })
+    except ValueError as e:
+        return Response({'error': str(e)}, status=400)
 
-#     def post(self, request, *args, **kwargs):
-#         response = super().post(request, *args, **kwargs)
-#         if response.status_code == 200:
-#             user = self.user
-#             if not user.is_active:
-#                 user.is_active = True
-#                 user.save()
-            
-#             Profile.objects.get_or_create(user=user)
-            
-#             refresh = RefreshToken.for_user(user)
-            
-#             return Response({
-#                 "success": True,
-#                 "code": 200,
-#                 "message": "Google login successful",
-#                 "data": {
-#                     "access": str(refresh.access_token),
-#                     "refresh": str(refresh),
-#                     "user": {
-#                         "id": user.id,
-#                         "email": user.email,
-#                         "profile_setup_completed": user.profile_setup_completed
-#                     }
-#                 }
-#             })
-#         return response
+import jwt
+import requests
+import os
+from jwt.algorithms import RSAAlgorithm
 
-# class AppleLogin(SocialLoginView):
-#     adapter_class = AppleOAuth2Adapter
-#     callback_url = "https://www.dealnux.shop"
-#     client_class = OAuth2Client
-
-#     def post(self, request, *args, **kwargs):
-#         response = super().post(request, *args, **kwargs)
-#         if response.status_code == 200:
-#             user = self.user
-#             user.is_active = True
-#             user.save()
-#             Profile.objects.get_or_create(user=user)
-            
-#             refresh = RefreshToken.for_user(user)
-#             return Response({
-#                 "success": True,
-#                 "code": 200,
-#                 "message": "Apple login successful",
-#                 "data": {
-#                     "access": str(refresh.access_token),
-#                     "refresh": str(refresh),
-#                     "user": {
-#                         "id": user.id,
-#                         "email": user.email,
-#                         "profile_setup_completed": user.profile_setup_completed
-#                     }
-#                 }
-#             })
-#         return response
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def apple_login(request):
+    identity_token = request.data.get('access_token')
+    if not identity_token:
+        return Response({'error': 'Token required'}, status=400)
+    
+    try:
+        # Apple public key fetch করো
+        apple_keys = requests.get('https://appleid.apple.com/auth/keys').json()
+        
+        # Token decode করো
+        header = jwt.get_unverified_header(identity_token)
+        key = next(k for k in apple_keys['keys'] if k['kid'] == header['kid'])
+        
+        public_key = RSAAlgorithm.from_jwk(key)
+        
+        payload = jwt.decode(
+            identity_token,
+            public_key,
+            algorithms=['RS256'],
+            audience=os.environ.get('APPLE_CLIENT_ID'),
+        )
+        
+        email = payload.get('email')
+        if not email:
+            return Response({'error': 'Email not found'}, status=400)
+        
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={'is_active': True}
+        )
+        
+        Profile.objects.get_or_create(user=user)
+        
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Apple login successful",
+            "data": {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "profile_setup_completed": user.profile_setup_completed
+                }
+            }
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)

@@ -94,15 +94,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    #auth and user management
-    # 'django.contrib.sites',
-    # 'allauth',
-    # 'allauth.account',
-    # 'allauth.socialaccount',
-    # 'allauth.socialaccount.providers.google',
-    # 'allauth.socialaccount.providers.apple',
-    # 'dj_rest_auth',
-    # 'dj_rest_auth.registration',
 
 
     # Local apps
@@ -127,33 +118,32 @@ INSTALLED_APPS = [
 
 AUTH_USER_MODEL = 'account.User'
 
-SITE_ID = 1
 
-# Social Account Settings
-SOCIALACCOUNT_QUERY_EMAIL = True
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_UNIQUE_EMAIL = True
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_USERNAME_REQUIRED = False
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
+        'APP': {
+            'client_id': os.environ.get('GOOGLE_CLIENT_ID'),
+            'secret': os.environ.get('GOOGLE_CLIENT_SECRET'),
+            'key': ''
+        },
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {'access_type': 'online'},
-        'APP': {
-            'client_id': os.getenv('GOOGLE_CLIENT_ID'),
-            'secret': os.getenv('GOOGLE_SECRET'),
-            'key': ''
-        }
+        'FETCH_USERINFO': True,
     },
     'apple': {
         'APP': {
-            'client_id': os.getenv('APPLE_CLIENT_ID'),     
-            'secret': os.getenv('APPLE_SECRET'),         
-            'key': os.getenv('APPLE_KEY_ID'),              
-            'certificate_key': os.getenv('APPLE_CERTIFICATE_KEY'), 
-        }
+            'client_id': os.environ.get('APPLE_CLIENT_ID'),
+            'secret': os.environ.get('APPLE_PRIVATE_KEY'),
+            'key': os.environ.get('APPLE_KEY_ID'),
+            'certificate_key': os.environ.get('APPLE_PRIVATE_KEY')
+        },
+        'TEAM_ID': os.environ.get('APPLE_TEAM_ID'),
     }
 }
 
@@ -303,23 +293,11 @@ CHANNEL_LAYERS = {
         },
     },
 }
-from celery.schedules import crontab
+
 CELERY_BEAT_SCHEDULE = {
     'daily-category-sync': {
         'task': 'api_integration.tasks.safe_category_sync',
-        'schedule': crontab(hour=2, minute=0),
-    },
-    'sync-sephora': {
-        'task': 'api_integration.tasks.sync_sephora_task',
-        'schedule': crontab(hour=3, minute=0),  # 71 min runtime
-    },
-    'sync-aliexpress': {
-        'task': 'api_integration.tasks.sync_aliexpress_task',
-        'schedule': crontab(hour=5, minute=0, day_of_week='mon,thu'),  # 197 min — সপ্তাহে ২ বার
-    },
-    'sync-ebay': {
-        'task': 'api_integration.tasks.sync_ebay_task',
-        'schedule': crontab(hour=9, minute=0),  # 139 min runtime
+        'schedule': crontab(hour=2, minute=0), 
     },
 }
 
