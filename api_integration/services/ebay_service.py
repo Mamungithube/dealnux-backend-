@@ -46,7 +46,7 @@ class EbayRapidService:
                 url,
                 headers=self.headers,
                 params=params,
-                timeout=20
+                timeout=60
             )
             logger.debug(f"eBay status: {response.status_code}")
             logger.debug(f"eBay raw response: {response.text[:800]}")
@@ -77,7 +77,7 @@ class EbayRapidService:
         params = {'url': item_url}
 
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=20)
+            response = requests.get(url, headers=self.headers, params=params, timeout=60)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('body', {}) or data or None

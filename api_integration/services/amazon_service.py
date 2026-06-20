@@ -265,7 +265,8 @@ class AmazonService:
                 or external_id
             ),
             'category_path': (
-                item.get('category')
+                self.get_category_from_details(item.get('asin', ''))
+                or item.get('category')
                 or item.get('product_category')
                 or ''
             ),
@@ -286,6 +287,25 @@ class AmazonService:
                 'Store': 'Amazon',
             },
         }
+    
+    def get_category_from_details(self, asin, country='US'):
+
+        try:
+            details = self.get_product_details(asin, country=country)
+            if not details:
+                return ''
+            breadcrumb = details.get('category_path') or []
+            if isinstance(breadcrumb, list) and breadcrumb:
+                names = [node.get('name', '') for node in breadcrumb if node.get('name')]
+                names.reverse()  # leaf (most specific) আগে, root (general) পরে
+                return ' > '.join(names)
+            cat = details.get('category')
+            if isinstance(cat, dict) and cat.get('name'):
+                return cat['name']
+            return ''
+        except Exception as e:
+            logger.error(f"Amazon category fetch failed for {asin}: {e}")
+            return ''
 
 
     def get_promo_code_details(self, promo_code, country='US'):

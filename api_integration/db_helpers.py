@@ -33,11 +33,12 @@ _KEYWORD_CATEGORY_MAP = [
      'smartphones-cell-phones'),
     (['laptop', 'notebook', 'macbook', 'chromebook'],
      'laptops'),
-    (['desktop', 'pc tower', 'all-in-one computer'],
+    (['desktop computer', 'desktop pc', 'pc tower', 'all-in-one computer',
+      'gaming desktop', 'desktop computer pc', 'mini pc', 'mini desktop'],
      'desktop-computers'),
     (['tablet', 'ipad', 'kindle fire', 'e-reader'],
      'tablets-e-readers'),
-    (['monitor', 'display screen', 'lcd screen', 'led monitor'],
+    (['monitor screen', 'display monitor', 'display screen', 'lcd screen', 'led monitor'],
      'monitors-displays'),
     (['cpu', 'motherboard', 'graphics card', 'gpu', 'computer component'],
      'computer-components-parts'),
@@ -47,7 +48,7 @@ _KEYWORD_CATEGORY_MAP = [
      'printers-scanners-ink'),
     (['router', 'wifi extender', 'network switch', 'modem', 'networking'],
      'networking-wi-fi'),
-    (['hard drive', 'ssd', 'flash drive', 'memory card', 'storage device'],
+    (['external hard drive', 'internal hdd', 'ssd', 'flash drive', 'memory card', 'storage device'],
      'storage-devices'),
     (['headphone', 'headset', 'earphone', 'earbud', 'airpod', 'speaker', 'earbuds'],
      'audio-headphones'),
@@ -80,7 +81,7 @@ _KEYWORD_CATEGORY_MAP = [
 
     # ── MEN'S FASHION ─────────────────────────────────────────────────────
     (['men\'s shirt', 'men\'s jacket', 'men\'s pants', 'men\'s suit',
-      'men\'s clothing', 'mens clothing', 'men clothing', 'for men',
+      'men\'s clothing', 'mens clothing', 'men clothing',
       'man shirt', 'man pants', 'men\'s hoodie', 'men\'s coat'],
      'mens-clothing'),
     (['men\'s shoe', 'men\'s shoes', 'men\'s sneaker', 'men\'s boot',
@@ -108,7 +109,7 @@ _KEYWORD_CATEGORY_MAP = [
       'women\'s pants', 'women\'s legging', 'women\'s hoodie', 'women\'s jacket',
       'women\'s clothing', 'womens clothing', 'women clothing',
       'ladies dress', 'ladies top', 'ladies clothing',
-      'female clothing', 'for women', 'woman dress', 'woman top',
+      'female clothing', 'woman dress', 'woman top',
       'women\'s coat', 'women\'s cardigan'],
      'womens-clothing'),
     (['women\'s shoe', 'women\'s shoes', 'women\'s heel', 'women\'s heels',
@@ -184,7 +185,7 @@ _KEYWORD_CATEGORY_MAP = [
      'grills-outdoor-cooking'),
     (['power drill', 'circular saw', 'wrench set', 'screwdriver set', 'home improvement tool'],
      'tools-home-improvement'),
-    (['pipe fitting', 'faucet', 'plumbing', 'hardware'],
+    (['plumbing fixture', 'plumbing supply', 'door hardware', 'pipe fitting', 'faucet', 'plumbing'],
      'plumbing-hardware'),
     (['area rug', 'carpet', 'floor mat', 'hardwood flooring'],
      'flooring-area-rugs'),
@@ -252,13 +253,13 @@ _KEYWORD_CATEGORY_MAP = [
      'nursery-furniture-decor'),
     (['lego', 'building toy', 'lego set', 'lego block'],
      'building-toys-lego'),
-    (['barbie', 'doll', 'dollhouse', 'baby doll'],
+    (['baby doll', 'dollhouse', 'fashion doll'],
      'dolls-dollhouses'),
     (['puzzle', 'board game', 'card game', 'chess', 'jigsaw puzzle'],
      'puzzles-board-games'),
     (['action figure', 'superhero toy', 'collectible figure'],
      'action-figures-collectibles'),
-    (['nerf gun', 'toy gun', 'stuffed animal', 'plush toy', 'toy'],
+    (['nerf gun', 'toy gun', 'stuffed animal', 'plush toy', 'kids toy', 'toy car'],
      'toys-games'),
     (['art kit for kids', 'craft kit', 'kids craft', 'kids art supply'],
      'arts-crafts-for-kids'),
@@ -285,10 +286,10 @@ _KEYWORD_CATEGORY_MAP = [
      'motorcycle-parts-accessories'),
 
     # ── ARTS, CRAFTS & COLLECTIBLES ───────────────────────────────────────
-    (['paint brush', 'acrylic paint', 'oil paint', 'watercolor', 'canvas',
+    (['canvas painting', 'canvas art', 'painting canvas', 'paint brush', 'acrylic paint', 'oil paint', 'watercolor',
       'art supply', 'art supplies', 'painting supply', 'sketching', 'drawing pencil'],
      'art-supplies-painting'),
-    (['sewing machine', 'knitting needle', 'crochet hook', 'yarn', 'fabric'],
+    (['sewing fabric', 'cotton fabric', 'sewing machine', 'knitting needle', 'crochet hook', 'yarn'],
      'sewing-knitting-crochet'),
     (['scrapbook', 'paper craft', 'sticker', 'washi tape', 'craft paper'],
      'scrapbooking-paper-crafts'),
@@ -306,7 +307,7 @@ _KEYWORD_CATEGORY_MAP = [
      'autographs-signed-items'),
     (['handmade', 'custom made', 'personalized item', 'handcrafted'],
      'handmade-custom-items'),
-    (['pottery', 'ceramic', 'clay', 'porcelain'],
+    (['modeling clay', 'pottery clay', 'clay sculpture', 'pottery', 'ceramic', 'porcelain'],
      'pottery-ceramics'),
 
     # ── BOOKS & ENTERTAINMENT ─────────────────────────────────────────────
@@ -343,7 +344,7 @@ _KEYWORD_CATEGORY_MAP = [
     # ── OFFICE & BUSINESS ─────────────────────────────────────────────────
     (['office chair', 'office desk', 'filing cabinet', 'office furniture'],
      'office-furniture'),
-    (['pen', 'notebook', 'stapler', 'sticky note', 'office supply', 'stationery'],
+    (['ballpoint pen', 'gel pen', 'ink pen', 'notebook', 'stapler', 'sticky note', 'office supply', 'stationery'],
      'office-supplies-stationery'),
     (['printer paper', 'printer cartridge', 'ink refill', 'toner'],
      'printer-cartridges-paper'),
@@ -411,8 +412,8 @@ def _resolve_category(category_path, title, cache):
                         if readable in cat_name_lower or cat_name_lower in readable:
                             return cat_obj
 
-    SKIP_WORDS = {'ring', 'fine', 'art', 'top', 'bag', 'set', 'kit',
-                  'toy', 'cat', 'dog', 'pen', 'ram', 'ssd', 'tv'}
+    SKIP_WORDS = {'jewelry ring', 'diamond ring', 'fine', 'art', 'top', 'bag', 'set', 'kit',
+                  'kids toy', 'action figure', 'cat', 'dog', 'pen', 'ram', 'ssd', 'tv'}
     if title_lower:
         for cat_name_lower, cat_obj in cache['by_name_lower'].items():
             name_words = set(cat_name_lower.split())
@@ -706,15 +707,15 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         from .firebase_utils import send_push_notification
 
         active_alerts = PriceAlert.objects.filter(
-            product=product, 
-            is_active=True, 
+            product=product,
+            is_active=True,
             target_price__gte=price_val
         ).select_related('user')
 
         for alert in active_alerts:
             title = "Price Drop Alert! 📉"
             body = f"Good news! {product.title} is now ${price_val} on {platform.name}. Buy it before the price goes up!"
-            
+
             send_push_notification(user=alert.user, title=title, body=body)
 
             Notification.objects.create(
@@ -725,6 +726,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             )
 
     except Exception as e:
-        logger.error(f"Error processing price alerts for product {product.id}: {str(e)}") 
+        logger.error(
+            f"Error processing price alerts for product {product.id}: {str(e)}")
 
     return product, listing, created

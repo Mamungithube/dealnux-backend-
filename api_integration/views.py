@@ -689,6 +689,26 @@ class ProductViewSet(viewsets.ModelViewSet):
                     explicit_category_ids.update(cat.children.values_list('id', flat=True))
                 if explicit_category_ids:
                     queryset = queryset.filter(category__id__in=explicit_category_ids)
+
+                    # ── Accessory exclusion: category দিয়ে filter করলেও
+                    # ভুলভাবে categorize হওয়া accessory product বাদ দাও ──
+                    accessory_keywords = [
+                        'power bank', 'powerbank', 'solar', 'cable', 'charger', 'charging',
+                        'case', 'cover', 'box', 'station', 'stand', 'holder', 'mount',
+                        'tag', 'sticker', 'bag', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
+                        'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
+                        'protector', 'adapter', 'screen guard', 'controller', 'gaming controller',
+                        'printer', 'cutting machine', 'poster', 'aux', 'usb board', 'connector',
+                        'price tag', 'thermal printer', 'cup holder', 'attachment lens',
+                        'converter', 'transmission', 'fill light', 'lighting', 'storage box',
+                        'pushchair', 'stroller', 'docking station',
+                        'accessories', 'memo board', 'message board', 'whiteboard', 'organizer',
+                        'keyboard stand', 'monitor stand',
+                    ]
+                    accessory_pattern = '|'.join(re.escape(w) for w in accessory_keywords)
+                    queryset = queryset.filter(
+                        ~Q(title__iregex=rf"(?i)({accessory_pattern})")
+                    )
                 else:
                     return queryset.none()
 
