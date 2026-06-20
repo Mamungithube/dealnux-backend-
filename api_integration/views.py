@@ -1,3 +1,10 @@
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models.functions import TruncDate
+from django.db.models import Sum
+from django.db.models import Q
+from rapidfuzz import fuzz
+from django.db.models import F
 import time
 import logging
 from rest_framework import viewsets, generics
@@ -27,13 +34,13 @@ from difflib import SequenceMatcher
 import re
 from .models import (
     Product, ProductListing, Platform, Category,
-    CartItem, SavingsActivity, Favorite , PriceAlert, Notification
+    CartItem, SavingsActivity, Favorite, PriceAlert, Notification
 )
 from .serializers import (
     ProductSerializer, ProductDetailSerializer,
     ProductListingSerializer, PlatformSerializer,
     CategorySerializer, PriceHistorySerializer,
-    CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer , PriceAlertSerializer, NotificationSerializer
+    CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer, PriceAlertSerializer, NotificationSerializer
 )
 from store.serializers import SellerProductSerializer
 from rest_framework.exceptions import ValidationError
@@ -50,8 +57,10 @@ logger = logging.getLogger(__name__)
 
 
 def clean_display_title(title):
-    title = re.sub(r'\d+%?\s*opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\d+%?\s*opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?',
+                   '', title, flags=re.IGNORECASE)
+    title = re.sub(r'opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?',
+                   '', title, flags=re.IGNORECASE)
     title = re.sub(r'\s+', ' ', title).strip(' -')
     return title
 
@@ -90,6 +99,7 @@ def token_similarity(title1, title2):
     t2 = re.sub(r'\s+', ' ', t2).strip()
     return round(SequenceMatcher(None, t1, t2).ratio() * 100, 2)
 
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def product_detail(request, pk):
@@ -97,10 +107,11 @@ def product_detail(request, pk):
     seller_product_data = None
 
     try:
-        from store.models import SellerProduct, ProductReview 
-        from django.db.models import Avg, Count 
+        from store.models import SellerProduct, ProductReview
+        from django.db.models import Avg, Count
 
-        seller_product = SellerProduct.objects.filter(id=pk, status='APPROVED').first()
+        seller_product = SellerProduct.objects.filter(
+            id=pk, status='APPROVED').first()
         if seller_product:
             if seller_product.linked_product:
                 product = seller_product.linked_product
@@ -111,7 +122,8 @@ def product_detail(request, pk):
             else:
                 try:
                     seller_product._ensure_linked_records()
-                    seller_product.save(update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
+                    seller_product.save(
+                        update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
                     product = seller_product.linked_product
                 except Exception:
                     return success_response(SellerProductSerializer(seller_product).data)
@@ -120,7 +132,7 @@ def product_detail(request, pk):
                 stats = ProductReview.objects.filter(product=seller_product).aggregate(
                     avg=Avg('rating'), total=Count('id')
                 )
-                
+
                 seller_product_data = {
                     'id': seller_product.id,
                     'price': str(seller_product.price),
@@ -146,8 +158,10 @@ def product_detail(request, pk):
 
     context = {'request': request}
     if request.user.is_authenticated:
-        context['favorite_ids'] = set(Favorite.objects.filter(user=request.user).values_list('product_id', flat=True))
-        context['cart_product_ids'] = set(CartItem.objects.filter(user=request.user).values_list('product_id', flat=True))
+        context['favorite_ids'] = set(Favorite.objects.filter(
+            user=request.user).values_list('product_id', flat=True))
+        context['cart_product_ids'] = set(CartItem.objects.filter(
+            user=request.user).values_list('product_id', flat=True))
     else:
         context['favorite_ids'], context['cart_product_ids'] = set(), set()
 
@@ -159,19 +173,21 @@ def product_detail(request, pk):
     serializer = ProductDetailSerializer(product, context=context)
     data = serializer.data
 
-    if not seller_product_data: 
+    if not seller_product_data:
         if not request.user.is_authenticated:
-             return error_response("Login required to view retailer details.", code=401)
-        
+            return error_response("Login required to view retailer details.", code=401)
+
         from payment.utils import validate_and_increment_click
-        success, message = validate_and_increment_click(request.user, product_id=product.id)
+        success, message = validate_and_increment_click(
+            request.user, product_id=product.id)
         if not success:
             return error_response(message, code=403 if "subscribe" in message.lower() else 429)
 
     if seller_product_data:
         data.update(seller_product_data)
 
-    data['related_products'] = ProductSerializer(related_products, many=True, context=context).data
+    data['related_products'] = ProductSerializer(
+        related_products, many=True, context=context).data
     return success_response(data, message="Product details fetched successfully")
 # ============================================================================
 # Response Helpers
@@ -495,12 +511,12 @@ class StandardResultsSetPagination(PageNumberPagination):
 # REST ViewSets
 # ============================================================================
 
-from django.db.models import F
+
 class ProductViewSet(viewsets.ModelViewSet):
 
     queryset = Product.objects.all().prefetch_related(
-        'listings', 
-        'listings__platform', 
+        'listings',
+        'listings__platform',
         'images'
     ).select_related('category')
     serializer_class = ProductSerializer
@@ -564,8 +580,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             return ProductDetailSerializer
         return ProductSerializer
 
-    
-    #product search with filtering, sorting, and relevance ranking ( old code )
+    # product search with filtering, sorting, and relevance ranking ( old code )
 
     # def get_queryset(self):
     #     queryset = super().get_queryset()
@@ -589,14 +604,14 @@ class ProductViewSet(viewsets.ModelViewSet):
     #         slugs = []
     #         for item in category_input:
     #             slugs.extend([s.strip() for s in item.split(',') if s.strip()])
-            
+
     #         if slugs:
     #             matching_cats = Category.objects.filter(slug__in=slugs)
     #             all_ids = set()
     #             for cat in matching_cats:
     #                 all_ids.add(cat.id)
     #                 all_ids.update(cat.children.values_list('id', flat=True))
-                
+
     #             if all_ids:
     #                 queryset = queryset.filter(category__id__in=all_ids)
     #             else:
@@ -634,13 +649,12 @@ class ProductViewSet(viewsets.ModelViewSet):
     #                 trigram=TrigramSimilarity('title', search_query),
     #                 word_count=Case(
     #                     When(title__regex=r'^(\S+\s+){0,12}\S+$', then=Value(3.0)),
-    #                     When(title__regex=r'^(\S+\s+){13,18}\S+$', then=Value(2.0)), 
-    #                     When(title__regex=r'^(\S+\s+){19,24}\S+$', then=Value(1.0)), 
-    #                     default=Value(0.0), 
+    #                     When(title__regex=r'^(\S+\s+){13,18}\S+$', then=Value(2.0)),
+    #                     When(title__regex=r'^(\S+\s+){19,24}\S+$', then=Value(1.0)),
+    #                     default=Value(0.0),
     #                     output_field=FloatField(),
     #                 ),
     #             ).order_by('-title_rank', '-trigram', '-word_count')
-
 
     #     # Sorting
     #     if sort == 'price_low':
@@ -666,8 +680,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+
         search_query = self.request.query_params.get('search', '').strip()
-        sort = self.request.query_params.get('sort', 'newest').strip()
+        sort = self.request.query_params.get('sort', '').strip()
+
+        is_low    = sort in ['price_low', 'lowest_price', 'Lowest Price'] or 'price_low' in self.request.query_params
+        is_high   = sort in ['price_high', 'highest_price', 'Highest Price'] or 'price_high' in self.request.query_params
+        is_newest = sort in ['newest', 'Newest'] or 'newest' in self.request.query_params
+        is_best   = sort in ['best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
 
         queryset = queryset.filter(
             title__isnull=False,
@@ -678,6 +698,20 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         category_input = self.request.query_params.getlist('category')
         explicit_category_ids = set()
+        
+        accessory_keywords = [
+            'power bank', 'powerbank', 'solar', 'cable', 'charger', 'charging',
+            'case', 'cover', 'box', 'station', 'stand', 'holder', 'mount',
+            'tag', 'sticker', 'bag', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
+            'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
+            'protector', 'adapter', 'screen guard', 'controller', 'gaming controller',
+            'printer', 'cutting machine', 'poster', 'aux', 'usb board', 'connector',
+            'price tag', 'thermal printer', 'cup holder', 'attachment lens',
+            'converter', 'transmission', 'fill light', 'lighting', 'storage box',
+            'pushchair', 'stroller', 'gaming controller', 'docking station'
+        ]
+        accessory_pattern = '|'.join(re.escape(w) for w in accessory_keywords)
+
         if category_input:
             slugs = []
             for item in category_input:
@@ -687,28 +721,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                 for cat in matching_cats:
                     explicit_category_ids.add(cat.id)
                     explicit_category_ids.update(cat.children.values_list('id', flat=True))
+                
                 if explicit_category_ids:
                     queryset = queryset.filter(category__id__in=explicit_category_ids)
-
-                    # ── Accessory exclusion: category দিয়ে filter করলেও
-                    # ভুলভাবে categorize হওয়া accessory product বাদ দাও ──
-                    accessory_keywords = [
-                        'power bank', 'powerbank', 'solar', 'cable', 'charger', 'charging',
-                        'case', 'cover', 'box', 'station', 'stand', 'holder', 'mount',
-                        'tag', 'sticker', 'bag', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
-                        'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
-                        'protector', 'adapter', 'screen guard', 'controller', 'gaming controller',
-                        'printer', 'cutting machine', 'poster', 'aux', 'usb board', 'connector',
-                        'price tag', 'thermal printer', 'cup holder', 'attachment lens',
-                        'converter', 'transmission', 'fill light', 'lighting', 'storage box',
-                        'pushchair', 'stroller', 'docking station',
-                        'accessories', 'memo board', 'message board', 'whiteboard', 'organizer',
-                        'keyboard stand', 'monitor stand',
-                    ]
-                    accessory_pattern = '|'.join(re.escape(w) for w in accessory_keywords)
-                    queryset = queryset.filter(
-                        ~Q(title__iregex=rf"(?i)({accessory_pattern})")
-                    )
+                    queryset = queryset.filter(~Q(title__iregex=rf"(?i)({accessory_pattern})"))
                 else:
                     return queryset.none()
 
@@ -719,43 +735,18 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             sq = re.escape(search_query)
             normalized_query = search_query.lower().strip()
-
-            accessory_keywords = [
-                'power bank', 'powerbank', 'solar', 'cable', 'charger', 'charging',
-                'case', 'cover', 'box', 'station', 'stand', 'holder', 'mount',
-                'tag', 'sticker', 'bag', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
-                'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
-                'protector', 'adapter', 'screen guard', 'controller', 'gaming controller',
-                'printer', 'cutting machine', 'poster', 'aux', 'usb board', 'connector',
-                'price tag', 'thermal printer', 'cup holder', 'attachment lens',
-                'converter', 'transmission', 'fill light', 'lighting', 'storage box',
-                'pushchair', 'stroller', 'gaming controller', 'docking station'
-            ]
-
             is_searching_accessory = any(word in normalized_query for word in accessory_keywords)
 
-            # ---------------------------------------------------------
-            # STEP 1: STRICT term filter (AND across all terms)
-            # ---------------------------------------------------------
+            # Strict AND filter
             strict_q = Q()
             for term in search_terms:
                 strict_q &= Q(title__icontains=term)
             queryset = queryset.filter(strict_q)
 
-            # ---------------------------------------------------------
-            # STEP 2: Accessory exclusion — apply with .filter(~Q(...))
-            # instead of .exclude() to avoid multi-join issues with
-            # the M2M/FK `listings` relation
-            # ---------------------------------------------------------
-            if not is_searching_accessory and accessory_keywords:
-                accessory_pattern = '|'.join(re.escape(w) for w in accessory_keywords)
-                queryset = queryset.filter(
-                    ~Q(title__iregex=rf"(?i)({accessory_pattern})")
-                )
+            if not is_searching_accessory:
+                queryset = queryset.filter(~Q(title__iregex=rf"(?i)({accessory_pattern})"))
 
-            # ---------------------------------------------------------
-            # STEP 3: Scoring (ranking only)
-            # ---------------------------------------------------------
+            # Scoring
             phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
             phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
 
@@ -780,18 +771,29 @@ class ProductViewSet(viewsets.ModelViewSet):
                 final_relevance=F('brand_boost') + F('direct_match') + F('specs_boost')
             )
 
-            if sort == 'price_low':
-                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('min_p', '-final_relevance')
-            elif sort == 'price_high':
-                queryset = queryset.annotate(min_p=Min('listings__price')).order_by('-min_p', '-final_relevance')
-            else:
-                queryset = queryset.order_by('-final_relevance', '-created_at')
+        if is_low:
+            queryset = queryset.annotate(min_p=Min('listings__price')).filter(min_p__gt=0).order_by('min_p')
+        
+        elif is_high:
+            queryset = queryset.annotate(min_p=Min('listings__price')).filter(min_p__gt=0).order_by('-min_p')
 
-        else:
+        elif is_newest:
             queryset = queryset.order_by('-created_at')
 
-        return queryset.distinct()
+        elif is_best:
+            if search_query:
+                queryset = queryset.order_by('-final_relevance', '-created_at')
+            else:
+                queryset = queryset.order_by('-created_at')
 
+        else:
+            # Default sorting
+            if search_query:
+                queryset = queryset.order_by('-final_relevance', '-created_at')
+            else:
+                queryset = queryset.order_by('-created_at')
+
+        return queryset.distinct()
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -810,7 +812,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             ]
 
             total_count = paginated.data['count']
-            page_size   = self.paginator.get_page_size(request)
+            page_size = self.paginator.get_page_size(request)
             current_page = self.paginator.page.number
             total_pages = math.ceil(total_count / page_size)
 
@@ -844,7 +846,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.user and self.request.user.is_authenticated:
-            from api_integration.models import CartItem, Favorite  
+            from api_integration.models import CartItem, Favorite
 
             context['favorite_ids'] = set(
                 Favorite.objects.filter(user=self.request.user)
@@ -855,19 +857,20 @@ class ProductViewSet(viewsets.ModelViewSet):
                 .values_list('product_id', flat=True)
             )
         else:
-            context['favorite_ids']     = set()
+            context['favorite_ids'] = set()
             context['cart_product_ids'] = set()
         return context
-    
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def record_purchase_intent(self, request, slug=None):
 
         best_deal_product = self.get_object()
-        
-        this_deal_listing = best_deal_product.listings.filter(is_available=True, price__gt=0).order_by('price').first()
+
+        this_deal_listing = best_deal_product.listings.filter(
+            is_available=True, price__gt=0).order_by('price').first()
         if not this_deal_listing:
             return error_response("No valid price found for this deal.", code=404)
-            
+
         this_price = float(this_deal_listing.get_total_price())
 
         from django.db.models import Q, Max
@@ -876,13 +879,14 @@ class ProductViewSet(viewsets.ModelViewSet):
             match_query |= Q(product__gtin=best_deal_product.gtin)
         if best_deal_product.asin:
             match_query |= Q(product__asin=best_deal_product.asin)
-        
+
         if not match_query:
-             max_price_data = best_deal_product.listings.filter(is_available=True).aggregate(max_p=Max('price'))
+            max_price_data = best_deal_product.listings.filter(
+                is_available=True).aggregate(max_p=Max('price'))
         else:
 
             max_price_data = ProductListing.objects.filter(
-                match_query, 
+                match_query,
                 is_available=True
             ).aggregate(max_p=Max('price'))
 
@@ -894,7 +898,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 user = request.user
 
-                current_total = float(getattr(user, 'total_lifetime_savings', 0.0))
+                current_total = float(
+                    getattr(user, 'total_lifetime_savings', 0.0))
                 user.total_lifetime_savings = current_total + savings
                 user.save()
 
@@ -917,6 +922,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             "message": "This is already the highest price or no comparison available."
         })
 
+
 """ contains viewsets and API views for product listing, price comparison, and platform syncing. """
 """
 views.py — compare_prices_api (improved version)
@@ -930,11 +936,6 @@ Change summary:
 • Weighted score: Jaccard×0.4 + token_sort×0.35 + partial×0.25
 """
 
-import re
-from rapidfuzz import fuzz
-from django.db.models import Q
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
 
 # ── your existing imports ──
 # from .models import Product, ProductListing
@@ -951,7 +952,7 @@ VARIANT_TOKENS = {
 }
 
 STORAGE_PATTERN = re.compile(r'(\d+)\s*(gb|tb|mb)', re.IGNORECASE)
-RAM_PATTERN     = re.compile(r'(\d+)\s*gb\s*ram',   re.IGNORECASE)
+RAM_PATTERN = re.compile(r'(\d+)\s*gb\s*ram',   re.IGNORECASE)
 
 NOISE_PATTERNS = [
     r'\(.*?\)',
@@ -985,7 +986,8 @@ def extract_storage(title: str) -> dict:
     ram_match = RAM_PATTERN.search(title_lower)
     if ram_match:
         result['ram'] = f"{ram_match.group(1)}gb"
-        title_lower = title_lower[:ram_match.start()] + title_lower[ram_match.end():]
+        title_lower = title_lower[:ram_match.start()] + \
+            title_lower[ram_match.end():]
     for val, unit in STORAGE_PATTERN.findall(title_lower):
         unit_lower = unit.lower()
         if unit_lower == 'tb':
@@ -1060,9 +1062,10 @@ def product_match_score(title1: str, title2: str) -> float:
         jaccard = len(tokens1 & tokens2) / len(tokens1 | tokens2) * 100
 
     token_sort = fuzz.token_sort_ratio(core1, core2)
-    partial    = fuzz.partial_ratio(core1, core2)
+    partial = fuzz.partial_ratio(core1, core2)
 
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1074,14 +1077,14 @@ def compare_prices_api(request, slug):
 
     target_title = clean_display_title(product.title)
     target_fingerprint = get_product_fingerprint(target_title)
-    
+
     keywords = target_fingerprint['core_name'].split()[:3]
     q_filter = Q(is_active=True)
     if keywords:
         k_query = Q()
         for word in keywords:
-            if len(word) > 2: 
-                k_query &= Q(title__icontains=word) 
+            if len(word) > 2:
+                k_query &= Q(title__icontains=word)
         q_filter &= k_query
 
     if product.category:
@@ -1090,10 +1093,11 @@ def compare_prices_api(request, slug):
     candidates = Product.objects.filter(q_filter)
 
     matched_ids = [product.id]
-    THRESHOLD = 75 
+    THRESHOLD = 75
 
     for cand in candidates:
-        if cand.id == product.id: continue
+        if cand.id == product.id:
+            continue
         score = calculate_match_score(product.title, cand.title)
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
@@ -1110,8 +1114,9 @@ def compare_prices_api(request, slug):
     prices = []
 
     for listing in listings:
-        if listing.external_url in seen_urls: continue
-        
+        if listing.external_url in seen_urls:
+            continue
+
         total_p = float(listing.get_total_price())
         seen_urls.add(listing.external_url)
         active_matched_product_ids.add(listing.product.id)
@@ -1153,14 +1158,14 @@ def compare_prices_api(request, slug):
             'brand': product.brand,
             'main_image': product.main_image,
         },
-        'price_analysis': analysis, 
+        'price_analysis': analysis,
         'meta': {
-            'total_deals_found': len(comparison_list),     
+            'total_deals_found': len(comparison_list),
             'matched_products_count': len(active_matched_product_ids),
             'active_ids': list(active_matched_product_ids)
         },
-        'price_comparison': comparison_list,           
-        'best_deal': comparison_list[0] if comparison_list else None 
+        'price_comparison': comparison_list,
+        'best_deal': comparison_list[0] if comparison_list else None
     }, message="Price comparison fetched successfully")
 
 
@@ -1720,7 +1725,7 @@ class CartViewSet(viewsets.ModelViewSet):
 
         # 1. Searching linked_product by SellerProduct id
         try:
-            from store.models import SellerProduct 
+            from store.models import SellerProduct
             seller_product = SellerProduct.objects.get(
                 id=product_id, status='APPROVED')
             product = seller_product.linked_product
@@ -1747,14 +1752,13 @@ class CartViewSet(viewsets.ModelViewSet):
         )
 
         serializer = self.get_serializer(cart_item)
-        
+
         return self._success(serializer.data, message="Item added to cart", code=201)
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return self._success(serializer.data, message="Cart item fetched")
-    
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -1765,7 +1769,7 @@ class CartViewSet(viewsets.ModelViewSet):
         total_price = 0.0
 
         for item in serializer.data:
-            listing = item.get('listing')  
+            listing = item.get('listing')
             if not listing:
                 continue
 
@@ -1817,26 +1821,29 @@ class CartViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def checkout_options(self, request):
         cart_items = self.get_queryset()
-        
+
         # . Definite data collection
-        optimized_data = {} # {platform: [items]}
-        single_store_data = {'BestBuy': []} 
-        
+        optimized_data = {}  # {platform: [items]}
+        single_store_data = {'BestBuy': []}
+
         total_opt_price = 0
         total_single_price = 0
-        
+
         for item in cart_items:
             # Main Logic: Best cheap deal among all listings
-            best_listing = ProductListing.objects.filter(product=item.product).order_by('price').first()
-            
+            best_listing = ProductListing.objects.filter(
+                product=item.product).order_by('price').first()
+
             item_total = float(best_listing.price) * item.quantity
             total_opt_price += item_total
-            
-            plat = best_listing.platform.name
-            if plat not in optimized_data: optimized_data[plat] = []
-            optimized_data[plat].append({"title": item.product.title, "price": float(best_listing.price)})
 
-        total_saved = 50.00 
+            plat = best_listing.platform.name
+            if plat not in optimized_data:
+                optimized_data[plat] = []
+            optimized_data[plat].append(
+                {"title": item.product.title, "price": float(best_listing.price)})
+
+        total_saved = 50.00
 
         return success_response({
             "options": {
@@ -1939,19 +1946,12 @@ class CartViewSet(viewsets.ModelViewSet):
         return self._success(data, message="Dashboard data fetched successfully")
 
 
-
-from django.db.models import Sum
-from django.db.models.functions import TruncDate
-from datetime import timedelta
-from django.utils import timezone
-
-
 class DashboardSavingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        
+
         # ১. আগের মতোই রিসেন্ট ৫টি অ্যাক্টিভিটি নেওয়া হচ্ছে
         recent = SavingsActivity.objects.filter(
             user=user
@@ -1959,7 +1959,7 @@ class DashboardSavingsView(APIView):
 
         # ২. গ্রাফের জন্য গত ৩০ দিনের ডাটা ক্যালকুলেশন (CPU অপ্টিমাইজড)
         thirty_days_ago = timezone.now().date() - timedelta(days=30)
-        
+
         # ডাটাবেজ থেকে প্রতিদিনের টোটাল সেভিংস এগ্রিগেশন
         trend_data = SavingsActivity.objects.filter(
             user=user,
@@ -1972,29 +1972,31 @@ class DashboardSavingsView(APIView):
 
         # ৩. ডাটা ফরম্যাটিং (গ্রাফের জন্য ডিকশনারি তৈরি)
         # যদি কোনো দিন সেভিংস না থাকে, ফ্রন্টএন্ডে ০ দেখানোর জন্য এটি করা হয়েছে
-        trend_map = {item['day'].strftime('%Y-%m-%d'): float(item['total']) for item in trend_data}
-        
+        trend_map = {item['day'].strftime(
+            '%Y-%m-%d'): float(item['total']) for item in trend_data}
+
         graph_list = []
-        for i in range(30, -1, -1): # গত ৩০ দিন থেকে আজ পর্যন্ত
-            date_str = (timezone.now().date() - timedelta(days=i)).strftime('%Y-%m-%d')
+        for i in range(30, -1, -1):  # গত ৩০ দিন থেকে আজ পর্যন্ত
+            date_str = (timezone.now().date() -
+                        timedelta(days=i)).strftime('%Y-%m-%d')
             graph_list.append({
                 "date": date_str,
-                "amount": trend_map.get(date_str, 0.0) # ডাটা না থাকলে ০.০
+                "amount": trend_map.get(date_str, 0.0)  # ডাটা না থাকলে ০.০
             })
 
         # ৪. আপনার অরিজিনাল রেসপন্স ফরম্যাট বজায় রাখা হয়েছে
         data = {
             "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
-            "savings_trend": graph_list, # ✅ নতুন: গ্রাফের জন্য তারিখ অনুযায়ী ডাটা
+            "savings_trend": graph_list,  # ✅ নতুন: গ্রাফের জন্য তারিখ অনুযায়ী ডাটা
             "recent_activity": [
                 {
-                    "title": a.title, 
-                    "saved_amount": float(a.saved_amount), 
+                    "title": a.title,
+                    "saved_amount": float(a.saved_amount),
                     "date": a.time_ago
                 } for a in recent
             ],
         }
-        
+
         return success_response(data, message="Dashboard data fetched successfully")
 
 
@@ -2209,8 +2211,8 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             queryset,
             many=True,
             context={
-                **self.get_serializer_context(),  
-                'favorite_ids': favorite_ids,      
+                **self.get_serializer_context(),
+                'favorite_ids': favorite_ids,
             }
         )
 
@@ -2291,6 +2293,7 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             code=201,
         )
 
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def amazon_promo_details(request):
@@ -2317,27 +2320,29 @@ class DeviceTokenView(APIView):
         token = request.data.get('fcm_token')
         if not token:
             return Response({"error": "fcm_token is required"}, status=400)
-            
+
         from account.models import DeviceToken
         DeviceToken.objects.get_or_create(user=request.user, fcm_token=token)
         return success_response(None, message="FCM token saved.")
+
 
 class PriceAlertViewSet(viewsets.ModelViewSet):
     """User can set up to 5 alerts (Free) or Unlimited (Paid)"""
     permission_classes = [IsAuthenticated]
     serializer_class = PriceAlertSerializer
-    
+
     def get_queryset(self):
         return PriceAlert.objects.filter(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
         user = request.user
         sub = getattr(user, 'subscription', None)
-        
+
         # ১. সাবস্ক্রিপশন লিমিট চেক (ডক অনুযায়ী)
-        alert_count = PriceAlert.objects.filter(user=user, is_active=True).count()
+        alert_count = PriceAlert.objects.filter(
+            user=user, is_active=True).count()
         limit = sub.plan.price_alerts_limit if sub and sub.is_active else 5
-        
+
         if limit != -1 and alert_count >= limit:
             return Response({
                 "success": False,
@@ -2345,6 +2350,7 @@ class PriceAlertViewSet(viewsets.ModelViewSet):
             }, status=400)
 
         return super().create(request, *args, **kwargs)
+
 
 class NotificationListView(generics.ListAPIView):
     """Show notification history for the user"""
