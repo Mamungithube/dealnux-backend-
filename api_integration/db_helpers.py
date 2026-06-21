@@ -195,6 +195,7 @@ _KEYWORD_CATEGORY_MAP = [
      'pet-supplies'),
 
     # ── HEALTH & BEAUTY ───────────────────────────────────────────────────
+    (['softgels', 'capsules', 'cleanser', 'vitamins', 'dietary supplement'], 'vitamins-dietary-supplements'),
     (['moisturizer', 'face serum', 'sunscreen', 'face wash', 'face cream',
       'skincare', 'retinol', 'toner', 'face mask'],
      'skincare'),
@@ -218,6 +219,7 @@ _KEYWORD_CATEGORY_MAP = [
      'weight-loss-slimming'),
 
     # ── SPORTS & OUTDOORS ─────────────────────────────────────────────────
+    (['trampoline', 'backyard game', 'play set'], 'sports-outdoors'),
     (['treadmill', 'dumbbell', 'barbell', 'yoga mat', 'resistance band',
       'pull up bar', 'gym equipment', 'exercise bike', 'rowing machine'],
      'exercise-fitness-equipment'),
@@ -271,6 +273,7 @@ _KEYWORD_CATEGORY_MAP = [
      'school-supplies'),
 
     # ── AUTOMOTIVE ────────────────────────────────────────────────────────
+    (['car lift', 'headlights', 'obd2', 'diagnosis', 'auto parts'], 'automotive'),
     (['car charger', 'dash cam', 'car stereo', 'gps navigation', 'car speaker',
       'car electronics'],
      'car-electronics-gps'),
@@ -286,6 +289,7 @@ _KEYWORD_CATEGORY_MAP = [
      'motorcycle-parts-accessories'),
 
     # ── ARTS, CRAFTS & COLLECTIBLES ───────────────────────────────────────
+    (['diy crafts', 'painting set', 'hobby paint', 'crafts for kids'], 'arts-crafts-for-kids'),
     (['canvas painting', 'canvas art', 'painting canvas', 'paint brush', 'acrylic paint', 'oil paint', 'watercolor',
       'art supply', 'art supplies', 'painting supply', 'sketching', 'drawing pencil'],
      'art-supplies-painting'),
@@ -330,6 +334,7 @@ _KEYWORD_CATEGORY_MAP = [
      'musical-instruments'),
 
     # ── FOOD & GROCERY ────────────────────────────────────────────────────
+    (['noodles', 'ramen', 'honey', 'juice', 'soup', 'organic food'], 'food-grocery'),
     (['chips', 'popcorn', 'beef jerky', 'granola bar', 'snack food', 'trail mix'],
      'snack-foods'),
     (['coffee bean', 'ground coffee', 'green tea', 'energy drink', 'juice', 'beverage'],
