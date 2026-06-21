@@ -334,7 +334,7 @@ _KEYWORD_CATEGORY_MAP = [
      'musical-instruments'),
 
     # ── FOOD & GROCERY ────────────────────────────────────────────────────
-    (['noodles', 'ramen', 'honey', 'juice', 'soup', 'organic food'], 'food-grocery'),
+    (['noodles', 'ramen', 'honey', 'juice', 'soup', 'food', 'snacks', 'candy', 'coffee', 'tea'], 'food-grocery'),
     (['chips', 'popcorn', 'beef jerky', 'granola bar', 'snack food', 'trail mix'],
      'snack-foods'),
     (['coffee bean', 'ground coffee', 'green tea', 'energy drink', 'juice', 'beverage'],
@@ -420,14 +420,14 @@ def _resolve_category(category_path, title, cache):
                     # --- CRITICAL FIX: Suffix Check ---
                     # Even if it matches "Desktop Computer", check if it's an accessory or part
                     if target_slug == 'desktop-computers':
-                        tech_junk = ['motherboard', 'mouse pad', 'fan', 'light bar', 'bracket', 'parts', 'case only']
+                        tech_junk = ['motherboard', 'mouse pad', 'fan', 'light bar', 'bracket', 'parts', 'case only', 'sleeve', 'statue', 'memo board']
                         if any(x in title_lower for x in tech_junk):
                             continue # Don't assign to Desktop Computers, look for Parts category
                     
                     if target_slug == 'smartphones-cell-phones':
                         phone_junk = ['case', 'cover', 'cable', 'screen protector', 'charger']
                         if any(x in title_lower for x in phone_junk):
-                            continue # Skip cell phones category for accessories
+                            continue 
 
                     cat = cache['by_slug'].get(target_slug)
                     if cat:
