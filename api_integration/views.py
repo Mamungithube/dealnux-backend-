@@ -684,10 +684,14 @@ class ProductViewSet(viewsets.ModelViewSet):
         search_query = self.request.query_params.get('search', '').strip()
         sort = self.request.query_params.get('sort', '').strip()
 
-        is_low    = sort in ['price_low', 'lowest_price', 'Lowest Price'] or 'price_low' in self.request.query_params
-        is_high   = sort in ['price_high', 'highest_price', 'Highest Price'] or 'price_high' in self.request.query_params
-        is_newest = sort in ['newest', 'Newest'] or 'newest' in self.request.query_params
-        is_best   = sort in ['best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
+        is_low = sort in ['price_low', 'lowest_price',
+                          'Lowest Price'] or 'price_low' in self.request.query_params
+        is_high = sort in ['price_high', 'highest_price',
+                           'Highest Price'] or 'price_high' in self.request.query_params
+        is_newest = sort in [
+            'newest', 'Newest'] or 'newest' in self.request.query_params
+        is_best = sort in [
+            'best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
 
         min_price = self.request.query_params.get('min_price', '').strip()
         max_price = self.request.query_params.get('max_price', '').strip()
@@ -701,7 +705,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         category_input = self.request.query_params.getlist('category')
         explicit_category_ids = set()
-        
+
         accessory_keywords = [
             'power bank', 'powerbank', 'solar', 'cable', 'charger', 'charging',
             'case', 'cover', 'box', 'station', 'stand', 'holder', 'mount',
@@ -723,22 +727,27 @@ class ProductViewSet(viewsets.ModelViewSet):
                 matching_cats = Category.objects.filter(slug__in=slugs)
                 for cat in matching_cats:
                     explicit_category_ids.add(cat.id)
-                    explicit_category_ids.update(cat.children.values_list('id', flat=True))
-                
+                    explicit_category_ids.update(
+                        cat.children.values_list('id', flat=True))
+
                 if explicit_category_ids:
-                    queryset = queryset.filter(category__id__in=explicit_category_ids)
-                    queryset = queryset.filter(~Q(title__iregex=rf"(?i)({accessory_pattern})"))
+                    queryset = queryset.filter(
+                        category__id__in=explicit_category_ids)
+                    queryset = queryset.filter(
+                        ~Q(title__iregex=rf"(?i)({accessory_pattern})"))
                 else:
                     return queryset.none()
 
         if search_query:
-            search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
+            search_terms = [t for t in re.split(
+                r'\s+', search_query.lower()) if len(t) > 1]
             if not search_terms:
                 return queryset.none()
 
             sq = re.escape(search_query)
             normalized_query = search_query.lower().strip()
-            is_searching_accessory = any(word in normalized_query for word in accessory_keywords)
+            is_searching_accessory = any(
+                word in normalized_query for word in accessory_keywords)
 
             # Strict AND filter
             strict_q = Q()
@@ -747,15 +756,19 @@ class ProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(strict_q)
 
             if not is_searching_accessory:
-                queryset = queryset.filter(~Q(title__iregex=rf"(?i)({accessory_pattern})"))
+                queryset = queryset.filter(
+                    ~Q(title__iregex=rf"(?i)({accessory_pattern})"))
 
             # Scoring
-            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
-            phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
+            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto',
+                            'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
+            phone_specs = [r'\d+GB', r'unlocked', r'smartphone',
+                           r'cell phone', r'dual sim', r'android', r'ios']
 
             queryset = queryset.annotate(
                 brand_boost=Case(
-                    When(Q(title__iregex=rf"^({'|'.join(phone_brands)})"), then=Value(80.0)),
+                    When(
+                        Q(title__iregex=rf"^({'|'.join(phone_brands)})"), then=Value(80.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
@@ -766,19 +779,23 @@ class ProductViewSet(viewsets.ModelViewSet):
                     output_field=FloatField(),
                 ),
                 specs_boost=Case(
-                    When(Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"), then=Value(30.0)) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
+                    When(Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"), then=Value(
+                        30.0)) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
             ).annotate(
-                final_relevance=F('brand_boost') + F('direct_match') + F('specs_boost')
+                final_relevance=F('brand_boost') +
+                F('direct_match') + F('specs_boost')
             )
 
         if is_low:
-            queryset = queryset.annotate(min_p=Min('listings__price')).filter(min_p__gt=0).order_by('min_p')
-        
+            queryset = queryset.annotate(min_p=Min('listings__price')).filter(
+                min_p__gt=0).order_by('min_p')
+
         elif is_high:
-            queryset = queryset.annotate(min_p=Min('listings__price')).filter(min_p__gt=0).order_by('-min_p')
+            queryset = queryset.annotate(min_p=Min('listings__price')).filter(
+                min_p__gt=0).order_by('-min_p')
 
         elif is_newest:
             queryset = queryset.order_by('-created_at')
@@ -797,17 +814,20 @@ class ProductViewSet(viewsets.ModelViewSet):
                 queryset = queryset.order_by('-created_at')
 
         if min_price or max_price:
-            queryset = queryset.annotate(min_listing_price=Min('listings__price'))
+            queryset = queryset.annotate(
+                min_listing_price=Min('listings__price'))
 
         if min_price:
             try:
-                queryset = queryset.filter(min_listing_price__gte=float(min_price))
+                queryset = queryset.filter(
+                    min_listing_price__gte=float(min_price))
             except ValueError:
                 pass
 
         if max_price:
             try:
-                queryset = queryset.filter(min_listing_price__lte=float(max_price))
+                queryset = queryset.filter(
+                    min_listing_price__lte=float(max_price))
             except ValueError:
                 pass
 
@@ -819,23 +839,17 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            paginated = self.get_paginated_response(serializer.data)
-
-            # ── Validation filter ──────────────────────────────
-            valid_results = [
-                item for item in serializer.data
-                if item.get('title')
-                and item.get('main_image')
-                and item.get('lowest_price') and float(item.get('lowest_price', 0)) > 0
-            ]
-
-            total_count = paginated.data['count']
+            
+            # আপনার অরিজিনাল Key-গুলো ঠিক রাখা হয়েছে
+            results = serializer.data
+            total_count = self.paginator.page.paginator.count
             page_size = self.paginator.get_page_size(request)
             current_page = self.paginator.page.number
             total_pages = math.ceil(total_count / page_size)
 
+            # হুবহু আপনার আগের ফরম্যাট
             return success_response({
-                'count': len(valid_results),
+                'count': len(results), # এখন ১২টিই থাকবে
                 'pagination': {
                     'total_count':  total_count,
                     'total_pages':  total_pages,
@@ -846,20 +860,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                     'next_page':    current_page + 1 if self.paginator.page.has_next() else None,
                     'prev_page':    current_page - 1 if self.paginator.page.has_previous() else None,
                 },
-                'results': valid_results,
+                'results': results,
             })
 
+        # নন-পেজিনেটেড রেসপন্স (এটিও আপনার আগের ফরম্যাট অনুযায়ী)
         serializer = self.get_serializer(queryset, many=True)
-
-        # ── Validation filter (non-paginated) ──────────────────────
-        valid_results = [
-            item for item in serializer.data
-            if item.get('title')
-            and item.get('main_image')
-            and item.get('lowest_price') and float(item.get('lowest_price', 0)) > 0
-        ]
-
-        return success_response({'results': valid_results})
+        return success_response({'results': serializer.data})
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

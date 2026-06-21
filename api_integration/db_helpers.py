@@ -387,46 +387,40 @@ _KEYWORD_CATEGORY_MAP = [
 def _resolve_category(category_path, title, cache):
     title_lower = (title or '').lower()
 
-    # --- 1. Global Junk Exclusion (Sniper List) ---
-    # These words will IMMEDIATELY disqualify a product from any specific category
-    # to prevent things like Libido Gummies or Stickers from entering tech categories.
-    GLOBAL_FORBIDDEN = ['libido', 'gummies', 'supplement', 'sticker only', 'manual only']
+    GLOBAL_FORBIDDEN = [
+        'libido', 'gummies', 'supplement', 'sticker only', 'manual only', 
+        'digital image', 'wallpaper', 'tutorial', 'guide only'
+    ]
     if any(f in title_lower for f in GLOBAL_FORBIDDEN):
         return None
 
-    # --- 2. Resolve by category_path (API provided path) ---
     if category_path:
         parts = [p.strip() for p in category_path.split('>')]
         for part in parts:
             slug_key = slugify(part)
-            lower_key = part.lower()
             if slug_key in cache['by_slug']:
                 return cache['by_slug'][slug_key]
-            if lower_key in cache['by_name_lower']:
-                return cache['by_name_lower'][lower_key]
-        
-        # Loose partial match for category path
+            if part.lower() in cache['by_name_lower']:
+                return cache['by_name_lower'][part.lower()]
+
         for part in parts:
             for cat_name_lower, cat_obj in cache['by_name_lower'].items():
                 if len(cat_name_lower) >= 6 and (cat_name_lower in part.lower() or part.lower() in cat_name_lower):
                     return cat_obj
 
-    # --- 3. Resolve by Keywords (Matching Logic) ---
     if title_lower:
         padded = f' {title_lower} '
         for keywords, target_slug in _KEYWORD_CATEGORY_MAP:
             for kw in keywords:
                 if f' {kw} ' in padded or padded.startswith(f'{kw} ') or padded.endswith(f' {kw}'):
                     
-                    # --- CRITICAL FIX: Suffix Check ---
-                    # Even if it matches "Desktop Computer", check if it's an accessory or part
                     if target_slug == 'desktop-computers':
-                        tech_junk = ['motherboard', 'mouse pad', 'fan', 'light bar', 'bracket', 'parts', 'case only', 'sleeve', 'statue', 'memo board']
+                        tech_junk = ['motherboard', 'mouse pad', 'fan', 'light bar', 'bracket', 'parts', 'case only', 'sleeve', 'statue', 'memo board', 'adapter']
                         if any(x in title_lower for x in tech_junk):
-                            continue # Don't assign to Desktop Computers, look for Parts category
+                            continue 
                     
                     if target_slug == 'smartphones-cell-phones':
-                        phone_junk = ['case', 'cover', 'cable', 'screen protector', 'charger']
+                        phone_junk = ['case', 'cover', 'cable', 'screen protector', 'charger', 'adapter', 'magsafe']
                         if any(x in title_lower for x in phone_junk):
                             continue 
 
@@ -439,24 +433,10 @@ def _resolve_category(category_path, title, cache):
                     if cat:
                         return cat
                     
-                    # Fallback to readable slug matching
                     readable = target_slug.replace('-', ' ')
                     for cat_name_lower, cat_obj in cache['by_name_lower'].items():
                         if readable in cat_name_lower or cat_name_lower in readable:
                             return cat_obj
-
-    # --- 4. Final Fallback (Generic Word Match) ---
-    SKIP_WORDS = {'jewelry ring', 'diamond ring', 'fine', 'art', 'top', 'bag', 'set', 'kit',
-                  'kids toy', 'action figure', 'cat', 'dog', 'pen', 'ram', 'ssd', 'tv'}
-    
-    if title_lower:
-        for cat_name_lower, cat_obj in cache['by_name_lower'].items():
-            name_words = set(cat_name_lower.split())
-            if (len(cat_name_lower) >= 10
-                    and len(name_words) >= 2
-                    and not name_words & SKIP_WORDS
-                    and cat_name_lower in title_lower):
-                return cat_obj
 
     return None
 
