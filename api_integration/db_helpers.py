@@ -29,9 +29,9 @@ def _get_category_cache():
 _KEYWORD_CATEGORY_MAP = [
 
     # ── ELECTRONICS ───────────────────────────────────────────────────────
-    (['smartphone', 'iphone', 'android phone', 'mobile phone', 'cell phone'],
+    (['smartphone', 'iphone', 'unlocked phone', 'android phone', 'mobile phone', 'cell phone'],
      'smartphones-cell-phones'),
-    (['laptop', 'notebook', 'macbook', 'chromebook'],
+    (['laptop', 'macbook', 'chromebook', 'notebook computer', 'notebook pc'],
      'laptops'),
     (['desktop computer', 'desktop pc', 'pc tower', 'all-in-one computer',
       'gaming desktop', 'desktop computer pc', 'mini pc', 'mini desktop'],
