@@ -38,8 +38,9 @@ _KEYWORD_CATEGORY_MAP = [
      'desktop-computers'),
     (['tablet', 'ipad', 'kindle fire', 'e-reader'],
      'tablets-e-readers'),
-    (['monitor screen', 'display monitor', 'display screen', 'lcd screen', 'led monitor'],
-     'monitors-displays'),
+    (['gaming monitor', 'computer monitor', 'pc monitor', 'lcd monitor screen', 
+        'led monitor screen', '144hz monitor', '4k monitor', 'ultrawide monitor'
+    ], 'monitors-displays'),
     (['cpu', 'motherboard', 'graphics card', 'gpu', 'computer component'],
      'computer-components-parts'),
     (['keyboard', 'computer mouse', 'usb hub', 'computer accessory'],
@@ -427,6 +428,11 @@ def _resolve_category(category_path, title, cache):
                     if target_slug == 'smartphones-cell-phones':
                         phone_junk = ['case', 'cover', 'cable', 'screen protector', 'charger']
                         if any(x in title_lower for x in phone_junk):
+                            continue 
+
+                    if target_slug == 'monitors-displays':
+                        monitor_junk = ['baby', 'blood', 'pressure', 'heart', 'medical', 'caliper', 'measuring']
+                        if any(m in title_lower for m in monitor_junk):
                             continue 
 
                     cat = cache['by_slug'].get(target_slug)
