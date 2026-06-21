@@ -689,6 +689,9 @@ class ProductViewSet(viewsets.ModelViewSet):
         is_newest = sort in ['newest', 'Newest'] or 'newest' in self.request.query_params
         is_best   = sort in ['best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
 
+        min_price = self.request.query_params.get('min_price', '').strip()
+        max_price = self.request.query_params.get('max_price', '').strip()
+
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -792,6 +795,21 @@ class ProductViewSet(viewsets.ModelViewSet):
                 queryset = queryset.order_by('-final_relevance', '-created_at')
             else:
                 queryset = queryset.order_by('-created_at')
+
+        if min_price or max_price:
+            queryset = queryset.annotate(min_listing_price=Min('listings__price'))
+
+        if min_price:
+            try:
+                queryset = queryset.filter(min_listing_price__gte=float(min_price))
+            except ValueError:
+                pass
+
+        if max_price:
+            try:
+                queryset = queryset.filter(min_listing_price__lte=float(max_price))
+            except ValueError:
+                pass
 
         return queryset.distinct()
 
