@@ -76,16 +76,56 @@ class TargetService:
     # Product Details (optional — this API does not have a separate details endpoint)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def get_product_details(self, tcin):
+    def get_product_details(self, tcin, store_id=None):
         """
-        tcin দিয়ে search করে প্রথম result return করে।
-        নতুন API তে dedicated details endpoint নেই।
+        GET /details — Target-এর dedicated product details endpoint।
+        এখানে full category breadcrumb সহ richer data পাওয়া যায়।
         """
-        items = self.search_products(tcin, limit=1)
-        if items:
-            return items[0]
-        return None
+        url = f"https://{self.host}/details"
+        params = {
+            'tcin': str(tcin),
+            'storeId': store_id or self.store_id,
+        }
+        try:
+            response = requests.get(
+                url, headers=self.headers, params=params, timeout=20
+            )
+            logger.debug(f"Target details '{tcin}': {response.status_code}")
 
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('data', {}).get('product', {})
+
+            logger.error(f"Target details error {response.status_code}: {tcin}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Target details exception ({tcin}): {e}")
+            return None
+
+    def get_category_from_details(self, tcin, store_id=None):
+        """
+        tcin দিয়ে /details কল করে category breadcrumb বের করে।
+        """
+        try:
+            details = self.get_product_details(tcin, store_id=store_id)
+            if not details:
+                return ''
+
+            category_info = details.get('category', {}) or {}
+            breadcrumbs = category_info.get('breadcrumbs', []) or []
+            names = [b.get('name', '') for b in breadcrumbs if b.get('name')]
+
+            leaf_name = category_info.get('name')
+            if leaf_name and (not names or names[-1] != leaf_name):
+                names.append(leaf_name)
+
+            names.reverse()  # leaf আগে, root পরে
+            return ' > '.join(names)
+
+        except Exception as e:
+            logger.error(f"Target category fetch failed for {tcin}: {e}")
+            return ''
     # ─────────────────────────────────────────────────────────────────────────
     # Data Extraction — New flat response structure
     # ─────────────────────────────────────────────────────────────────────────
@@ -189,7 +229,7 @@ class TargetService:
             description = ' '.join(soft[:3])
 
         # ── Category path ────────────────────────────────────────────────────
-        category_path = item.get('category', '') or 'General Merchandise'
+        category_path = self.get_category_from_details(external_id) or 'General Merchandise'
 
         # ── Specifications — key-value parse from bullet_descriptions ────────
         specs = {'Store': 'Target', 'Brand': brand or 'N/A'}

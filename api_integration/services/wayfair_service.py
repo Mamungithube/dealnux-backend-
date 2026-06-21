@@ -184,6 +184,14 @@ class WayfairService:
         promo_statuses = item.get('promotionStatuses', []) or []
         deal_badge = promo_text or (promo_statuses[0].get(
             'copy', '') if promo_statuses else '')
+        
+        # ── Category ─────────────────────────────────────────────────────────
+        category_info = item.get('category', {}) or {}
+        category_path = (
+            category_info.get('browse', {}).get('roadsign')
+            or category_info.get('name')
+            or ''
+        )
 
         return {
             'external_id':    external_id,
@@ -202,7 +210,7 @@ class WayfairService:
             'additional_images': [],
             'brand':         brand,
             'model_number':  external_id,
-            'category_path': '',
+            'category_path':  category_path, 
 
             'gtin': None,
             'asin': None,
