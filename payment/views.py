@@ -874,8 +874,20 @@ class CreateSubscriptionCheckoutView(APIView):
                 customer_email=user.email,
             )
 
+            mobile_intent = stripe.PaymentIntent.create(
+                amount=int(plan.price * 100), # সেন্টে কনভার্ট (যেমন: 7.99 -> 799)
+                currency='usd',
+                payment_method_types=['card'],
+                metadata={
+                    'user_id': user.id,
+                    'plan_id': plan.id,
+                    'type': 'subscription_payment'
+                }
+            )
+
             return Response({
                 "client_secret": session.client_secret,
+                "payment_intent_client_secret": mobile_intent.client_secret,
                 "plan_name": plan.name,
                 "amount": float(plan.price)
             }, status=201)
