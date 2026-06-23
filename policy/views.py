@@ -22,7 +22,7 @@ from policy.serializers import (
     PreOrderPolicySerializer, RefundPolicySerializer,
     ReturnPolicySerializer
 )
-
+from django.core.mail import EmailMessage
 # 🔹 Common API Response
 
 
@@ -433,30 +433,57 @@ class ContactMessageCreateView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         contact = serializer.save()
 
+        # Admin email
         try:
             send_mail(
-                subject=f"[Dealnux] Contact: {contact.subject}",
-                message=f"""
-                            New contact message received!
-                            
-                            Name    : {contact.full_name}
-                            Email   : {contact.email}
-                            Subject : {contact.subject}
-                            
-                            Message:
-                            {contact.message}
-                            
-                            Received At: {contact.created_at}
-                                            """,
-                                            from_email=settings.DEFAULT_FROM_EMAIL,
-                                            recipient_list=[settings.ADMIN_EMAIL],
-                                            fail_silently=True,
-                                        )
+                subject=f"[{contact.ticket_id}] New Contact: {contact.subject}",
+                message=f"""New contact message received!
+
+Ticket  : {contact.ticket_id}
+Name    : {contact.full_name}
+Email   : {contact.email}
+Subject : {contact.subject}
+
+Message:
+{contact.message}
+
+Received At: {contact.created_at}""",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[settings.ADMIN_EMAIL],
+                fail_silently=True,
+                headers={"Reply-To": contact.email},
+            )
+        except Exception:
+            pass
+
+        # User confirmation email
+        try:
+            email = EmailMessage(
+                subject=f"[{contact.ticket_id}] New Contact: {contact.subject}",
+                body=f"""New contact message received!
+
+        Ticket  : {contact.ticket_id}
+        Name    : {contact.full_name}
+        Email   : {contact.email}
+        Subject : {contact.subject}
+
+        Message:
+        {contact.message}
+
+        Received At: {contact.created_at}""",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[settings.ADMIN_EMAIL],
+                reply_to=[contact.email],
+            )
+            email.send(fail_silently=True)
         except Exception:
             pass
 
         return Response(
-            {"detail": "Message sent successfully. We'll reply within one business day."},
+            {
+                "detail": "Message sent successfully. We'll reply within one business day.",
+                "ticket_id": contact.ticket_id,
+            },
             status=status.HTTP_201_CREATED
         )
 

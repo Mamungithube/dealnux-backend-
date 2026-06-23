@@ -115,6 +115,7 @@ class Review(models.Model):
 
 
 class ContactMessage(models.Model):
+    ticket_id = models.CharField(max_length=20, unique=True, editable=False, default='')
     full_name = models.CharField(max_length=255)
     email = models.EmailField()
     subject = models.CharField(max_length=255)
@@ -125,5 +126,11 @@ class ContactMessage(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def save(self, *args, **kwargs):
+        if not self.ticket_id:
+            count = ContactMessage.objects.count() + 1
+            self.ticket_id = f"DNX-{count:04d}"
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.full_name} - {self.subject}"
+        return f"{self.ticket_id} - {self.full_name} - {self.subject}"

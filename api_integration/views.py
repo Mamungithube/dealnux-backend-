@@ -840,16 +840,14 @@ class ProductViewSet(viewsets.ModelViewSet):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             
-            # আপনার অরিজিনাল Key-গুলো ঠিক রাখা হয়েছে
             results = serializer.data
             total_count = self.paginator.page.paginator.count
             page_size = self.paginator.get_page_size(request)
             current_page = self.paginator.page.number
             total_pages = math.ceil(total_count / page_size)
 
-            # হুবহু আপনার আগের ফরম্যাট
             return success_response({
-                'count': len(results), # এখন ১২টিই থাকবে
+                'count': len(results),
                 'pagination': {
                     'total_count':  total_count,
                     'total_pages':  total_pages,
@@ -863,7 +861,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'results': results,
             })
 
-        # নন-পেজিনেটেড রেসপন্স (এটিও আপনার আগের ফরম্যাট অনুযায়ী)
         serializer = self.get_serializer(queryset, many=True)
         return success_response({'results': serializer.data})
 
