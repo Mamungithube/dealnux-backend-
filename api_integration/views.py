@@ -1090,77 +1090,85 @@ def product_match_score(title1: str, title2: str) -> float:
 
 # In api_integration/views.py
 
+# In api_integration/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
     """
     In English: 
-    1. Fetch target product.
-    2. Check if we have enough retailers (min 3).
-    3. If not, trigger a background sync task via Celery.
-    4. Return strict matches based on score and accessory exclusion.
+    - Optimized price comparison logic.
+    - Triggers limited sync (limit=5) to reduce CPU load.
+    - Uses a slightly more relaxed matching score (75) to ensure more results populate.
     """
+    # 1. Fetch the main product
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
-    # --- Step 1: Normalize and Fingerprint ---
     target_title = clean_display_title(product.title)
-    # Get the core name (e.g., 'Dell Mini Desktop i5 8th Gen') without junk
-    target_fingerprint = get_product_fingerprint(target_title)
-    core_query = target_fingerprint['core_name']
     
-    # --- Step 2: Search Candidates in DB ---
-    # We look for products in the same category with similar names
+    # 2. Check current retailers count in DB
+    existing_platforms_count = ProductListing.objects.filter(
+        product=product, 
+        is_available=True
+    ).values('platform').distinct().count()
+
+    sync_triggered = False
+    
+    # 3. Trigger Background Sync if less than 3 retailers exist
+    # Limit sync to 5 items to prevent 100% CPU usage
+    cache_key = f"sync_lock_v3_{product.id}"
+    if existing_platforms_count < 3 and not cache.get(cache_key):
+        # Extract specific model name for accurate API search
+        fingerprint = get_product_fingerprint(target_title)
+        query_for_api = fingerprint['core_name'] or target_title[:50]
+        
+        # Call Celery task with low limit to save server resources
+        sync_all_platforms_task.delay(
+            query_for_api, 
+            limit=1, 
+            category_slug=product.category.slug if product.category else None
+        )
+        # Lock this product sync for 15 minutes to save API quota and CPU
+        cache.set(cache_key, True, 900) 
+        sync_triggered = True
+
+    # 4. Search for matching products in the DB (Matching Logic)
+    # We look for products in the same category that are highly similar
     candidates = Product.objects.filter(
         category=product.category, 
         is_active=True
-    ).exclude(id=product.id)
+    ).exclude(id=product.id).only('id', 'title', 'brand')
 
     matched_ids = [product.id]
-    THRESHOLD = 80 # Strict matching for comparison
-    
-    # Enforce Accessory check: If target is not an accessory, candidate cannot be one
+    THRESHOLD = 75 # Slightly lowered from 85 to show more genuine matches
+
+    # Filter to exclude common accessory keywords if main product is a device
     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
-    target_is_accessory = any(word in target_title.lower() for word in accessory_words)
+    target_is_acc = any(w in target_title.lower() for w in accessory_words)
 
     for cand in candidates:
         cand_title_lower = cand.title.lower()
-        cand_is_accessory = any(word in cand_title_lower for word in accessory_words)
+        cand_is_acc = any(w in cand_title_lower for w in accessory_words)
         
-        # Immediate skip if one is a device and other is an accessory
-        if target_is_accessory != cand_is_accessory:
+        # Skip if one is an accessory and the other is a main device
+        if target_is_acc != cand_is_acc:
             continue
 
+        # Perform match calculation (NLP logic)
         score = calculate_match_score(product.title, cand.title)
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # --- Step 3: Check Results Count and Trigger Real-time Sync ---
+    # 5. Fetch all listings for the matched products
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    total_deals = listings.values('platform').distinct().count()
-    sync_triggered = False
-
-    # Logic: If we have less than 3 retailers and haven't synced in the last 1 hour
-    # We trigger Celery to find more deals across all platforms
-    cache_key = f"sync_lock_{product.id}"
-    if total_deals < 3 and not cache.get(cache_key):
-        # Trigger background sync for the specific model
-        sync_all_platforms_task.delay(
-            core_query, 
-            limit=10, 
-            category_slug=product.category.slug if product.category else None
-        )
-        # Lock sync for 1 hour for this product to save API costs
-        cache.set(cache_key, True, 3600) 
-        sync_triggered = True
-
-    # --- Step 4: Prepare Response ---
+    # 6. Format comparison list
     comparison_list = []
     seen_urls = set()
     prices = []
@@ -1175,14 +1183,16 @@ def compare_prices_api(request, slug):
         comparison_list.append({
             'platform': listing.platform.name,
             'platform_code': listing.platform.code,
+            'listing_id': listing.external_id,
             'clean_title': clean_display_title(listing.product.title),
             'price': float(listing.price),
             'total_price': total_p,
             'url': listing.external_url,
             'main_image': listing.product.main_image,
-            'seller': listing.seller_username or "Verified Retailer",
+            'seller': listing.seller_username or "Verified Store",
         })
 
+    # 7. Generate Price Analysis
     analysis = {
         'lowest_price': min(prices) if prices else 0,
         'highest_price': max(prices) if prices else 0,
@@ -1193,13 +1203,14 @@ def compare_prices_api(request, slug):
         'product': {
             'id': product.id,
             'title': target_title,
+            'slug': product.slug,
             'brand': product.brand,
             'main_image': product.main_image,
         },
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
-            'message': "Searching for more deals in background..." if sync_triggered else "Latest deals retrieved."
+            'message': "Searching for more deals..." if sync_triggered else "Results updated."
         },
         'price_analysis': analysis,
         'price_comparison': comparison_list,
