@@ -435,9 +435,9 @@ class ContactMessageCreateView(generics.CreateAPIView):
 
         # Admin email
         try:
-            send_mail(
+            admin_email = EmailMessage(
                 subject=f"[{contact.ticket_id}] New Contact: {contact.subject}",
-                message=f"""New contact message received!
+                body=f"""New contact message received!
 
 Ticket  : {contact.ticket_id}
 Name    : {contact.full_name}
@@ -449,33 +449,31 @@ Message:
 
 Received At: {contact.created_at}""",
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[settings.ADMIN_EMAIL],
-                fail_silently=True,
-                headers={"Reply-To": contact.email},
+                to=[settings.ADMIN_EMAIL],
+                reply_to=[contact.email],
             )
+            admin_email.send(fail_silently=True)
         except Exception:
             pass
 
         # User confirmation email
         try:
-            email = EmailMessage(
-                subject=f"[{contact.ticket_id}] New Contact: {contact.subject}",
-                body=f"""New contact message received!
+            user_email = EmailMessage(
+                subject=f"[{contact.ticket_id}] We received your message - Dealnux",
+                body=f"""Hi {contact.full_name},
 
-        Ticket  : {contact.ticket_id}
-        Name    : {contact.full_name}
-        Email   : {contact.email}
-        Subject : {contact.subject}
+Thank you for contacting us! We have received your message.
 
-        Message:
-        {contact.message}
+Your Ticket ID : {contact.ticket_id}
+Subject        : {contact.subject}
 
-        Received At: {contact.created_at}""",
+We'll get back to you within one business day.
+
+Team Dealnux""",
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[settings.ADMIN_EMAIL],
-                reply_to=[contact.email],
+                to=[contact.email],
             )
-            email.send(fail_silently=True)
+            user_email.send(fail_silently=True)
         except Exception:
             pass
 
