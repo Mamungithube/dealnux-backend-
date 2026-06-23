@@ -168,11 +168,20 @@ class CreateAdView(generics.CreateAPIView):
                 }
             )
 
+            mobile_intent = stripe.PaymentIntent.create(
+                amount=int(ad.total_budget * 100),
+                currency='usd',
+                automatic_payment_methods={"enabled": True},
+                metadata={'payment_id': payment.id, 'ad_id': ad.id, 'type': 'ad_payment'}
+            )
+
             payment.stripe_checkout_session_id = session.id
+            payment.stripe_payment_intent_id = mobile_intent.id
             payment.save()
 
             return Response({
-                "message": "Embedded Checkout Session Created.",
+                "message": "Embedded Checkout Session Created.", #web
+                "payment_intent_client_secret": mobile_intent.client_secret, #app
                 "client_secret": session.client_secret,
                 "session_id": session.id,
                 "payment_id": payment.id

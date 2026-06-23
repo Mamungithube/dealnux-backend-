@@ -236,16 +236,28 @@ class CreateCheckoutSessionView(APIView):
                 customer_email=request.user.email,
             )
 
+            mobile_intent = stripe.PaymentIntent.create(
+                amount=int(payment.final_amount * 100),
+                currency='usd',
+                automatic_payment_methods={"enabled": True},
+                metadata={
+                    'payment_id': payment.id,
+                    'type': 'store_payment'
+                }
+            )
+
             # ৩. বাগ ফিক্স: Stripe Tax রিড করা
             stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
             final_grand_total = pre_tax_grand_total + stripe_tax
 
             payment.stripe_checkout_session_id = session.id
+            payment.stripe_payment_intent_id = mobile_intent.id 
             payment.final_amount = final_grand_total
             payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
 
             return Response({
                 'client_secret': session.client_secret,
+                'payment_intent_client_secret': mobile_intent.client_secret,
                 'payment_id': payment.id,
                 'breakdown': {
                     "subtotal": float(total_item_price),
