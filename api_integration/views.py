@@ -27,7 +27,6 @@ from .services.target_service import TargetService
 from .services.wayfair_service import WayfairService
 from .services.aliexpress_service import AliExpressService
 from .services.bestbuy_service import BestBuyService
-from .tasks import sync_all_platforms_task, sync_ebay_task
 from .db_helpers import save_generic_product_to_db
 from django.db.models import Q, Min
 from difflib import SequenceMatcher
@@ -52,7 +51,7 @@ from rest_framework.response import Response
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
-
+from .tasks import sync_amazon_task, sync_ebay_task, sync_walmart_task ,sync_all_platforms_task ,sync_ebay_task
 logger = logging.getLogger(__name__)
 
 
@@ -1095,73 +1094,61 @@ def product_match_score(title1: str, title2: str) -> float:
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    """
-    In English: 
-    - Optimized price comparison logic.
-    - Triggers limited sync (limit=5) to reduce CPU load.
-    - Uses a slightly more relaxed matching score (75) to ensure more results populate.
-    """
     # 1. Fetch the main product
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
-    
+
     # 2. Check current retailers count in DB
     existing_platforms_count = ProductListing.objects.filter(
-        product=product, 
+        product=product,
         is_available=True
     ).values('platform').distinct().count()
 
     sync_triggered = False
-    
+
     # 3. Trigger Background Sync if less than 3 retailers exist
-    # Limit sync to 5 items to prevent 100% CPU usage
-    cache_key = f"sync_lock_v3_{product.id}"
+    cache_key = f"sync_lock_{product.id}"
     if existing_platforms_count < 3 and not cache.get(cache_key):
-        # Extract specific model name for accurate API search
         fingerprint = get_product_fingerprint(target_title)
         query_for_api = fingerprint['core_name'] or target_title[:50]
-        
-        # Call Celery task with low limit to save server resources
-        sync_all_platforms_task.delay(
-            query_for_api, 
-            limit=1, 
-            category_slug=product.category.slug if product.category else None
-        )
-        # Lock this product sync for 15 minutes to save API quota and CPU
-        cache.set(cache_key, True, 900) 
+
+        # শুধু 3টা priority platform, একে একে 60 sec gap এ
+        priority_tasks = [
+            sync_amazon_task.s(query_for_api, 3),
+            sync_ebay_task.s(query_for_api, 3),
+            sync_walmart_task.s(query_for_api, 3),
+        ]
+        for i, task in enumerate(priority_tasks):
+            task.apply_async(countdown=i * 60)
+
+        cache.set(cache_key, True, 86400)  # 24 ঘণ্টা lock
         sync_triggered = True
 
-    # 4. Search for matching products in the DB (Matching Logic)
-    # We look for products in the same category that are highly similar
+    # 4. Search for matching products in the DB
     candidates = Product.objects.filter(
-        category=product.category, 
+        category=product.category,
         is_active=True
     ).exclude(id=product.id).only('id', 'title', 'brand')
 
     matched_ids = [product.id]
-    THRESHOLD = 75 # Slightly lowered from 85 to show more genuine matches
+    THRESHOLD = 75
 
-    # Filter to exclude common accessory keywords if main product is a device
     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
     target_is_acc = any(w in target_title.lower() for w in accessory_words)
 
     for cand in candidates:
         cand_title_lower = cand.title.lower()
         cand_is_acc = any(w in cand_title_lower for w in accessory_words)
-        
-        # Skip if one is an accessory and the other is a main device
         if target_is_acc != cand_is_acc:
             continue
-
-        # Perform match calculation (NLP logic)
         score = calculate_match_score(product.title, cand.title)
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # 5. Fetch all listings for the matched products
+    # 5. Fetch all listings
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
@@ -1174,9 +1161,10 @@ def compare_prices_api(request, slug):
     prices = []
 
     for listing in listings:
-        if listing.external_url in seen_urls: continue
+        if listing.external_url in seen_urls:
+            continue
         seen_urls.add(listing.external_url)
-        
+
         total_p = float(listing.get_total_price())
         prices.append(total_p)
 
@@ -1192,7 +1180,7 @@ def compare_prices_api(request, slug):
             'seller': listing.seller_username or "Verified Store",
         })
 
-    # 7. Generate Price Analysis
+    # 7. Price Analysis
     analysis = {
         'lowest_price': min(prices) if prices else 0,
         'highest_price': max(prices) if prices else 0,
