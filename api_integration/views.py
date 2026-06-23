@@ -579,103 +579,162 @@ class ProductViewSet(viewsets.ModelViewSet):
             return ProductDetailSerializer
         return ProductSerializer
 
-    # product search with filtering, sorting, and relevance ranking ( old code )
 
     # def get_queryset(self):
     #     queryset = super().get_queryset()
 
-    #     category_input = self.request.query_params.getlist('category')
     #     search_query = self.request.query_params.get('search', '').strip()
-    #     sort     = self.request.query_params.get('sort', 'newest').strip()
+    #     sort = self.request.query_params.get('sort', '').strip()
+
+    #     is_low = sort in ['price_low', 'lowest_price',
+    #                       'Lowest Price'] or 'price_low' in self.request.query_params
+    #     is_high = sort in ['price_high', 'highest_price',
+    #                        'Highest Price'] or 'price_high' in self.request.query_params
+    #     is_newest = sort in [
+    #         'newest', 'Newest'] or 'newest' in self.request.query_params
+    #     is_best = sort in [
+    #         'best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
+
+    #     min_price = self.request.query_params.get('min_price', '').strip()
+    #     max_price = self.request.query_params.get('max_price', '').strip()
 
     #     queryset = queryset.filter(
     #         title__isnull=False,
     #         main_image__isnull=False,
     #         listings__price__gt=0,
     #         listings__is_available=True,
-    #     ).exclude(
-    #         title='',
-    #         main_image='',
-    #     )
+    #     ).exclude(title='', main_image='')
 
-    #     # Category Filter
+    #     category_input = self.request.query_params.getlist('category')
+    #     explicit_category_ids = set()
+
+    #     accessory_keywords = [
+    #         'power bank', 'powerbank', 'solar', 'cable', 'charger', 'charging',
+    #         'case', 'cover', 'box', 'station', 'stand', 'holder', 'mount',
+    #         'tag', 'sticker', 'bag', 'kit', 'parts', 'lens', 'stabilizer', 'gimbal',
+    #         'replacement', 'repair', 'tripod', 'strap', 'film', 'glass', 'battery', 'cord',
+    #         'protector', 'adapter', 'screen guard', 'controller', 'gaming controller',
+    #         'printer', 'cutting machine', 'poster', 'aux', 'usb board', 'connector',
+    #         'price tag', 'thermal printer', 'cup holder', 'attachment lens',
+    #         'converter', 'transmission', 'fill light', 'lighting', 'storage box',
+    #         'pushchair', 'stroller', 'gaming controller', 'docking station'
+    #     ]
+    #     accessory_pattern = '|'.join(re.escape(w) for w in accessory_keywords)
+
     #     if category_input:
     #         slugs = []
     #         for item in category_input:
     #             slugs.extend([s.strip() for s in item.split(',') if s.strip()])
-
     #         if slugs:
     #             matching_cats = Category.objects.filter(slug__in=slugs)
-    #             all_ids = set()
     #             for cat in matching_cats:
-    #                 all_ids.add(cat.id)
-    #                 all_ids.update(cat.children.values_list('id', flat=True))
+    #                 explicit_category_ids.add(cat.id)
+    #                 explicit_category_ids.update(
+    #                     cat.children.values_list('id', flat=True))
 
-    #             if all_ids:
-    #                 queryset = queryset.filter(category__id__in=all_ids)
+    #             if explicit_category_ids:
+    #                 queryset = queryset.filter(
+    #                     category__id__in=explicit_category_ids)
+    #                 queryset = queryset.filter(
+    #                     ~Q(title__iregex=rf"(?i)({accessory_pattern})"))
     #             else:
     #                 return queryset.none()
 
     #     if search_query:
-    #         search_terms = [t for t in re.split(r'\s+', search_query.strip()) if len(t) > 1]
-
+    #         search_terms = [t for t in re.split(
+    #             r'\s+', search_query.lower()) if len(t) > 1]
     #         if not search_terms:
-    #             queryset = queryset.none()
-    #         else:
-    #             and_q = Q()
-    #             for term in search_terms:
-    #                 and_q &= Q(title__icontains=term)
+    #             return queryset.none()
 
-    #             strict_qs = queryset.filter(and_q)
+    #         sq = re.escape(search_query)
+    #         normalized_query = search_query.lower().strip()
+    #         is_searching_accessory = any(
+    #             word in normalized_query for word in accessory_keywords)
 
-    #             if not strict_qs.exists():
-    #                 or_q = Q()
-    #                 for term in search_terms:
-    #                     or_q |= Q(title__icontains=term)
-    #                 strict_qs = queryset.filter(or_q)
+    #         # Strict AND filter
+    #         strict_q = Q()
+    #         for term in search_terms:
+    #             strict_q &= Q(title__icontains=term)
+    #         queryset = queryset.filter(strict_q)
 
-    #             sq = re.escape(search_query)
+    #         if not is_searching_accessory:
+    #             queryset = queryset.filter(
+    #                 ~Q(title__iregex=rf"(?i)({accessory_pattern})"))
 
-    #             queryset = strict_qs.annotate(
-    #                 title_rank=Case(
-    #                     When(title__iregex=rf'(?i)\b{sq}\b', then=Value(5.0)),
-    #                     When(title__iregex=rf'(?i)^(apple\s+)?{sq}([\s,\-]|$)', then=Value(4.0)),
-    #                     When(title__iregex=rf'(?i)^[\w\s&\'\.]*{sq}([\s,\-]|$)', then=Value(3.0)),
-    #                     When(title__iregex=rf'(?i)(for|with|compatible|fits?)\s+{sq}', then=Value(1.0)),
-    #                     default=Value(2.0),
-    #                     output_field=FloatField(),
-    #                 ),
-    #                 trigram=TrigramSimilarity('title', search_query),
-    #                 word_count=Case(
-    #                     When(title__regex=r'^(\S+\s+){0,12}\S+$', then=Value(3.0)),
-    #                     When(title__regex=r'^(\S+\s+){13,18}\S+$', then=Value(2.0)),
-    #                     When(title__regex=r'^(\S+\s+){19,24}\S+$', then=Value(1.0)),
-    #                     default=Value(0.0),
-    #                     output_field=FloatField(),
-    #                 ),
-    #             ).order_by('-title_rank', '-trigram', '-word_count')
+    #         # Scoring
+    #         phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto',
+    #                         'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
+    #         phone_specs = [r'\d+GB', r'unlocked', r'smartphone',
+    #                        r'cell phone', r'dual sim', r'android', r'ios']
 
-    #     # Sorting
-    #     if sort == 'price_low':
     #         queryset = queryset.annotate(
-    #             sort_price=Min('listings__price')
-    #         ).order_by('sort_price')
-    #     elif sort == 'price_high':
-    #         queryset = queryset.annotate(
-    #             sort_price=Min('listings__price')
-    #         ).order_by('-sort_price')
-    #     elif sort == 'popular':
-    #         queryset = queryset.annotate(
-    #             total_listing=Count('listings')
-    #         ).order_by('-total_listing')
-    #     elif sort == 'oldest':
-    #         queryset = queryset.order_by('created_at')
-    #     elif search_query:
-    #         queryset = queryset.order_by('-title_rank', '-trigram', '-word_count', '-created_at')
-    #     else:
+    #             brand_boost=Case(
+    #                 When(
+    #                     Q(title__iregex=rf"^({'|'.join(phone_brands)})"), then=Value(80.0)),
+    #                 default=Value(0.0),
+    #                 output_field=FloatField(),
+    #             ),
+    #             direct_match=Case(
+    #                 When(title__iregex=rf'^{sq}', then=Value(50.0)),
+    #                 When(title__icontains=search_query, then=Value(20.0)),
+    #                 default=Value(0.0),
+    #                 output_field=FloatField(),
+    #             ),
+    #             specs_boost=Case(
+    #                 When(Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"), then=Value(
+    #                     30.0)) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
+    #                 default=Value(0.0),
+    #                 output_field=FloatField(),
+    #             ),
+    #         ).annotate(
+    #             final_relevance=F('brand_boost') +
+    #             F('direct_match') + F('specs_boost')
+    #         )
+
+    #     if is_low:
+    #         queryset = queryset.annotate(min_p=Min('listings__price')).filter(
+    #             min_p__gt=0).order_by('min_p')
+
+    #     elif is_high:
+    #         queryset = queryset.annotate(min_p=Min('listings__price')).filter(
+    #             min_p__gt=0).order_by('-min_p')
+
+    #     elif is_newest:
     #         queryset = queryset.order_by('-created_at')
 
+    #     elif is_best:
+    #         if search_query:
+    #             queryset = queryset.order_by('-final_relevance', '-created_at')
+    #         else:
+    #             queryset = queryset.order_by('-created_at')
+
+    #     else:
+    #         # Default sorting
+    #         if search_query:
+    #             queryset = queryset.order_by('-final_relevance', '-created_at')
+    #         else:
+    #             queryset = queryset.order_by('-created_at')
+
+    #     if min_price or max_price:
+    #         queryset = queryset.annotate(
+    #             min_listing_price=Min('listings__price'))
+
+    #     if min_price:
+    #         try:
+    #             queryset = queryset.filter(
+    #                 min_listing_price__gte=float(min_price))
+    #         except ValueError:
+    #             pass
+
+    #     if max_price:
+    #         try:
+    #             queryset = queryset.filter(
+    #                 min_listing_price__lte=float(max_price))
+    #         except ValueError:
+    #             pass
+
     #     return queryset.distinct()
+
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -683,18 +742,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         search_query = self.request.query_params.get('search', '').strip()
         sort = self.request.query_params.get('sort', '').strip()
 
-        is_low = sort in ['price_low', 'lowest_price',
-                          'Lowest Price'] or 'price_low' in self.request.query_params
-        is_high = sort in ['price_high', 'highest_price',
-                           'Highest Price'] or 'price_high' in self.request.query_params
-        is_newest = sort in [
-            'newest', 'Newest'] or 'newest' in self.request.query_params
-        is_best = sort in [
-            'best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
+        # 1. Smart Sort Detection
+        is_low = sort in ['price_low', 'lowest_price', 'Lowest Price'] or 'price_low' in self.request.query_params
+        is_high = sort in ['price_high', 'highest_price', 'Highest Price'] or 'price_high' in self.request.query_params
+        is_newest = sort in ['newest', 'Newest'] or 'newest' in self.request.query_params
+        is_best = sort in ['best_deal', 'Best Deal'] or 'best_deal' in self.request.query_params
 
         min_price = self.request.query_params.get('min_price', '').strip()
         max_price = self.request.query_params.get('max_price', '').strip()
 
+        # 2. Base Quality Filter
         queryset = queryset.filter(
             title__isnull=False,
             main_image__isnull=False,
@@ -702,6 +759,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             listings__is_available=True,
         ).exclude(title='', main_image='')
 
+        # 3. Category & Accessory Logic
         category_input = self.request.query_params.getlist('category')
         explicit_category_ids = set()
 
@@ -726,27 +784,23 @@ class ProductViewSet(viewsets.ModelViewSet):
                 matching_cats = Category.objects.filter(slug__in=slugs)
                 for cat in matching_cats:
                     explicit_category_ids.add(cat.id)
-                    explicit_category_ids.update(
-                        cat.children.values_list('id', flat=True))
+                    explicit_category_ids.update(cat.children.values_list('id', flat=True))
 
                 if explicit_category_ids:
-                    queryset = queryset.filter(
-                        category__id__in=explicit_category_ids)
-                    queryset = queryset.filter(
-                        ~Q(title__iregex=rf"(?i)({accessory_pattern})"))
+                    queryset = queryset.filter(category__id__in=explicit_category_ids)
+                    queryset = queryset.filter(~Q(title__iregex=rf"(?i)({accessory_pattern})"))
                 else:
                     return queryset.none()
 
+        # 4. Search and Relevance Scoring (With Category Priority)
         if search_query:
-            search_terms = [t for t in re.split(
-                r'\s+', search_query.lower()) if len(t) > 1]
+            search_terms = [t for t in re.split(r'\s+', search_query.lower()) if len(t) > 1]
             if not search_terms:
                 return queryset.none()
 
             sq = re.escape(search_query)
             normalized_query = search_query.lower().strip()
-            is_searching_accessory = any(
-                word in normalized_query for word in accessory_keywords)
+            is_searching_accessory = any(word in normalized_query for word in accessory_keywords)
 
             # Strict AND filter
             strict_q = Q()
@@ -755,19 +809,26 @@ class ProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(strict_q)
 
             if not is_searching_accessory:
-                queryset = queryset.filter(
-                    ~Q(title__iregex=rf"(?i)({accessory_pattern})"))
+                queryset = queryset.filter(~Q(title__iregex=rf"(?i)({accessory_pattern})"))
 
-            # Scoring
-            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto',
-                            'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
-            phone_specs = [r'\d+GB', r'unlocked', r'smartphone',
-                           r'cell phone', r'dual sim', r'android', r'ios']
+            # --- CATEGORY BOOST TRIGGERS ---
+            phone_trigger = any(w in normalized_query for w in ['phone', 'mobile', 'cell', 'smartphone'])
+            laptop_trigger = any(w in normalized_query for w in ['laptop', 'notebook', 'macbook', 'chromebook'])
+
+            # 5. Advanced Scoring with Category Priority
+            phone_brands = ['apple', 'iphone', 'samsung', 'motorola', 'moto', 'google', 'pixel', 'oneplus', 'xiaomi', 'nokia', 'sony', 'lg']
+            phone_specs = [r'\d+GB', r'unlocked', r'smartphone', r'cell phone', r'dual sim', r'android', r'ios']
 
             queryset = queryset.annotate(
+                # CATEGORY PRIORITY: If user searches for 'phone', boost products in Smartphone categories
+                category_boost=Case(
+                    When(phone_trigger & (Q(category__name__icontains='Smartphones') | Q(category__name__icontains='Cell Phones')), then=Value(100.0)),
+                    When(laptop_trigger & Q(category__name__icontains='Laptops'), then=Value(100.0)),
+                    default=Value(0.0),
+                    output_field=FloatField(),
+                ),
                 brand_boost=Case(
-                    When(
-                        Q(title__iregex=rf"^({'|'.join(phone_brands)})"), then=Value(80.0)),
+                    When(Q(title__iregex=rf"^({'|'.join(phone_brands)})"), then=Value(80.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
@@ -778,57 +839,42 @@ class ProductViewSet(viewsets.ModelViewSet):
                     output_field=FloatField(),
                 ),
                 specs_boost=Case(
-                    When(Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"), then=Value(
-                        30.0)) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
+                    When(Q(title__iregex=rf"(?i)({'|'.join(phone_specs)})"), then=Value(30.0)) if not is_searching_accessory else When(Q(pk__isnull=False), then=Value(0.0)),
                     default=Value(0.0),
                     output_field=FloatField(),
                 ),
             ).annotate(
-                final_relevance=F('brand_boost') +
-                F('direct_match') + F('specs_boost')
+                # CATEGORY_BOOST is now the main priority
+                final_relevance=F('category_boost') + F('brand_boost') + F('direct_match') + F('specs_boost')
             )
 
+        # 6. Global Sorting Block
         if is_low:
-            queryset = queryset.annotate(min_p=Min('listings__price')).filter(
-                min_p__gt=0).order_by('min_p')
-
+            queryset = queryset.annotate(min_p=Min('listings__price')).filter(min_p__gt=0).order_by('min_p')
         elif is_high:
-            queryset = queryset.annotate(min_p=Min('listings__price')).filter(
-                min_p__gt=0).order_by('-min_p')
-
+            queryset = queryset.annotate(min_p=Min('listings__price')).filter(min_p__gt=0).order_by('-min_p')
         elif is_newest:
             queryset = queryset.order_by('-created_at')
-
         elif is_best:
             if search_query:
                 queryset = queryset.order_by('-final_relevance', '-created_at')
             else:
                 queryset = queryset.order_by('-created_at')
-
         else:
-            # Default sorting
             if search_query:
                 queryset = queryset.order_by('-final_relevance', '-created_at')
             else:
                 queryset = queryset.order_by('-created_at')
 
+        # 7. Price Range Filter
         if min_price or max_price:
-            queryset = queryset.annotate(
-                min_listing_price=Min('listings__price'))
-
-        if min_price:
-            try:
-                queryset = queryset.filter(
-                    min_listing_price__gte=float(min_price))
-            except ValueError:
-                pass
-
-        if max_price:
-            try:
-                queryset = queryset.filter(
-                    min_listing_price__lte=float(max_price))
-            except ValueError:
-                pass
+            queryset = queryset.annotate(min_listing_price=Min('listings__price'))
+            if min_price:
+                try: queryset = queryset.filter(min_listing_price__gte=float(min_price))
+                except ValueError: pass
+            if max_price:
+                try: queryset = queryset.filter(min_listing_price__lte=float(max_price))
+                except ValueError: pass
 
         return queryset.distinct()
 
