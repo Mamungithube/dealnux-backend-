@@ -64,7 +64,7 @@ def extract_attributes(title):
 
 def extract_core_title(title):
     if not title: return ""
-    cleaned_title_text = title.lower()
+    cleaned = title.lower()
     noise_patterns = [
         r'opens?\s+in\s+a\s+new.*', r'\d+%?\s*off', r'free\s*shipping',
         r'\b(brand\s*new|new|used|excellent|mint|good|condition|graded|pre[\s-]?owned)\b',
@@ -74,11 +74,12 @@ def extract_core_title(title):
         r'all\s*colors', r'\(.*\)', r'\[.*\]', r'\d{4}',
     ]
     for pattern in noise_patterns:
-        cleaned_title_text = re.sub(pattern, ' ', cleaned_title_text, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(pattern, ' ', cleaned, flags=re.IGNORECASE).strip()
     
-    cleaned_title_text = re.sub(r'\s+', ' ', cleaned_title_text).strip()
-    doc = nlp(cleaned_title_text)
-    tokens = [t.text for t in doc if t.pos_ in ['PROPN', 'NOUN', 'NUM'] and not t.is_stop and len(t.text.strip()) > 1]
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    stopwords = {'the', 'a', 'an', 'and', 'or', 'for', 'with', 'in', 'on', 'at', 'to', 'of', 'is', 'it'}
+    tokens = [t for t in cleaned.split() if t not in stopwords and len(t) > 1]
     return " ".join(tokens).strip()
 
 def extract_brand(title):
