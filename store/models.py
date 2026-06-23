@@ -71,6 +71,11 @@ class SellerRequest(models.Model):
         max_length=20, choices=STATUS_CHOICES, default='PENDING')
     admin_note = models.TextField(blank=True, null=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    agreed_to_seller_agreement = models.BooleanField(default=False)
+    agreed_to_terms = models.BooleanField(default=False)
+    agreed_to_privacy = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

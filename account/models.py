@@ -55,6 +55,9 @@ class User(AbstractUser):
     savings_coupons = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     savings_comparison = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+    agreed_to_terms = models.BooleanField(default=False)
+    agreed_to_privacy = models.BooleanField(default=False)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 

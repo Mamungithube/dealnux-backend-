@@ -18,6 +18,9 @@ from django.db import transaction
 class SellerRequestSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    agreed_to_seller_agreement = serializers.BooleanField(required=True)
+    agreed_to_terms = serializers.BooleanField(required=True)
+    agreed_to_privacy = serializers.BooleanField(required=True)
     
     # To receive a list of category names from the frontend
     category_names = serializers.ListField(
@@ -60,6 +63,9 @@ class SellerRequestSerializer(serializers.ModelSerializer):
             
             # Step 10: Signature
             'digital_signature',
+
+            #agrement
+            'agreed_to_seller_agreement', 'agreed_to_terms', 'agreed_to_privacy',
             
             # Admin Info
             'admin_note', 'created_at', 'updated_at'
@@ -83,7 +89,15 @@ class SellerRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"detail": "You already have an active or pending seller application."}
                 )
-
+    def validate(self, attrs):
+        # Custom validation for US Compliance
+        if not attrs.get('agreed_to_seller_agreement'):
+            raise serializers.ValidationError("You must agree to the Seller Agreement.")
+        if not attrs.get('agreed_to_terms'):
+            raise serializers.ValidationError("You must agree to the Terms & Conditions.")
+        if not attrs.get('agreed_to_privacy'):
+            raise serializers.ValidationError("You must agree to the Privacy Policy.")
+        
         # Converting category names to objects
     def validate(self, attrs):
         request = self.context.get('request')

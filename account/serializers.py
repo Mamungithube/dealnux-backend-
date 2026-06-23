@@ -39,12 +39,22 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
 
+    agreed_to_terms = serializers.BooleanField(required=True)
+    agreed_to_privacy = serializers.BooleanField(required=True)
+
     class Meta:
         model = User
-        fields = ['name', 'email', 'password']
+        fields = ['name', 'email', 'password', 'agreed_to_terms', 'agreed_to_privacy']
         extra_kwargs = {
             'password': {'write_only': True},
         }
+
+    def validate(self, data):
+        if not data.get('agreed_to_terms'):
+            raise serializers.ValidationError({"agreed_to_terms": "You must agree to the Terms & Conditions."})
+        if not data.get('agreed_to_privacy'):
+            raise serializers.ValidationError({"agreed_to_privacy": "You must agree to the Privacy Policy."})
+        return data
 
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
