@@ -107,9 +107,9 @@ class AdSerializer(serializers.ModelSerializer):
     def validate_image(self, value):
         width, height = get_image_dimensions(value)
         
-        if width < 1280 or height < 720:
+        if width < 1280 or height < 550:
             raise serializers.ValidationError(
-                f"The image size is very small! It must be at least 1280x720 pixels. "
+                f"The image size is very small! It must be at least 1280x550 pixels. "
                 f"The size of your image: {width}x{height}"
             )
 

@@ -1088,103 +1088,120 @@ def product_match_score(title1: str, title2: str) -> float:
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
 
+# In api_integration/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-
+    """
+    In English: 
+    1. Fetch target product.
+    2. Check if we have enough retailers (min 3).
+    3. If not, trigger a background sync task via Celery.
+    4. Return strict matches based on score and accessory exclusion.
+    """
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
+    # --- Step 1: Normalize and Fingerprint ---
     target_title = clean_display_title(product.title)
+    # Get the core name (e.g., 'Dell Mini Desktop i5 8th Gen') without junk
     target_fingerprint = get_product_fingerprint(target_title)
-
-    keywords = target_fingerprint['core_name'].split()[:3]
-    q_filter = Q(is_active=True)
-    if keywords:
-        k_query = Q()
-        for word in keywords:
-            if len(word) > 2:
-                k_query &= Q(title__icontains=word)
-        q_filter &= k_query
-
-    if product.category:
-        q_filter &= Q(category=product.category)
-
-    candidates = Product.objects.filter(q_filter)
+    core_query = target_fingerprint['core_name']
+    
+    # --- Step 2: Search Candidates in DB ---
+    # We look for products in the same category with similar names
+    candidates = Product.objects.filter(
+        category=product.category, 
+        is_active=True
+    ).exclude(id=product.id)
 
     matched_ids = [product.id]
-    THRESHOLD = 75
+    THRESHOLD = 80 # Strict matching for comparison
+    
+    # Enforce Accessory check: If target is not an accessory, candidate cannot be one
+    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
+    target_is_accessory = any(word in target_title.lower() for word in accessory_words)
 
     for cand in candidates:
-        if cand.id == product.id:
+        cand_title_lower = cand.title.lower()
+        cand_is_accessory = any(word in cand_title_lower for word in accessory_words)
+        
+        # Immediate skip if one is a device and other is an accessory
+        if target_is_accessory != cand_is_accessory:
             continue
+
         score = calculate_match_score(product.title, cand.title)
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
+    # --- Step 3: Check Results Count and Trigger Real-time Sync ---
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
+    total_deals = listings.values('platform').distinct().count()
+    sync_triggered = False
+
+    # Logic: If we have less than 3 retailers and haven't synced in the last 1 hour
+    # We trigger Celery to find more deals across all platforms
+    cache_key = f"sync_lock_{product.id}"
+    if total_deals < 3 and not cache.get(cache_key):
+        # Trigger background sync for the specific model
+        sync_all_platforms_task.delay(
+            core_query, 
+            limit=10, 
+            category_slug=product.category.slug if product.category else None
+        )
+        # Lock sync for 1 hour for this product to save API costs
+        cache.set(cache_key, True, 3600) 
+        sync_triggered = True
+
+    # --- Step 4: Prepare Response ---
     comparison_list = []
     seen_urls = set()
-    active_matched_product_ids = set()
     prices = []
 
     for listing in listings:
-        if listing.external_url in seen_urls:
-            continue
-
-        total_p = float(listing.get_total_price())
+        if listing.external_url in seen_urls: continue
         seen_urls.add(listing.external_url)
-        active_matched_product_ids.add(listing.product.id)
+        
+        total_p = float(listing.get_total_price())
         prices.append(total_p)
 
         comparison_list.append({
             'platform': listing.platform.name,
             'platform_code': listing.platform.code,
-            'product_id': listing.product.id,
-            'listing_id': listing.external_id,
             'clean_title': clean_display_title(listing.product.title),
             'price': float(listing.price),
             'total_price': total_p,
             'url': listing.external_url,
             'main_image': listing.product.main_image,
-            'seller': listing.seller_username or "Unknown Seller",
+            'seller': listing.seller_username or "Verified Retailer",
         })
 
-    if prices:
-        low = min(prices)
-        high = max(prices)
-        analysis = {
-            'lowest_price': low,
-            'highest_price': high,
-            'potential_savings': round(high - low, 2)
-        }
-    else:
-        analysis = {
-            'lowest_price': 0,
-            'highest_price': 0,
-            'potential_savings': 0
-        }
+    analysis = {
+        'lowest_price': min(prices) if prices else 0,
+        'highest_price': max(prices) if prices else 0,
+        'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+    }
 
     return success_response({
         'product': {
             'id': product.id,
             'title': target_title,
-            'slug': product.slug,
             'brand': product.brand,
             'main_image': product.main_image,
         },
-        'price_analysis': analysis,
         'meta': {
             'total_deals_found': len(comparison_list),
-            'matched_products_count': len(active_matched_product_ids),
-            'active_ids': list(active_matched_product_ids)
+            'sync_triggered': sync_triggered,
+            'message': "Searching for more deals in background..." if sync_triggered else "Latest deals retrieved."
         },
+        'price_analysis': analysis,
         'price_comparison': comparison_list,
         'best_deal': comparison_list[0] if comparison_list else None
     }, message="Price comparison fetched successfully")
