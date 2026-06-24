@@ -26,6 +26,7 @@ from django.contrib import messages
 from .models import SellerRequest
 from django.core.mail import send_mail
 from custom_ads.utils import send_dealnux_email 
+from django.utils.translation import gettext_lazy as _
 # ============================================================================
 # Inline
 # ============================================================================
