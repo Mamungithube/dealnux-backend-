@@ -202,6 +202,16 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
             user.ads_provided = True
             user.save(update_fields=['ads_provided'])
 
+        send_dealnux_email(
+            "Marketplace Approved - DealNux",
+            seller_request.user.email,
+            "emails/seller_approved.html",
+            {
+                "user": seller_request.user,
+                "shop_name": seller_request.trade_name
+            }
+        )
+
         return Response({
             "success": True,
             "code": 200,
@@ -220,6 +230,16 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
         seller_request.admin_note = note
         seller_request.reviewed_at = timezone.now()
         seller_request.save()
+
+        send_dealnux_email(
+            "Application Update - DealNux",
+            seller_request.user.email,
+            "emails/seller_rejected.html",
+            {
+                "user": seller_request.user,
+                "admin_note": note
+            }
+        )
 
         return Response({
             "success": True,
@@ -654,11 +674,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             return error_response("Unauthorized.", code=403)
 
         # সেলারের জন্য স্ট্যাটাস ফিক্সড: ACCEPTED
-        order.status = 'ACCEPTED' 
+        order.status = 'ACCEPTED'
         order.save(update_fields=['status', 'updated_at'])
 
         return success_response(
-            {"order_number": order.order_number, "status": order.status}, 
+            {"order_number": order.order_number, "status": order.status},
             message="Order accepted by seller."
         )
 
@@ -749,7 +769,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if order.status != 'SHIPPED':
             return error_response("You can only confirm after the order is SHIPPED.", code=400)
 
-        from payment.models import PayoutRecord 
+        from payment.models import PayoutRecord
 
         with transaction.atomic():
             # বায়ারের কাজ: স্ট্যাটাস এখন CONFIRMED হবে
@@ -767,7 +787,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             seller_profile.save()
 
             # ড্যাশবোর্ডের জন্য রেকর্ড তৈরি
-            import random, string
+            import random
+            import string
             p_id = "PAY-" + "".join(random.choices(string.digits, k=4))
             PayoutRecord.objects.create(
                 seller=seller_profile, payout_id=p_id,
@@ -788,8 +809,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     logger.error(f"Stripe Error: {str(e)}")
 
         return success_response(None, message="Order Confirmed! Funds released to seller.")
-        
-
 
     # ── Admin Action: Process refund (Fault Logic) ──
 

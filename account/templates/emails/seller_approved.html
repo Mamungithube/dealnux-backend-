@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Your OTP Code – DealNux</title>
+<meta charset="UTF-8"><title>Seller Account Approved – DealNux</title>
 <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -159,30 +159,43 @@
 <div class="email-wrapper">
   <div class="top-bar"></div>
   <div class="email-header">
-    <div class="logo-area">
-      <div class="logo-icon">DN</div>
-      <div>
-        <div class="logo-text">DEALNUX</div>
-        <div class="logo-tagline">Compare Faster · Save Smarter</div>
-      </div>
-    </div>
-    <div class="header-badge">Security Code</div>
   </div>
 
   <div class="email-body">
     <p class="greeting">Hello {{ user.Fullname }},</p>
-    <p class="sub-text">Your One-Time Password (OTP) for account verification is:</p>
+    <p class="sub-text">Congratulations! Your seller application has been reviewed and approved. You can now start selling on DealNux.</p>
 
-    <div class="otp-box">
-      <div class="otp-label">Verification Code</div>
-      <div class="otp-code">{{ otp }}</div>
+    <div class="hero-box">
+      <div class="box-label">Your Shop</div>
+      <div class="box-value" style="font-size:28px; letter-spacing:1px;">{{ seller.shop_name }}</div>
+      <div class="box-sub"><span style="color:#F5A623;">✓</span>&nbsp; Account Status: <strong style="color:#4cff8e;">ACTIVE</strong></div>
     </div>
-    <p class="otp-validity">⏱ This code expires in <strong>3 minutes</strong></p>
+
+    <p style="font-size:15px; font-weight:600; color:#0D1B3E; margin-bottom:8px;">Get started in 3 easy steps:</p>
+
+    <ul class="step-list">
+      <li>
+        <span class="step-num">1</span>
+        <span>Connect your <strong>Stripe account</strong> from the seller dashboard to receive payouts securely.</span>
+      </li>
+      <li>
+        <span class="step-num">2</span>
+        <span><strong>List your first product</strong> — add photos, title, description, price, and shipping details.</span>
+      </li>
+      <li>
+        <span class="step-num">3</span>
+        <span>Once your listing is approved, it goes <strong>live</strong> and starts reaching buyers on DealNux.</span>
+      </li>
+    </ul>
+
+    <div class="cta-wrap">
+      <a href="#" class="cta-btn">Go to Seller Dashboard</a>
+    </div>
 
     <div class="info-note">
-      <strong>Security Notice:</strong> Never share this code with anyone.
-      DealNux will never ask for your OTP via phone or chat.
-      If you did not request this, please ignore this email.
+      <strong>Need help?</strong> Our seller support team is here for you.
+      Visit your dashboard to manage products, view orders, and track your earnings.
+      Welcome to the DealNux seller community!
     </div>
   </div>
 
@@ -190,5 +203,5 @@
     <div class="footer-copy">© 2025 DealNux. All rights reserved. · This is an automated message.</div>
   </div>
 </div>
-</body>
+</body> 
 </html>

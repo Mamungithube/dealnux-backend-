@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Your OTP Code – DealNux</title>
+<meta charset="UTF-8"><title>You've Earned a Referral Reward! – DealNux</title>
 <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -159,30 +159,29 @@
 <div class="email-wrapper">
   <div class="top-bar"></div>
   <div class="email-header">
-    <div class="logo-area">
-      <div class="logo-icon">DN</div>
-      <div>
-        <div class="logo-text">DEALNUX</div>
-        <div class="logo-tagline">Compare Faster · Save Smarter</div>
-      </div>
-    </div>
-    <div class="header-badge">Security Code</div>
   </div>
 
   <div class="email-body">
-    <p class="greeting">Hello {{ user.Fullname }},</p>
-    <p class="sub-text">Your One-Time Password (OTP) for account verification is:</p>
+    <p class="greeting">Hello {{ referrer.Fullname }},</p>
+    <p class="sub-text">Your referral just paid off! A reward has been credited to your DealNux wallet balance.</p>
 
-    <div class="otp-box">
-      <div class="otp-label">Verification Code</div>
-      <div class="otp-code">{{ otp }}</div>
+    <div class="hero-box">
+      <div class="box-label">Referral Reward Credited</div>
+      <div class="box-value">${{ amount }}</div>
+      <div class="box-sub">Added to your DealNux wallet balance</div>
     </div>
-    <p class="otp-validity">⏱ This code expires in <strong>3 minutes</strong></p>
+
+    <table class="details-table">
+      <tr><td class="dt-label">Referred User</td><td class="dt-value">{{ referred_user.Fullname }}</td></tr>
+      <tr><td class="dt-label">Referred Email</td><td class="dt-value">{{ referred_user.email }}</td></tr>
+      <tr><td class="dt-label">Reward Amount</td><td class="dt-value"><span class="badge-gold">${{ amount }} Credited</span></td></tr>
+      <tr><td class="dt-label">Credited On</td><td class="dt-value">{% now "N j, Y" %}</td></tr>
+    </table>
 
     <div class="info-note">
-      <strong>Security Notice:</strong> Never share this code with anyone.
-      DealNux will never ask for your OTP via phone or chat.
-      If you did not request this, please ignore this email.
+      <strong>Keep referring!</strong> For every friend who joins DealNux with an active
+      subscription and completes their first purchase, you earn a
+      <strong>${{ amount }} reward</strong>. Share your referral link and keep earning!
     </div>
   </div>
 

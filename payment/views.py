@@ -1,3 +1,4 @@
+from custom_ads.utils import send_dealnux_email
 import json
 from datetime import timedelta
 
@@ -28,10 +29,11 @@ from . serializers import (
 
 )
 from rest_framework.pagination import PageNumberPagination
-import time 
+import time
 from django.utils import timezone
 stripe.api_key = settings.STRIPE_SECRET_KEY
 PLATFORM_FEE_PERCENT = Decimal('10')
+
 
 class CustomPagination(PageNumberPagination):
     page_size = 10
@@ -65,6 +67,7 @@ class CustomPagination(PageNumberPagination):
             }
         })
 
+
 def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     unit_price = seller_product.price
     subtotal = unit_price * quantity
@@ -73,7 +76,7 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     if coupon_code:
         try:
             coupon = Coupon.objects.get(
-                code=coupon_code.upper().strip(), 
+                code=coupon_code.upper().strip(),
                 seller=seller_product.seller,
                 is_active=True
             )
@@ -82,8 +85,9 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
                     discount = subtotal * (coupon.discount_value / 100)
                 else:
                     discount = min(coupon.discount_value, subtotal)
-                print(f"✅ Discount Applied: {discount} for coupon {coupon_code}")
-                
+                print(
+                    f"✅ Discount Applied: {discount} for coupon {coupon_code}")
+
             else:
                 print(f"⚠️ Coupon invalid or min amount not met.")
         except Coupon.DoesNotExist:
@@ -152,9 +156,9 @@ class CreateCheckoutSessionView(APIView):
 
             # ১. বাগ ফিক্স: _calculate_order_amounts থেকে আসা ডিসকাউন্ট ব্যবহার করা
             res = _calculate_order_amounts(product, qty, c_code)
-            
+
             # ডিসকাউন্ট করা প্রাইস নিচ্ছি
-            item_total = res['item_total'] 
+            item_total = res['item_total']
             discount_amt = res['discount_amount']
 
             total_item_price += item_total
@@ -164,19 +168,20 @@ class CreateCheckoutSessionView(APIView):
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    'unit_amount': int((item_total / qty) * 100), # ডিসকাউন্ট করা প্রাইস Stripe-এ যাবে
+                    # ডিসকাউন্ট করা প্রাইস Stripe-এ যাবে
+                    'unit_amount': int((item_total / qty) * 100),
                     'product_data': {
                         'name': product.title,
                         'images': [request.build_absolute_uri(product.main_image.url)] if product.main_image else [],
                     },
-                    'tax_behavior': 'exclusive', 
+                    'tax_behavior': 'exclusive',
                 },
                 'quantity': qty,
             })
-            
+
             validated_items.append({
-                'id': p_id, 
-                'qty': qty, 
+                'id': p_id,
+                'qty': qty,
                 'c_code': c_code,
                 'shipping': float(res['shipping_fee']),
                 'item_total': float(item_total)
@@ -189,9 +194,11 @@ class CreateCheckoutSessionView(APIView):
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
-            shipping_address=json.dumps(shipping_address), # টেক্সট ফিল্ডে ডাম্প করে রাখা নিরাপদ
+            # টেক্সট ফিল্ডে ডাম্প করে রাখা নিরাপদ
+            shipping_address=json.dumps(shipping_address),
             unit_price=total_item_price,
-            total_amount=total_item_price + total_discount, # এটিই আপনার missing Not-Null কলাম
+            # এটিই আপনার missing Not-Null কলাম
+            total_amount=total_item_price + total_discount,
             discount_amount=total_discount,
             quantity=len(items_data),
             item_total=total_item_price,
@@ -201,7 +208,7 @@ class CreateCheckoutSessionView(APIView):
             currency='usd',
             status='PENDING',
         )
-        
+
         line_items.append({
             'price_data': {
                 'currency': 'usd',
@@ -226,12 +233,13 @@ class CreateCheckoutSessionView(APIView):
                 ui_mode='embedded',
                 line_items=line_items,
                 mode='payment',
-                automatic_tax={'enabled': True}, 
-                return_url=settings.STRIPE_RETURN_URL + "?session_id={CHECKOUT_SESSION_ID}", 
+                automatic_tax={'enabled': True},
+                return_url=settings.STRIPE_RETURN_URL +
+                "?session_id={CHECKOUT_SESSION_ID}",
                 metadata={
                     'payment_id': payment.id,
                     'type': 'store_payment',
-                    'items_json': json.dumps(validated_items) 
+                    'items_json': json.dumps(validated_items)
                 },
                 customer_email=request.user.email,
             )
@@ -247,13 +255,15 @@ class CreateCheckoutSessionView(APIView):
             )
 
             # ৩. বাগ ফিক্স: Stripe Tax রিড করা
-            stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
+            stripe_tax = Decimal(
+                str(session.total_details.amount_tax or 0)) / 100
             final_grand_total = pre_tax_grand_total + stripe_tax
 
             payment.stripe_checkout_session_id = session.id
-            payment.stripe_payment_intent_id = mobile_intent.id 
+            payment.stripe_payment_intent_id = mobile_intent.id
             payment.final_amount = final_grand_total
-            payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
+            payment.save(update_fields=[
+                         'stripe_checkout_session_id', 'final_amount', 'updated_at'])
 
             return Response({
                 'client_secret': session.client_secret,
@@ -263,7 +273,7 @@ class CreateCheckoutSessionView(APIView):
                     "subtotal": float(total_item_price),
                     "shipping": float(total_shipping_fee),
                     "service_fee": float(service_fee),
-                    "tax": float(stripe_tax), 
+                    "tax": float(stripe_tax),
                     "grand_total": float(final_grand_total)
                 }
             })
@@ -375,6 +385,12 @@ class StripeWebhookView(APIView):
                     if ad:
                         ad.status = 'pending'
                         ad.save()
+                        send_dealnux_email(
+                            "Ad Submitted for Review - DealNux",
+                            ad.seller.email,  # seller field অনুযায়ী adjust করো
+                            "emails/ad_submitted.html",
+                            {"ad": ad, "user": ad.seller}
+                        )
             except Payment.DoesNotExist:
                 print(f"Error: Payment ID {payment_id} not found in database.")
 
@@ -451,7 +467,7 @@ class StripeWebhookView(APIView):
             now = timezone.now()
 
             # Update or create the subscription record
-            UserSubscription.objects.update_or_create(
+            subscription, _ = UserSubscription.objects.update_or_create(
                 user=user,
                 defaults={
                     'plan': plan,
@@ -468,8 +484,21 @@ class StripeWebhookView(APIView):
 
             self._process_referral_reward(user)
 
+            send_dealnux_email(
+                "Your DealNux Subscription is Active!",
+                user.email,
+                "emails/subscription_active.html",
+                {
+                    "user": user,
+                    "plan": plan,
+                    "renewal_date": subscription.expires_at
+                }
+            )
+
         except Exception as e:
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
+
+ 
 
     def _process_referral_reward(self, user):
         """
@@ -502,6 +531,13 @@ class StripeWebhookView(APIView):
                     print(
                         f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
 
+                    send_dealnux_email(
+                        "You've earned a referral reward! - DealNux",
+                        referrer.email,   
+                        "emails/referral_bonus.html",
+                        {"referrer": user, "referred_user": referred_user, "amount": "10"}
+                    )
+
             # If the current user is a referrer, check for any referred users who already have active subscriptions
             # and have completed their first purchase.
             current_subscription = getattr(user, 'subscription', None)
@@ -523,6 +559,14 @@ class StripeWebhookView(APIView):
                                 update_fields=['has_referral_reward_awarded'])
                             print(
                                 f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
+
+                            send_dealnux_email(
+                                "You've earned a referral reward! - DealNux",
+                                user.email,   
+                                "emails/referrer_reward.html",
+                                {"referrer": referrer,
+                                    "referred_user": user, "amount": "10"}
+                            )
 
         except Exception as e:
             print(f"❌ Error processing referral reward: {str(e)}")
@@ -887,7 +931,8 @@ class CreateSubscriptionCheckoutView(APIView):
             )
 
             mobile_intent = stripe.PaymentIntent.create(
-                amount=int(plan.price * 100), # সেন্টে কনভার্ট (যেমন: 7.99 -> 799)
+                # সেন্টে কনভার্ট (যেমন: 7.99 -> 799)
+                amount=int(plan.price * 100),
                 currency='usd',
                 payment_method_types=['card'],
                 metadata={

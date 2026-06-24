@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Your OTP Code – DealNux</title>
+<meta charset="UTF-8"><title>Product Removed – DealNux</title>
 <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -159,34 +159,33 @@
 <div class="email-wrapper">
   <div class="top-bar"></div>
   <div class="email-header">
-    <div class="logo-area">
-      <div class="logo-icon">DN</div>
-      <div>
-        <div class="logo-text">DEALNUX</div>
-        <div class="logo-tagline">Compare Faster · Save Smarter</div>
-      </div>
-    </div>
-    <div class="header-badge">Security Code</div>
   </div>
 
   <div class="email-body">
     <p class="greeting">Hello {{ user.Fullname }},</p>
-    <p class="sub-text">Your One-Time Password (OTP) for account verification is:</p>
+    <p class="sub-text">The following product has been removed from your DealNux store listing:</p>
 
-    <div class="otp-box">
-      <div class="otp-label">Verification Code</div>
-      <div class="otp-code">{{ otp }}</div>
+    <div class="hero-box">
+      <div class="box-label">Removed Product</div>
+      <div class="box-value" style="font-size:24px; letter-spacing:0;">{{ product.title }}</div>
+      <div class="box-sub">Product ID #{{ product.id }}</div>
     </div>
-    <p class="otp-validity">⏱ This code expires in <strong>3 minutes</strong></p>
+
+    <table class="details-table">
+      <tr><td class="dt-label">Category</td><td class="dt-value">{{ product.category }}</td></tr>
+      <tr><td class="dt-label">Listed Price</td><td class="dt-value">${{ product.price }}</td></tr>
+      <tr><td class="dt-label">Status</td><td class="dt-value"><span class="badge-danger">REMOVED</span></td></tr>
+      <tr><td class="dt-label">Removed On</td><td class="dt-value">{{ removed_at|date:"N j, Y" }}</td></tr>
+    </table>
 
     <div class="info-note">
-      <strong>Security Notice:</strong> Never share this code with anyone.
-      DealNux will never ask for your OTP via phone or chat.
-      If you did not request this, please ignore this email.
+      <strong>Need help?</strong> If you believe this was done in error, please contact
+      our support team. You can re-list the product from your seller dashboard at any time.
     </div>
   </div>
 
   <div class="email-footer">
+
     <div class="footer-copy">© 2025 DealNux. All rights reserved. · This is an automated message.</div>
   </div>
 </div>
