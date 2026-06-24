@@ -7,18 +7,21 @@ from unfold.decorators import display, action
 from unfold.contrib.filters.admin import RangeDateFilter
 
 from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
-
-
+from account.utils.admin_permissions import ManagerOnlyMixin, AdminReadOnlyFinancialMixin
+#C:\mamun file\Project File\dealnux-backend-\account\utils\admin_permissions.py
 # ============================================================================
 # Payment Admin
 # ============================================================================
 
 @admin.register(Payment)
-class PaymentAdmin(ModelAdmin):
+class PaymentAdmin(AdminReadOnlyFinancialMixin, ModelAdmin):
     compressed_fields   = True
     warn_unsaved_form   = True
     list_fullwidth      = True
     list_filter_submit  = True
+    def has_module_permission(self, request):
+        # শুধু সুপারইউজার বা ম্যানেজার গ্রুপ পেমেন্ট দেখতে পারবে
+        return request.user.is_superuser or request.user.groups.filter(name='Manager').exists()
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -169,7 +172,7 @@ class PaymentAdmin(ModelAdmin):
 # ============================================================================
 
 @admin.register(SellerPayout)
-class SellerPayoutAdmin(ModelAdmin):
+class SellerPayoutAdmin(ManagerOnlyMixin, ModelAdmin):
     compressed_fields   = True
     list_fullwidth      = True
     list_filter_submit  = True
@@ -273,7 +276,7 @@ class SellerPayoutAdmin(ModelAdmin):
 
 
 @admin.register(SubscriptionPlan)
-class SubscriptionPlanAdmin(ModelAdmin):
+class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
     list_display = [
         'id', 
         'name', 
@@ -319,7 +322,7 @@ class SubscriptionPlanAdmin(ModelAdmin):
 
 
 @admin.register(UserSubscription)
-class UserSubscriptionAdmin(ModelAdmin):
+class UserSubscriptionAdmin(AdminReadOnlyFinancialMixin, ModelAdmin):
     list_display = [
         'display_user', 
         'display_plan', 

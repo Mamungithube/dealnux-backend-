@@ -25,6 +25,7 @@ from unfold.enums import ActionVariant
 from django.contrib import messages
 from .models import SellerRequest
 from django.core.mail import send_mail
+from custom_ads.utils import send_dealnux_email 
 # ============================================================================
 # Inline
 # ============================================================================
@@ -59,6 +60,12 @@ class SellerRequestAdmin(ModelAdmin):
     warn_unsaved_form = True
     list_fullwidth = True
     list_filter_submit = True
+
+    def has_change_permission(self, request, obj=None):
+        # Admin_Associate শুধু দেখতে পারবে, কিন্তু এপ্রুভ/এডিট করতে পারবে না
+        if request.user.groups.filter(name='Admin_Associate').exists():
+            return False
+        return super().has_change_permission(request, obj)
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user').prefetch_related('categories')
@@ -156,6 +163,11 @@ class SellerRequestAdmin(ModelAdmin):
 
     @action(description=_('Approve'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
     def action_approve_row(self, request, object_id):
+        # ✅ Manager only
+        if not request.user.is_superuser:
+            self.message_user(request, "Only managers can approve sellers.", level='error')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+ 
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
             try:
@@ -164,18 +176,23 @@ class SellerRequestAdmin(ModelAdmin):
                 self.message_user(request, f'✓ {obj.user.email} approved successfully.', messages.SUCCESS)
             except Exception as e:
                 self.message_user(request, f'Error: {str(e)}', messages.ERROR)
-        
+ 
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
-
+ 
     @action(description=_('Reject'), url_path='reject-request', icon='cancel', variant=ActionVariant.DANGER)
     def action_reject_row(self, request, object_id):
+        # ✅ Manager only
+        if not request.user.is_superuser:
+            self.message_user(request, "Only managers can reject sellers.", level='error')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+ 
         obj = self.get_object(request, object_id)
         if obj.status == 'PENDING':
             obj.status = 'REJECTED'
             obj.admin_note = "Rejected by admin."
             obj.save()
             self.message_user(request, f'✗ {obj.user.email} request rejected.', messages.WARNING)
-        
+ 
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
 # # ============================================================================
@@ -407,6 +424,64 @@ class SellerProductAdmin(ModelAdmin):
         if 'delete_selected' in actions:
             del actions['delete_selected']
         return actions
+    
+        actions = ['delete_product_with_notification']
+    actions_row = ['delete_product_row']
+ 
+    # ✅ Row-level delete button
+    @action(
+        description="Delete & Notify Seller",
+        url_path='delete-product',
+        icon='delete',
+        variant=ActionVariant.DANGER,
+    )
+    def delete_product_row(self, request, object_id):
+        try:
+            product = SellerProduct.objects.get(pk=object_id)
+            seller_email = product.seller.user.email
+            seller_shop = product.seller.shop_name
+            product_title = product.title
+ 
+            product.delete()
+ 
+            send_dealnux_email(
+                "Product Removed - DealNux",
+                seller_email,
+                "emails/product_deleted.html",
+                {
+                    "seller_shop": seller_shop,
+                    "product_title": product_title,
+                    "deleted_by": request.user.email,
+                }
+            )
+            self.message_user(request, f"✓ '{product_title}' deleted. Seller notified.")
+        except SellerProduct.DoesNotExist:
+            self.message_user(request, "Product not found.", level='error')
+ 
+        return HttpResponseRedirect('../..')
+ 
+    # ✅ Bulk delete action
+    @admin.action(description="Delete selected products & notify sellers")
+    def delete_product_with_notification(self, request, queryset):
+        count = 0
+        for product in queryset:
+            try:
+                send_dealnux_email(
+                    "Product Removed - DealNux",
+                    product.seller.user.email,
+                    "emails/product_deleted.html",
+                    {
+                        "seller_shop": product.seller.shop_name,
+                        "product_title": product.title,
+                        "deleted_by": request.user.email,
+                    }
+                )
+                product.delete()
+                count += 1
+            except Exception as e:
+                self.message_user(request, f"Error deleting '{product.title}': {str(e)}", level='error')
+ 
+        self.message_user(request, f"✓ {count} products deleted. Sellers notified.")
 
     @display(description=_('Product'), ordering='title')
     def display_product(self, obj):
