@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.http import HttpResponseRedirect
 from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 from account.utils.admin_permissions import ManagerOnlyMixin, AdminReadOnlyFinancialMixin
-#C:\mamun file\Project File\dealnux-backend-\account\utils\admin_permissions.py
+from django.utils.translation import gettext_lazy as _
 # ============================================================================
 # Payment Admin
 # ============================================================================
