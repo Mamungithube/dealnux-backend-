@@ -161,6 +161,12 @@ class SellerRequestAdmin(ModelAdmin):
     # --- ৪. অ্যাকশনসমূহ (Actions with Redirect Fix) ---
     actions_row = ['action_approve_row', 'action_reject_row']
 
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        if not request.user.is_superuser and request.user.groups.filter(name='Admin_Associate').exists():
+            messages.warning(request, "Access Denied: You cannot modify or approve seller applications.")
+            return HttpResponseRedirect("../") # Redirect back to the list
+        return super().change_view(request, object_id, form_url, extra_context)
+
     @action(description=_('Approve'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
     def action_approve_row(self, request, object_id):
         # ✅ Manager only

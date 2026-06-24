@@ -5,6 +5,7 @@ from django.db.models import Sum
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display, action
 from unfold.contrib.filters.admin import RangeDateFilter
+from django.contrib import messages
 from django.http import HttpResponseRedirect
 from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 from account.utils.admin_permissions import ManagerOnlyMixin, AdminReadOnlyFinancialMixin
@@ -19,6 +20,14 @@ class PaymentAdmin(AdminReadOnlyFinancialMixin, ModelAdmin):
     warn_unsaved_form   = True
     list_fullwidth      = True
     list_filter_submit  = True
+
+    def changelist_view(self, request, extra_context=None):
+        # In English: Redirect Admin_Associate to dashboard with an error message instead of 403 page
+        if not request.user.is_superuser and request.user.groups.filter(name='Admin_Associate').exists():
+            messages.error(request, "Permission Denied: Financial records are restricted to Managers only.")
+            return HttpResponseRedirect("/admin/") # Redirect to main dashboard
+        return super().changelist_view(request, extra_context)
+    
     def has_module_permission(self, request):
         # শুধু সুপারইউজার বা ম্যানেজার গ্রুপ পেমেন্ট দেখতে পারবে
         return request.user.is_superuser or request.user.groups.filter(name='Manager').exists()
