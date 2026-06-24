@@ -498,8 +498,6 @@ class StripeWebhookView(APIView):
         except Exception as e:
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
 
- 
-
     def _process_referral_reward(self, user):
         """
         Award the referral bonus once, only after both the referred user and the referrer
@@ -533,7 +531,7 @@ class StripeWebhookView(APIView):
 
                     send_dealnux_email(
                         "You've earned a referral reward! - DealNux",
-                        referrer.email,   
+                        referrer.email,
                         "emails/referral_bonus.html",
                         {"referrer": user, "referred_user": referred_user, "amount": "10"}
                     )
@@ -562,7 +560,7 @@ class StripeWebhookView(APIView):
 
                             send_dealnux_email(
                                 "You've earned a referral reward! - DealNux",
-                                user.email,   
+                                user.email,
                                 "emails/referrer_reward.html",
                                 {"referrer": referrer,
                                     "referred_user": user, "amount": "10"}
@@ -649,6 +647,13 @@ class RequestPayoutView(APIView):
             seller.available_balance -= amount
             seller.total_withdrawn += amount
             seller.save()
+
+            send_dealnux_email(
+                "Payout Request Received - DealNux",
+                request.user.email,
+                "emails/payout_requested.html",
+                {"seller": seller, "amount": float(amount)}
+            )
 
             return Response({
                 "success": True,

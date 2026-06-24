@@ -1,3 +1,4 @@
+from custom_ads.utils import send_dealnux_email
 from decimal import Decimal
 
 from django.db import transaction
@@ -609,6 +610,23 @@ class OrderViewSet(viewsets.ModelViewSet):
             # Try to process referral reward for the buyer if they were referred.
             process_referral_reward_for_user(request.user)
 
+        try:
+            from custom_ads.utils import send_dealnux_email
+            send_dealnux_email(
+                "Order Confirmed - DealNux",
+                order.buyer.email,
+                "emails/order_placed_buyer.html",
+                {"order": order, "user": order.buyer}
+            )
+            send_dealnux_email(
+                "New Order Received - DealNux",
+                order.seller.user.email,
+                "emails/order_placed_seller.html",
+                {"order": order, "seller": order.seller}
+            )
+        except Exception as e:
+            logger.error(f"Order email error: {str(e)}")
+
         return success_response(
             OrderSerializer(order).data,
             message="Order placed and funds held in escrow.",
@@ -702,6 +720,13 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.status = 'SHIPPED'
         order.save()
+
+        send_dealnux_email(
+            "Your Order Has Been Shipped - DealNux",
+            order.buyer.email,
+            "emails/order_shipped.html",
+            {"order": order, "tracking_number": tracking_no, "courier": courier}
+        )
 
         return success_response(OrderSerializer(order).data, message="Order marked as Shipped.")
 

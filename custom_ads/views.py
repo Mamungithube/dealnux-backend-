@@ -1,3 +1,4 @@
+from custom_ads.utils import send_dealnux_email
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView, settings
 from rest_framework.response import Response
@@ -6,7 +7,7 @@ from django.db.models import F
 from django.db import IntegrityError, transaction
 import stripe
 from .models import AdDailyPerformance, AdReview, AdvertiserRequest, CustomAd, AdSetting
-from payment.models import Payment 
+from payment.models import Payment
 from .serializers import (
     AdvertiserRequestSerializer,
     AdSerializer,
@@ -24,8 +25,9 @@ from django.core.cache import cache
 from decimal import Decimal
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-
 # 1. Advertiser Request Apply
+
+
 class ApplyForAdvertiserView(generics.CreateAPIView):
     """
     User can apply to become an advertiser
@@ -160,7 +162,8 @@ class CreateAdView(generics.CreateAPIView):
                     'quantity': 1,
                 }],
                 mode='payment',
-                return_url=settings.STRIPE_RETURN_URL + "?session_id={CHECKOUT_SESSION_ID}",
+                return_url=settings.STRIPE_RETURN_URL +
+                "?session_id={CHECKOUT_SESSION_ID}",
                 metadata={
                     'payment_id': payment.id,
                     'ad_id': ad.id,
@@ -172,7 +175,8 @@ class CreateAdView(generics.CreateAPIView):
                 amount=int(ad.total_budget * 100),
                 currency='usd',
                 automatic_payment_methods={"enabled": True},
-                metadata={'payment_id': payment.id, 'ad_id': ad.id, 'type': 'ad_payment'}
+                metadata={'payment_id': payment.id,
+                          'ad_id': ad.id, 'type': 'ad_payment'}
             )
 
             payment.stripe_checkout_session_id = session.id
@@ -180,8 +184,8 @@ class CreateAdView(generics.CreateAPIView):
             payment.save()
 
             return Response({
-                "message": "Embedded Checkout Session Created.", #web
-                "payment_intent_client_secret": mobile_intent.client_secret, #app
+                "message": "Embedded Checkout Session Created.",  # web
+                "payment_intent_client_secret": mobile_intent.client_secret,  # app
                 "client_secret": session.client_secret,
                 "session_id": session.id,
                 "payment_id": payment.id
@@ -209,7 +213,7 @@ class AdListView(generics.ListAPIView):
         ).update(status='expired')
 
         if expired_count > 0:
-            cache.delete('active_ads_pool')  
+            cache.delete('active_ads_pool')
 
         count = int(self.request.query_params.get('count', 3))
         count = min(count, 10)
@@ -939,11 +943,11 @@ class AdminAdListView(generics.ListAPIView):
 
         if status_filter == 'pending':
             queryset = queryset.filter(
-                is_approved=False, status='pending') 
+                is_approved=False, status='pending')
         elif status_filter == 'approved':
             queryset = queryset.filter(is_approved=True, status='active')
         elif status_filter == 'rejected':
-            queryset = queryset.filter(status='rejected')  
+            queryset = queryset.filter(status='rejected')
 
         return queryset
 
@@ -1009,6 +1013,13 @@ class AdminApproveAdView(APIView):
             ad.is_approved = True
             ad.status = 'active'
             ad.save()
+
+            send_dealnux_email(
+                "Your Ad is Approved! - DealNux",
+                ad.advertiser.email,
+                "emails/ad_approved.html",
+                {"ad": ad, "user": ad.advertiser}
+            )
 
             AdReview.objects.create(
                 ad=ad,
@@ -1102,6 +1113,14 @@ class AdminRejectAdView(APIView):
             ad.is_approved = False
             ad.status = 'rejected'
             ad.save()
+
+            send_dealnux_email(
+                "Ad Review Update - DealNux",
+                ad.advertiser.email,
+                "emails/ad_rejected.html",
+                {"ad": ad, "user": ad.advertiser,
+                    "reason": reason, "feedback": feedback}
+            )
 
             AdReview.objects.create(
                 ad=ad,
@@ -1262,7 +1281,7 @@ class AdminDashboardStatsView(APIView):
 
             total_ads = CustomAd.objects.count()
             pending_ads = CustomAd.objects.filter(
-                is_approved=False, status='pending').count()  
+                is_approved=False, status='pending').count()
             active_ads = CustomAd.objects.filter(
                 is_approved=True, status='active').count()
 
