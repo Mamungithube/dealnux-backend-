@@ -21,7 +21,6 @@ from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.decorators import display, action
-from unfold.enums import ActionVariant
 from django.contrib import messages
 from .models import SellerRequest
 from django.core.mail import send_mail
