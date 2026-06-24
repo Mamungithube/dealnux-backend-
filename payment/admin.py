@@ -5,7 +5,7 @@ from django.db.models import Sum
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display, action
 from unfold.contrib.filters.admin import RangeDateFilter
-
+from django.http import HttpResponseRedirect
 from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 from account.utils.admin_permissions import ManagerOnlyMixin, AdminReadOnlyFinancialMixin
 #C:\mamun file\Project File\dealnux-backend-\account\utils\admin_permissions.py
@@ -173,6 +173,7 @@ class PaymentAdmin(AdminReadOnlyFinancialMixin, ModelAdmin):
 
 @admin.register(SellerPayout)
 class SellerPayoutAdmin(ManagerOnlyMixin, ModelAdmin):
+    
     compressed_fields   = True
     list_fullwidth      = True
     list_filter_submit  = True
@@ -232,6 +233,29 @@ class SellerPayoutAdmin(ManagerOnlyMixin, ModelAdmin):
             'fields': ('created_at', 'updated_at'),
         }),
     )
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser or request.user.groups.filter(name='Manager').exists()
+    
+    def has_change_permission(self, request, obj=None):
+        # এসোসিয়েট এডিট বা এপ্রুভ করতে পারবে না
+        if request.user.groups.filter(name='Admin_Associate').exists():
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # এসোসিয়েট ডিলিটও করতে পারবে না
+        if request.user.groups.filter(name='Admin_Associate').exists():
+            return False
+        return super().has_delete_permission(request, obj)
+
+    # --- গুরুত্বপূর্ণ: আপনার Approve/Reject একশনেও এটি চেক করতে হবে ---
+    @action(description=_('Approve'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
+    def action_approve_row(self, request, object_id):
+        # যদি ইউজার এসোসিয়েট হয়, তাকে এরর মেসেজ দিন
+        if request.user.groups.filter(name='Admin_Associate').exists():
+            self.message_user(request, "Permission Denied: Admin Associates cannot approve sellers.", level='error')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
     @display(description='Seller')
     def display_seller(self, obj):
