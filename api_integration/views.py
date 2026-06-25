@@ -167,7 +167,7 @@ def product_detail(request, pk):
             'slug': '',
             'description': sp.description or '',
             'category': sp.category.id if hasattr(sp, 'category') and sp.category else None,
-            'category_name': sp.category_name or '',
+            'category_name': sp.category.name if sp.category else '',-
             'brand': sp.brand or '',
             'main_image': main_image,
             'images': [],
