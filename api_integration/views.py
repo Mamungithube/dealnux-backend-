@@ -1353,29 +1353,25 @@ def product_match_score(title1: str, title2: str) -> float:
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    """
-    In English: 
-    - Aggressive noise removal (Restored, New, etc.) before matching.
-    - Uses OR matching for keywords to catch products regardless of their category.
-    - Increased candidate pool to ensure all retailers are found.
-    """
     import time
-    
+
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
-    # ১. টাইটেল থেকে জঞ্জাল সরানো (Restored, Renewed, New ইত্যাদি)
+    # ১. টাইটেল ক্লিন — word boundary দিয়ে, substring replace নয়
     def deep_clean(text):
-        noise = ['restored', 'renewed', 'refurbished', 'pre-owned', 'new', 'used', 'excellent', 'mint', 'condition']
+        noise = ['restored', 'renewed', 'refurbished', 'pre-owned', 'used',
+                 'excellent', 'mint', 'condition']
         text = text.lower()
         for word in noise:
-            text = text.replace(word, '')
+            # \b word boundary — 'new' যাতে 'renewed' বা 'new' শুধু আলাদা word হলেই কাটে
+            text = re.sub(r'\b' + re.escape(word) + r'\b', '', text)
         return re.sub(r'\s+', ' ', text).strip()
 
     target_clean = deep_clean(product.title)
-    
-    # ২. অটো-সিঙ্ক (যদি ডাটাবেজে ডিল কম থাকে)
+
+    # ২. অটো-সিঙ্ক
     existing_platforms = ProductListing.objects.filter(
         product=product, is_available=True
     ).values_list('platform__code', flat=True).distinct()
@@ -1386,45 +1382,44 @@ def compare_prices_api(request, slug):
         query_for_api = fingerprint['core_name'] or target_clean[:50]
         sync_all_platforms_task.delay(query_for_api, limit=5)
         sync_triggered = True
-        time.sleep(4) # টাস্ক শেষ হওয়ার জন্য একটু সময় দিন
+        time.sleep(4)
 
-    # ৩. ডাটাবেজ থেকে ক্যান্ডিডেট খোঁজা (উন্নত পদ্ধতি)
-    # টাইটেলের প্রথম ৪টি গুরুত্বপূর্ণ শব্দ নিন
-    search_words = [w for w in target_clean.split() if len(w) > 2][:4]
-    
-    # আমরা OR লজিক ব্যবহার করবো যাতে অন্তত ২টা শব্দ মিললে সে তালিকায় আসে
+    # ৩. ক্যান্ডিডেট খোঁজা — বেশি শব্দ + বড় pool
+    search_words = [w for w in target_clean.split() if len(w) > 2][:6]  # 4 → 6
+
     if search_words:
         word_q = Q()
         for word in search_words:
-            word_q |= Q(title__icontains=word) # OR matching
-        candidates = Product.objects.filter(word_q, is_active=True).only('id', 'title', 'brand')[:150]
+            word_q |= Q(title__icontains=word)
+        candidates = Product.objects.filter(
+            word_q, is_active=True
+        ).only('id', 'title', 'brand')[:300]  # 150 → 300
     else:
         candidates = Product.objects.none()
 
     matched_ids = [product.id]
-    
-    # ৪. ম্যাচিং স্কোর (এক্সেসরিজ ফিল্টারসহ)
+
+    # ৪. ম্যাচিং — threshold একটু কমানো হয়েছে ভাঙা clean-এর জন্য
     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
     target_is_acc = any(w in target_clean.lower() for w in accessory_words)
 
     for cand in candidates:
-        if cand.id == product.id: continue
-        
+        if cand.id == product.id:
+            continue
+
         cand_clean = deep_clean(cand.title)
-        
-        # এক্সেসরিজ বনাম ডিভাইস চেক
+
         if target_is_acc != any(w in cand_clean for w in accessory_words):
             continue
-        
-        # Token Set Ratio ব্যবহার করা হয়েছে যা শব্দের পজিশন উল্টাপাল্টা হলেও ঠিক ধরে ফেলে
+
         score = fuzz.token_set_ratio(target_clean, cand_clean)
-        if score >= 65: # এই স্কোরটি ল্যাপটপ এবং ফোনের জন্য আইডিয়াল
+        if score >= 60:  # 65 → 60, কারণ clean হওয়ার পর score কিছুটা কমে
             matched_ids.append(cand.id)
 
-    # ৫. লিস্টিং ডাটা প্রসেস করা
+    # ৫. লিস্টিং প্রসেস (অপরিবর্তিত)
     listings = ProductListing.objects.filter(
-        product__id__in=matched_ids, 
-        is_available=True, 
+        product__id__in=matched_ids,
+        is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
@@ -1433,9 +1428,10 @@ def compare_prices_api(request, slug):
     prices = []
 
     for l in listings:
-        if l.platform.code in seen_platforms: continue
+        if l.platform.code in seen_platforms:
+            continue
         seen_platforms.add(l.platform.code)
-        
+
         total_p = float(l.get_total_price())
         prices.append(total_p)
 
@@ -1448,7 +1444,7 @@ def compare_prices_api(request, slug):
             'main_image': l.product.main_image,
         })
 
-    # ৬. রেসপন্স
+    # ৬. রেসপন্স (সম্পূর্ণ অপরিবর্তিত)
     return success_response({
         'product': {
             'id': product.id,
