@@ -498,13 +498,16 @@ def _clean_brand(brand: str, title: str) -> str:
         }
         words = title.split()
         brand_words = []
-        for w in words[:4]:
-            clean_w = re.sub(r'[^\w]', '', w)
-            if clean_w.lower() not in skip and len(clean_w) > 2:
+        for w in words[:5]:
+            clean_w = re.sub(r'[^\w®™]', '', w)
+            if not clean_w or clean_w.lower() in skip or len(clean_w) < 2:
+                break 
+            if clean_w[0].isupper() or clean_w[0].isdigit():
                 brand_words.append(w)
-                # ২টা valid word পেলেই থামো
-                if len(brand_words) == 2:
-                    break
+            else:
+                break
+            if len(brand_words) == 3:
+                break
         return ' '.join(brand_words) if brand_words else ''
 
     return ''
