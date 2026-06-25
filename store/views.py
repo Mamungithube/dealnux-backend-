@@ -833,6 +833,16 @@ class OrderViewSet(viewsets.ModelViewSet):
                 except Exception as e:
                     logger.error(f"Stripe Error: {str(e)}")
 
+        try:
+            send_dealnux_email(
+                "Order Confirmed by Buyer - DealNux",
+                order.seller.user.email,
+                "emails/order_confirmed_seller.html",
+                {"order": order, "seller": order.seller}
+            )
+        except Exception as e:
+            print(f"Email error: {e}")
+
         return success_response(None, message="Order Confirmed! Funds released to seller.")
 
     # ── Admin Action: Process refund (Fault Logic) ──

@@ -240,13 +240,15 @@ class SellerProfileAdmin(ModelAdmin):
         seller.is_active = False
         seller.save()
         
-        # ক্লায়েন্ট চেয়েছে ইমেল নোটিফিকেশন (সাসপেন্ড হলে আপিলের সুযোগ আছে)
-        send_mail(
-            "Marketplace Suspended - DealNux",
-            f"Hello {seller.shop_name}, your marketplace access has been suspended. You can appeal this decision.",
-            "noreply@dealnux.com",
-            [seller.user.email],
-        )
+        try:
+            send_dealnux_email(
+                "Marketplace Suspended - DealNux",
+                seller.user.email,
+                "emails/seller_suspended.html",
+                {"seller": seller, "reason": "Violation of DealNux seller policies."}
+            )
+        except Exception as e:
+            print(f"Suspend email error: {e}")
         self.message_user(request, _("Seller suspended and notified via email."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 
@@ -261,14 +263,20 @@ class SellerProfileAdmin(ModelAdmin):
     @action(description=_("Delete Marketplace (Sell No, Buy Yes)"), url_path="deactivate-shop", variant=ActionVariant.DANGER)
     def delete_seller_marketplace(self, request, object_id):
         seller = SellerProfile.objects.get(pk=object_id)
-        # ক্লায়েন্ট বলেছে: সেলার ডিলিট করলে শুধু সেলিং বন্ধ হবে, কেনাকাটা চলবে।
         seller.is_active = False
         seller.shop_name = f"CLOSED - {seller.shop_name}"
         seller.save()
-        # সেলারের প্রোডাক্টগুলো রিজেক্ট করে দেওয়া
-        seller.products.update(status='REJECTED')
         
-        self.message_user(request, _("Marketplace deactivated permanently. User can still purchase items."))
+        try:
+            send_dealnux_email(
+                "Account Reinstated - DealNux",
+                seller.user.email,
+                "emails/seller_reinstated.html",
+                {"seller": seller}
+            )
+        except Exception as e:
+            print(f"Reinstate email error: {e}")
+        self.message_user(request, _("Seller reinstated and notified via email."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 
     @action(description=_("Pause Payout"), url_path="pause", variant=ActionVariant.WARNING)
