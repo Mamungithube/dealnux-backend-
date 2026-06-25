@@ -1902,17 +1902,28 @@ class CartViewSet(viewsets.ModelViewSet):
             return self._error("product_id is required", code=400)
 
         product = None
+        seller_product_obj = None
 
-        # 1. Searching linked_product by SellerProduct id
+        # 1. SellerProduct দিয়ে খোঁজো
         try:
             from store.models import SellerProduct
-            seller_product = SellerProduct.objects.get(
+            seller_product_obj = SellerProduct.objects.get(
                 id=product_id, status='APPROVED')
-            product = seller_product.linked_product
+            product = seller_product_obj.linked_product
         except SellerProduct.DoesNotExist:
             pass
 
-        # 2. Search directly by Product ID (fallback)
+        # 2. linked_product নেই — ensure করার চেষ্টা করো
+        if seller_product_obj and not product:
+            try:
+                seller_product_obj._ensure_linked_records()
+                seller_product_obj.save(
+                    update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
+                product = seller_product_obj.linked_product
+            except Exception:
+                pass
+
+        # 3. তাও না পেলে — Product table এ fallback
         if not product:
             try:
                 product = Product.objects.get(id=product_id)
@@ -1932,7 +1943,6 @@ class CartViewSet(viewsets.ModelViewSet):
         )
 
         serializer = self.get_serializer(cart_item)
-
         return self._success(serializer.data, message="Item added to cart", code=201)
 
     def retrieve(self, request, *args, **kwargs):
