@@ -266,7 +266,7 @@ class SellerProfileAdmin(ModelAdmin):
         seller.is_active = False
         seller.shop_name = f"CLOSED - {seller.shop_name}"
         seller.save()
-        
+
         try:
             send_dealnux_email(
                 "Account Reinstated - DealNux",
@@ -281,7 +281,7 @@ class SellerProfileAdmin(ModelAdmin):
 
     @action(description=_("Pause Payout"), url_path="pause", variant=ActionVariant.WARNING)
     def pause_payout(self, request, object_id):
-        # পে-আউট পজ করার লজিক
+        
         self.message_user(request, _("Payout paused for this seller."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 

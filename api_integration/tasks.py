@@ -12,7 +12,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── Shared Save Helper — No Circular Import─────────────────────────────────
 def _get_save_fn():
     from .db_helpers import save_generic_product_to_db
     return save_generic_product_to_db
@@ -340,7 +339,6 @@ def fix_coupon_flags():
 def hourly_fixed_category_sync():
     from api_integration.models import Category
 
-    # শুধু parent category নিন — child নয়
     categories = list(
         Category.objects.filter(parent__isnull=True).only('name', 'slug')
     )
@@ -368,14 +366,13 @@ def safe_category_sync():
 
     for category in categories:
         try:
-            # ৮টা platform একে একে চালাও, একসাথে না
             for task_fn in [
                 sync_amazon_task, sync_walmart_task, sync_ebay_task,
                 sync_target_task, sync_aliexpress_task, sync_bestbuy_task,
                 sync_sephora_task, sync_wayfair_task,
             ]:
                 task_fn.apply_async(args=[category.name, 10])
-                time.sleep(30)  # প্রতি task এর মাঝে ৩০ সেকেন্ড বিরতি
+                time.sleep(30) 
         except Exception as e:
             logger.error(f"Category sync failed for {category.name}: {e}")
 

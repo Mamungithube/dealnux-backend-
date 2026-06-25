@@ -126,7 +126,7 @@ def product_detail(request, pk):
                         update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
                     product = seller_product.linked_product
                 except Exception:
-                    standalone_seller_product = seller_product  # ✅ early return বাদ
+                    standalone_seller_product = seller_product  
 
             if product:
                 stats = ProductReview.objects.filter(product=seller_product).aggregate(
@@ -145,12 +145,12 @@ def product_detail(request, pk):
                     'review_count': stats['total'],
                 }
             else:
-                standalone_seller_product = seller_product  # ✅ linked product নেই
+                standalone_seller_product = seller_product 
 
     except ImportError:
         pass
 
-    # ✅ standalone SellerProduct — ProductDetailSerializer এর same structure
+    #  standalone SellerProduct — ProductDetailSerializer 
     if standalone_seller_product:
         sp = standalone_seller_product
         from store.models import ProductReview
@@ -217,7 +217,6 @@ def product_detail(request, pk):
         }
         return success_response(data, message="Product details fetched successfully")
 
-    # ── বাকি সব আগের মতো ──────────────────────────────────────────────────
 
     if not product:
         product = Product.objects.filter(id=pk, is_active=True).first()
@@ -1234,47 +1233,172 @@ def product_match_score(title1: str, title2: str) -> float:
 
 # In api_integration/views.py
 
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def compare_prices_api(request, slug):
+#     # 1. Fetch the main product
+#     product = Product.objects.filter(slug=slug, is_active=True).first()
+#     if not product:
+#         return error_response("Product not found", code=404)
+
+#     target_title = clean_display_title(product.title)
+
+#     # 2. Check current retailers count in DB
+#     existing_platforms_count = ProductListing.objects.filter(
+#         product=product,
+#         is_available=True
+#     ).values('platform').distinct().count()
+
+#     sync_triggered = False
+
+#     # 3. Trigger Background Sync if less than 3 retailers exist
+#     cache_key = f"sync_lock_{product.id}"
+#     if existing_platforms_count < 3 and not cache.get(cache_key):
+#         fingerprint = get_product_fingerprint(target_title)
+#         query_for_api = fingerprint['core_name'] or target_title[:50]
+
+#         # শুধু 3টা priority platform, একে একে 60 sec gap এ
+#         priority_tasks = [
+#             sync_amazon_task.s(query_for_api, 3),
+#             sync_ebay_task.s(query_for_api, 3),
+#             sync_walmart_task.s(query_for_api, 3),
+#         ]
+#         for i, task in enumerate(priority_tasks):
+#             task.apply_async(countdown=i * 60)
+
+#         cache.set(cache_key, True, 86400)  # 24 ঘণ্টা lock
+#         sync_triggered = True
+
+#     # 4. Search for matching products in the DB
+#     candidates = Product.objects.filter(
+#         category=product.category,
+#         is_active=True
+#     ).exclude(id=product.id).only('id', 'title', 'brand')
+
+#     matched_ids = [product.id]
+#     THRESHOLD = 75
+
+#     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
+#     target_is_acc = any(w in target_title.lower() for w in accessory_words)
+
+#     for cand in candidates:
+#         cand_title_lower = cand.title.lower()
+#         cand_is_acc = any(w in cand_title_lower for w in accessory_words)
+#         if target_is_acc != cand_is_acc:
+#             continue
+#         score = calculate_match_score(product.title, cand.title)
+#         if score >= THRESHOLD:
+#             matched_ids.append(cand.id)
+
+#     # 5. Fetch all listings
+#     listings = ProductListing.objects.filter(
+#         product__id__in=matched_ids,
+#         is_available=True,
+#         price__gt=0
+#     ).select_related('platform', 'product').order_by('price')
+
+#     # 6. Format comparison list
+#     comparison_list = []
+#     seen_urls = set()
+#     prices = []
+
+#     for listing in listings:
+#         if listing.external_url in seen_urls:
+#             continue
+#         seen_urls.add(listing.external_url)
+
+#         total_p = float(listing.get_total_price())
+#         prices.append(total_p)
+
+#         comparison_list.append({
+#             'platform': listing.platform.name,
+#             'platform_code': listing.platform.code,
+#             'listing_id': listing.external_id,
+#             'clean_title': clean_display_title(listing.product.title),
+#             'price': float(listing.price),
+#             'total_price': total_p,
+#             'url': listing.external_url,
+#             'main_image': listing.product.main_image,
+#             'seller': listing.seller_username or "Verified Store",
+#         })
+
+#     # 7. Price Analysis
+#     analysis = {
+#         'lowest_price': min(prices) if prices else 0,
+#         'highest_price': max(prices) if prices else 0,
+#         'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+#     }
+
+#     return success_response({
+#         'product': {
+#             'id': product.id,
+#             'title': target_title,
+#             'slug': product.slug,
+#             'brand': product.brand,
+#             'main_image': product.main_image,
+#         },
+#         'meta': {
+#             'total_deals_found': len(comparison_list),
+#             'sync_triggered': sync_triggered,
+#             'message': "Searching for more deals..." if sync_triggered else "Results updated."
+#         },
+#         'price_analysis': analysis,
+#         'price_comparison': comparison_list,
+#         'best_deal': comparison_list[0] if comparison_list else None
+#     }, message="Price comparison fetched successfully")
+
+
+# In api_integration/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    # 1. Fetch the main product
+    # 1. মেইন প্রোডাক্ট আনা
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
-
-    # 2. Check current retailers count in DB
-    existing_platforms_count = ProductListing.objects.filter(
-        product=product,
-        is_available=True
-    ).values('platform').distinct().count()
+    
+    # 2. বর্তমান ডিল সংখ্যা চেক করা
+    existing_platforms = ProductListing.objects.filter(
+        product=product, is_available=True
+    ).values_list('platform__code', flat=True).distinct()
 
     sync_triggered = False
 
-    # 3. Trigger Background Sync if less than 3 retailers exist
-    cache_key = f"sync_lock_{product.id}"
-    if existing_platforms_count < 3 and not cache.get(cache_key):
+    # 3. স্মার্ট সিঙ্ক ট্রিগার (৬০ সেকেন্ড গ্যাপ কমিয়ে ২ সেকেন্ড করা হয়েছে)
+    cache_key = f"sync_lock_v4_{product.id}"
+    if len(existing_platforms) < 3 and not cache.get(cache_key):
         fingerprint = get_product_fingerprint(target_title)
         query_for_api = fingerprint['core_name'] or target_title[:50]
 
-        # শুধু 3টা priority platform, একে একে 60 sec gap এ
+        # ৬০ সেকেন্ড গ্যাপ অনেক বেশি। আমরা ৫ সেকেন্ড গ্যাপে ৩টি টাস্ক পাঠাবো।
+        # এতে সার্ভার লোডও হবে না, আবার ইউজার ৫-১০ সেকেন্ডের মধ্যে ডাটা পাবে।
         priority_tasks = [
             sync_amazon_task.s(query_for_api, 3),
             sync_ebay_task.s(query_for_api, 3),
             sync_walmart_task.s(query_for_api, 3),
         ]
         for i, task in enumerate(priority_tasks):
-            task.apply_async(countdown=i * 60)
+            # গ্যাপ কমিয়ে ৫ সেকেন্ড করা হয়েছে
+            task.apply_async(countdown=i * 5)
 
-        cache.set(cache_key, True, 86400)  # 24 ঘণ্টা lock
+        cache.set(cache_key, True, 3600) # ১ ঘণ্টা লক (সার্ভার বাঁচাতে)
         sync_triggered = True
 
-    # 4. Search for matching products in the DB
-    candidates = Product.objects.filter(
-        category=product.category,
-        is_active=True
-    ).exclude(id=product.id).only('id', 'title', 'brand')
+    # 4. ম্যাচিং লজিক অপ্টিমাইজেশন (এটাই আপনার CPU বাঁচাবে)
+    # প্রথমে ডাটাবেজ লেভেলে টাইটেলের কিছু কমন শব্দ দিয়ে ফিল্টার করে ক্যান্ডিডেট ছোট করুন
+    core_words = target_title.split()[:2]
+    candidate_filter = Q(category=product.category, is_active=True)
+    if core_words:
+        word_q = Q()
+        for w in core_words:
+            if len(w) > 2: word_q &= Q(title__icontains=w)
+        candidate_filter &= word_q
+
+    # শুধু সম্ভাব্য ২০-৩০টি প্রডাক্টের ওপর NLP লজিক চালান (হাজার হাজার প্রডাক্টের ওপর নয়)
+    candidates = Product.objects.filter(candidate_filter).exclude(id=product.id).only('id', 'title', 'brand')[:30]
 
     matched_ids = [product.id]
     THRESHOLD = 75
@@ -1283,71 +1407,64 @@ def compare_prices_api(request, slug):
     target_is_acc = any(w in target_title.lower() for w in accessory_words)
 
     for cand in candidates:
-        cand_title_lower = cand.title.lower()
-        cand_is_acc = any(w in cand_title_lower for w in accessory_words)
-        if target_is_acc != cand_is_acc:
+        if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
             continue
-        score = calculate_match_score(product.title, cand.title)
+        
+        # RapidFuzz (fuzz.token_set_ratio) ব্যবহার করুন যা Spacy-র চেয়ে অনেক ফাস্ট
+        score = fuzz.token_set_ratio(product.title, cand.title)
         if score >= THRESHOLD:
             matched_ids.append(cand.id)
 
-    # 5. Fetch all listings
+    # 5. ডাটা রিট্রিভ করা
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids,
         is_available=True,
         price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    # 6. Format comparison list
+    # 6. লিস্ট ফরম্যাটিং
     comparison_list = []
     seen_urls = set()
     prices = []
 
     for listing in listings:
-        if listing.external_url in seen_urls:
-            continue
+        if listing.external_url in seen_urls: continue
         seen_urls.add(listing.external_url)
-
+        
         total_p = float(listing.get_total_price())
         prices.append(total_p)
 
         comparison_list.append({
             'platform': listing.platform.name,
             'platform_code': listing.platform.code,
-            'listing_id': listing.external_id,
-            'clean_title': clean_display_title(listing.product.title),
             'price': float(listing.price),
             'total_price': total_p,
             'url': listing.external_url,
             'main_image': listing.product.main_image,
-            'seller': listing.seller_username or "Verified Store",
+            'seller': listing.seller_username or "Verified Retailer",
         })
 
-    # 7. Price Analysis
-    analysis = {
-        'lowest_price': min(prices) if prices else 0,
-        'highest_price': max(prices) if prices else 0,
-        'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
-    }
-
+    # 7. রেসপন্স পাঠানো
     return success_response({
         'product': {
             'id': product.id,
             'title': target_title,
-            'slug': product.slug,
             'brand': product.brand,
             'main_image': product.main_image,
         },
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
-            'message': "Searching for more deals..." if sync_triggered else "Results updated."
+            'message': "Diving deep for more deals..." if sync_triggered else "Latest deals loaded."
         },
-        'price_analysis': analysis,
+        'price_analysis': {
+            'lowest_price': min(prices) if prices else 0,
+            'highest_price': max(prices) if prices else 0,
+            'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+        },
         'price_comparison': comparison_list,
         'best_deal': comparison_list[0] if comparison_list else None
-    }, message="Price comparison fetched successfully")
-
+    })
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProductListing.objects.filter(
@@ -2161,15 +2278,12 @@ class DashboardSavingsView(APIView):
     def get(self, request):
         user = request.user
 
-        # ১. আগের মতোই রিসেন্ট ৫টি অ্যাক্টিভিটি নেওয়া হচ্ছে
         recent = SavingsActivity.objects.filter(
             user=user
         ).order_by('-created_at')[:5]
 
-        # ২. গ্রাফের জন্য গত ৩০ দিনের ডাটা ক্যালকুলেশন (CPU অপ্টিমাইজড)
         thirty_days_ago = timezone.now().date() - timedelta(days=30)
 
-        # ডাটাবেজ থেকে প্রতিদিনের টোটাল সেভিংস এগ্রিগেশন
         trend_data = SavingsActivity.objects.filter(
             user=user,
             created_at__date__gte=thirty_days_ago
@@ -2179,24 +2293,21 @@ class DashboardSavingsView(APIView):
             total=Sum('saved_amount')
         ).order_by('day')
 
-        # ৩. ডাটা ফরম্যাটিং (গ্রাফের জন্য ডিকশনারি তৈরি)
-        # যদি কোনো দিন সেভিংস না থাকে, ফ্রন্টএন্ডে ০ দেখানোর জন্য এটি করা হয়েছে
         trend_map = {item['day'].strftime(
             '%Y-%m-%d'): float(item['total']) for item in trend_data}
 
         graph_list = []
-        for i in range(30, -1, -1):  # গত ৩০ দিন থেকে আজ পর্যন্ত
+        for i in range(30, -1, -1): 
             date_str = (timezone.now().date() -
                         timedelta(days=i)).strftime('%Y-%m-%d')
             graph_list.append({
                 "date": date_str,
-                "amount": trend_map.get(date_str, 0.0)  # ডাটা না থাকলে ০.০
+                "amount": trend_map.get(date_str, 0.0)  
             })
 
-        # ৪. আপনার অরিজিনাল রেসপন্স ফরম্যাট বজায় রাখা হয়েছে
         data = {
             "total_lifetime_savings": float(getattr(user, 'total_lifetime_savings', 0.0)),
-            "savings_trend": graph_list,  # ✅ নতুন: গ্রাফের জন্য তারিখ অনুযায়ী ডাটা
+            "savings_trend": graph_list,  
             "recent_activity": [
                 {
                     "title": a.title,

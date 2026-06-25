@@ -297,7 +297,7 @@ class AmazonService:
             breadcrumb = details.get('category_path') or []
             if isinstance(breadcrumb, list) and breadcrumb:
                 names = [node.get('name', '') for node in breadcrumb if node.get('name')]
-                names.reverse()  # leaf (most specific) আগে, root (general) পরে
+                names.reverse() 
                 return ' > '.join(names)
             cat = details.get('category')
             if isinstance(cat, dict) and cat.get('name'):
