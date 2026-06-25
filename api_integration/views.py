@@ -104,7 +104,7 @@ def token_similarity(title1, title2):
 def product_detail(request, pk):
     product = None
     seller_product_data = None
-    standalone_seller_product = None  # ← নতুন
+    standalone_seller_product = None
 
     try:
         from store.models import SellerProduct, ProductReview
@@ -126,7 +126,7 @@ def product_detail(request, pk):
                         update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
                     product = seller_product.linked_product
                 except Exception:
-                    standalone_seller_product = seller_product  # ← early return এর বদলে
+                    standalone_seller_product = seller_product  # ✅ early return বাদ
 
             if product:
                 stats = ProductReview.objects.filter(product=seller_product).aggregate(
@@ -144,10 +144,13 @@ def product_detail(request, pk):
                     'rating': round(stats['avg'] or 0.0, 1),
                     'review_count': stats['total'],
                 }
+            else:
+                standalone_seller_product = seller_product  # ✅ linked product নেই
+
     except ImportError:
         pass
 
-    # ── standalone SellerProduct → ProductDetailSerializer এর মতো structure ──
+    # ✅ standalone SellerProduct — ProductDetailSerializer এর same structure
     if standalone_seller_product:
         sp = standalone_seller_product
         from store.models import ProductReview
@@ -158,20 +161,13 @@ def product_detail(request, pk):
         )
         main_image = request.build_absolute_uri(sp.main_image.url) if sp.main_image else None
 
-        # Category — sp.category is FK to fetch.models.Category
-        category_id = None
-        category_name = sp.category_name or ''
-        if hasattr(sp, 'category') and sp.category:
-            category_id = sp.category.id
-
         data = {
-            # ── ProductDetailSerializer এর সব fields ──
             'id': sp.id,
             'title': sp.title,
             'slug': '',
             'description': sp.description or '',
-            'category': category_id,
-            'category_name': category_name,
+            'category': sp.category.id if hasattr(sp, 'category') and sp.category else None,
+            'category_name': sp.category_name or '',
             'brand': sp.brand or '',
             'main_image': main_image,
             'images': [],
@@ -191,14 +187,12 @@ def product_detail(request, pk):
             'is_best_seller': False,
             'rating': round(stats['avg'] or 0.0, 1),
             'review_count': stats['total'],
-            # ── seller-specific extra fields (data.update এর মতো) ──
             'original_price': str(sp.original_price) if sp.original_price else None,
             'currency': sp.currency,
             'condition': sp.condition,
             'seller_shop': sp.seller.shop_name,
             'seller_logo': None,
             'related_products': [],
-            # ── listings array — ProductListingSerializer এর same structure ──
             'listings': [
                 {
                     'id': sp.id,
@@ -223,7 +217,8 @@ def product_detail(request, pk):
         }
         return success_response(data, message="Product details fetched successfully")
 
-    # ── বাকি সব হুবহু আগের মতো — কোনো change নেই ──
+    # ── বাকি সব আগের মতো ──────────────────────────────────────────────────
+
     if not product:
         product = Product.objects.filter(id=pk, is_active=True).first()
 
