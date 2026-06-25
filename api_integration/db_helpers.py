@@ -447,34 +447,65 @@ _BRAND_NOISE = [
     'restored', 'renewed', 'refurbished', 'pre-owned', 'used',
     'new listing', 'new', 'sealed', 'oem', 'generic', 'unbranded',
     'lot of', 'pack of', 'set of', '2 pack', '3 pack', '4 pack',
-    'lot', 'bundle', 'combo', 'kit',
+    'lot', 'bundle', 'combo', 'kit', 'original', 'latest',
 ]
 
-def _clean_brand(brand: str, title: str) -> str:
 
+_NOT_A_BRAND = {
+    'racing', 'simulator', 'cockpit', 'gaming', 'desktop', 'laptop',
+    'wireless', 'bluetooth', 'portable', 'digital', 'smart', 'mini',
+    'professional', 'premium', 'luxury', 'deluxe', 'heavy', 'duty',
+    'latest', 'dual', 'triple', 'original', 'genuine', 'official',
+    'replacement', 'compatible', 'universal', 'adjustable', 'folding',
+    'upgraded', 'improved', 'advanced', 'automatic', 'manual',
+}
+
+def _clean_brand(brand: str, title: str) -> str:
+    import re
     if not brand:
         brand = ''
 
     brand_lower = brand.lower().strip()
 
+  
     cleaned = brand_lower
     for noise in _BRAND_NOISE:
         cleaned = re.sub(r'\b' + re.escape(noise) + r'\b', '', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
 
-    if cleaned and len(cleaned) > 2:
+    
+    cleaned_words = cleaned.split()
+ 
+    valid_words = [w for w in cleaned_words if w.lower() not in _NOT_A_BRAND and len(w) > 1]
+
+    if valid_words and len(' '.join(valid_words)) > 2:
+  
         title_words = title.split()
+        brand_candidate = ' '.join(valid_words)
         for i in range(1, min(4, len(title_words) + 1)):
             prefix = ' '.join(title_words[:i]).lower()
-            if cleaned in prefix or prefix in cleaned:
+            if brand_candidate in prefix or prefix in brand_candidate:
                 return ' '.join(title_words[:i])
-        return cleaned.title()
+        return brand_candidate.title()
 
     if title:
-        skip = {'new', 'the', 'a', 'an', 'for', 'restored', 'renewed',
-                'refurbished', 'sealed', 'lot', 'pack', 'set', 'bundle'}
-        words = [w for w in title.split() if w.lower() not in skip and len(w) > 2]
-        return ' '.join(words[:2]) if words else ''
+        skip = {
+            'new', 'the', 'a', 'an', 'for', 'restored', 'renewed',
+            'refurbished', 'sealed', 'lot', 'pack', 'set', 'bundle',
+            'original', 'latest', 'racing', 'simulator', 'gaming',
+            'desktop', 'laptop', 'wireless', 'bluetooth', 'portable',
+            'digital', 'smart', 'professional', 'premium', 'upgraded',
+        }
+        words = title.split()
+        brand_words = []
+        for w in words[:4]:
+            clean_w = re.sub(r'[^\w]', '', w)
+            if clean_w.lower() not in skip and len(clean_w) > 2:
+                brand_words.append(w)
+                # ২টা valid word পেলেই থামো
+                if len(brand_words) == 2:
+                    break
+        return ' '.join(brand_words) if brand_words else ''
 
     return ''
 
