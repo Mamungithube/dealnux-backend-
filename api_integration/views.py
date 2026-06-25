@@ -1641,7 +1641,7 @@ def smart_search(request):
 
     title_q = Q()
     for term in search_terms:
-        title_q |= Q(title__icontains=term)
+        title_q &= Q(title__icontains=term)
 
     existing_products = Product.objects.filter(
         title_q,
