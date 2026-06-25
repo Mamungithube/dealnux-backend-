@@ -1229,9 +1229,7 @@ def product_match_score(title1: str, title2: str) -> float:
     return round((jaccard * 0.40) + (token_sort * 0.35) + (partial * 0.25), 1)
 
 
-# In api_integration/views.py
 
-# In api_integration/views.py
 
 # @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
@@ -1350,14 +1348,16 @@ def product_match_score(title1: str, title2: str) -> float:
 
 # In api_integration/views.py
 
+# In api_integration/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
     """
     In English: 
-    - Reverted to BROAD title-based matching.
-    - Removed strict category constraints (fixes the issue where same product is in different category).
-    - Uses SQL 'icontains' to find any similar title in the entire DB.
+    - Aggressive noise removal (Restored, New, etc.) before matching.
+    - Uses OR matching for keywords to catch products regardless of their category.
+    - Increased candidate pool to ensure all retailers are found.
     """
     import time
     
@@ -1365,47 +1365,63 @@ def compare_prices_api(request, slug):
     if not product:
         return error_response("Product not found", code=404)
 
-    target_title = clean_display_title(product.title)
+    # ১. টাইটেল থেকে জঞ্জাল সরানো (Restored, Renewed, New ইত্যাদি)
+    def deep_clean(text):
+        noise = ['restored', 'renewed', 'refurbished', 'pre-owned', 'new', 'used', 'excellent', 'mint', 'condition']
+        text = text.lower()
+        for word in noise:
+            text = text.replace(word, '')
+        return re.sub(r'\s+', ' ', text).strip()
+
+    target_clean = deep_clean(product.title)
     
-    # --- 1. Background Sync (Keeping this to fetch new data) ---
+    # ২. অটো-সিঙ্ক (যদি ডাটাবেজে ডিল কম থাকে)
     existing_platforms = ProductListing.objects.filter(
         product=product, is_available=True
     ).values_list('platform__code', flat=True).distinct()
 
     sync_triggered = False
     if len(existing_platforms) < 3:
-        fingerprint = get_product_fingerprint(target_title)
-        query_for_api = fingerprint['core_name'] or target_title[:50]
+        fingerprint = get_product_fingerprint(product.title)
+        query_for_api = fingerprint['core_name'] or target_clean[:50]
         sync_all_platforms_task.delay(query_for_api, limit=5)
         sync_triggered = True
-        time.sleep(3.5) # Wait for initial data to land
+        time.sleep(4) # টাস্ক শেষ হওয়ার জন্য একটু সময় দিন
 
-    # --- 2. THE FIX: Broad Search across the WHOLE Database ---
-    # We take the first 3 important words and search in ALL categories
-    search_words = [w for w in target_title.split() if len(w) > 2][:3]
+    # ৩. ডাটাবেজ থেকে ক্যান্ডিডেট খোঁজা (উন্নত পদ্ধতি)
+    # টাইটেলের প্রথম ৪টি গুরুত্বপূর্ণ শব্দ নিন
+    search_words = [w for w in target_clean.split() if len(w) > 2][:4]
     
-    db_query = Q(is_active=True)
+    # আমরা OR লজিক ব্যবহার করবো যাতে অন্তত ২টা শব্দ মিললে সে তালিকায় আসে
     if search_words:
         word_q = Q()
         for word in search_words:
-            word_q &= Q(title__icontains=word) # Must contain these words
-        db_query &= word_q
-
-    # Search candidates everywhere, ignore category (fixes the 'Storage Device' vs 'Laptop' issue)
-    candidates = Product.objects.filter(db_query).only('id', 'title', 'brand')[:100]
+            word_q |= Q(title__icontains=word) # OR matching
+        candidates = Product.objects.filter(word_q, is_active=True).only('id', 'title', 'brand')[:150]
+    else:
+        candidates = Product.objects.none()
 
     matched_ids = [product.id]
     
-    # 3. Simple Token Matching (Relaxed Threshold)
+    # ৪. ম্যাচিং স্কোর (এক্সেসরিজ ফিল্টারসহ)
+    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
+    target_is_acc = any(w in target_clean.lower() for w in accessory_words)
+
     for cand in candidates:
         if cand.id == product.id: continue
         
-        # Use simple ratio - if titles are 60% similar, we link them
-        score = fuzz.token_set_ratio(target_title, cand.title)
-        if score >= 60: 
+        cand_clean = deep_clean(cand.title)
+        
+        # এক্সেসরিজ বনাম ডিভাইস চেক
+        if target_is_acc != any(w in cand_clean for w in accessory_words):
+            continue
+        
+        # Token Set Ratio ব্যবহার করা হয়েছে যা শব্দের পজিশন উল্টাপাল্টা হলেও ঠিক ধরে ফেলে
+        score = fuzz.token_set_ratio(target_clean, cand_clean)
+        if score >= 65: # এই স্কোরটি ল্যাপটপ এবং ফোনের জন্য আইডিয়াল
             matched_ids.append(cand.id)
 
-    # 4. Fetch All Listings for these IDs
+    # ৫. লিস্টিং ডাটা প্রসেস করা
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids, 
         is_available=True, 
@@ -1417,7 +1433,6 @@ def compare_prices_api(request, slug):
     prices = []
 
     for l in listings:
-        # One best deal per store
         if l.platform.code in seen_platforms: continue
         seen_platforms.add(l.platform.code)
         
@@ -1431,29 +1446,24 @@ def compare_prices_api(request, slug):
             'total_price': total_p,
             'url': l.external_url,
             'main_image': l.product.main_image,
-            'seller': l.seller_username or "Verified Store",
         })
 
-    # 5. Build Response
-    analysis = {
-        'lowest_price': min(prices) if prices else 0,
-        'highest_price': max(prices) if prices else 0,
-        'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
-    }
-
+    # ৬. রেসপন্স
     return success_response({
         'product': {
             'id': product.id,
-            'title': target_title,
-            'brand': product.brand,
+            'title': clean_display_title(product.title),
             'main_image': product.main_image,
-            'slug': product.slug
         },
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
         },
-        'price_analysis': analysis,
+        'price_analysis': {
+            'lowest_price': min(prices) if prices else 0,
+            'highest_price': max(prices) if prices else 0,
+            'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+        },
         'price_comparison': comparison_list,
         'best_deal': comparison_list[0] if comparison_list else None
     })
