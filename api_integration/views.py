@@ -1350,66 +1350,60 @@ def product_match_score(title1: str, title2: str) -> float:
 
 # In api_integration/views.py
 
+# In api_integration/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    # 1. মেইন প্রোডাক্টটি ধরুন
+    # 1. মেইন প্রোডাক্ট আনা
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
     
-    # 2. বর্তমান দোকানের সংখ্যা চেক করুন
-    platforms_in_db = ProductListing.objects.filter(
+    # 2. বর্তমান দোকানের সংখ্যা চেক
+    platforms_count = ProductListing.objects.filter(
         product=product, is_available=True
-    ).values_list('platform__code', flat=True).distinct()
+    ).values('platform').distinct().count()
 
     sync_triggered = False
 
-    # 3. Parallel Sync (টাইম কমানোর মেইন জায়গা)
-    cache_key = f"sync_parallel_lock_{product.id}"
-    if len(platforms_in_db) < 3 and not cache.get(cache_key):
+    # 3. Parallel Background Sync (Fast)
+    cache_key = f"sync_lock_final_{product.id}"
+    if platforms_count < 3 and not cache.get(cache_key):
         fingerprint = get_product_fingerprint(target_title)
         query_for_api = fingerprint['core_name'] or target_title[:50]
 
-        # এখানে আমরা কোনো 'countdown' বা ওয়েট দেবো না। 
-        # সব প্ল্যাটফর্ম একসাথে সার্চ শুরু করবে (Parallel execution)
-        priority_tasks = [
-            sync_amazon_task.delay(query_for_api, limit=3),
-            sync_ebay_task.delay(query_for_api, limit=3),
-            sync_walmart_task.delay(query_for_api, limit=3),
-        ]
+        # ৩টি প্ল্যাটফর্ম একসাথে কল হবে (কোনো গ্যাপ ছাড়া)
+        sync_amazon_task.delay(query_for_api, limit=3)
+        sync_ebay_task.delay(query_for_api, limit=3)
+        sync_walmart_task.delay(query_for_api, limit=3)
         
-        # ১ ঘণ্টার জন্য লক করুন যাতে বারবার কল না হয়
-        cache.set(cache_key, True, 3600)
+        cache.set(cache_key, True, 1800) # ১৫ মিনিটের জন্য লক
         sync_triggered = True
 
-    # 4. DB Candidate Optimization (সার্ভার লোড ফিক্স)
-    # প্রডাক্টের নামের প্রথম ২টি শব্দ দিয়ে ডাটাবেজে ক্যান্ডিডেট ছোট করুন (SQL Level)
-    first_two_words = " ".join(target_title.split()[:2])
+    # 4. DB Candidate Filtering (Performance Fix)
+    first_word = target_title.split()[0] if target_title.split() else ""
     candidates = Product.objects.filter(
         category=product.category, 
         is_active=True,
-        title__icontains=first_two_words
-    ).exclude(id=product.id).only('id', 'title', 'brand')[:20] # মাত্র ২০টি আইটেম চেক করবে
+        title__icontains=first_word
+    ).exclude(id=product.id).only('id', 'title', 'brand')[:30]
 
     matched_ids = [product.id]
     
-    # এক্সেসরিজ ফিল্টার
+    # 5. Fast Matching with RapidFuzz
     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
     target_is_acc = any(w in target_title.lower() for w in accessory_words)
 
-    # দ্রুত ম্যাচিং লজিক
     for cand in candidates:
         if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
             continue
-        
-        # RapidFuzz ব্যবহার করা হয়েছে যা Spacy-র চেয়ে ১০০ গুণ ফাস্ট
-        if fuzz.token_set_ratio(product.title, cand.title) >= 70: 
+        if fuzz.token_set_ratio(product.title, cand.title) >= 70:
             matched_ids.append(cand.id)
 
-    # 5. ডাটা রিটার্ন করা
+    # 6. Fetching Listings
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids, is_available=True, price__gt=0
     ).select_related('platform', 'product').order_by('price')
@@ -1421,23 +1415,45 @@ def compare_prices_api(request, slug):
     for l in listings:
         if l.external_url in seen_urls: continue
         seen_urls.add(l.external_url)
-        prices.append(float(l.get_total_price()))
+        
+        total_p = float(l.get_total_price())
+        prices.append(total_p)
+
         comparison_list.append({
             'platform': l.platform.name,
+            'platform_code': l.platform.code,
+            'clean_title': clean_display_title(l.product.title),
             'price': float(l.price),
-            'total_price': float(l.get_total_price()),
+            'total_price': total_p,
             'url': l.external_url,
             'main_image': l.product.main_image,
+            'seller': l.seller_username or "Verified Retailer",
         })
 
+    # 7. Price Analysis (এটি ফ্রন্টএন্ডের জন্য অত্যন্ত জরুরি)
+    analysis = {
+        'lowest_price': min(prices) if prices else 0,
+        'highest_price': max(prices) if prices else 0,
+        'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+    }
+
+    # 8. Final Response (সবগুলো Key ফিরিয়ে আনা হয়েছে)
     return success_response({
-        'product': {'id': product.id, 'title': target_title},
+        'product': {
+            'id': product.id,
+            'title': target_title,
+            'brand': product.brand,
+            'main_image': product.main_image,
+            'slug': product.slug
+        },
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
-            'message': "Diving into all platforms..." if sync_triggered else "Loaded."
+            'message': "Searching for more deals in background..." if sync_triggered else "Latest deals retrieved."
         },
+        'price_analysis': analysis, # ফ্রন্টএন্ড এটি রেন্ডার করে
         'price_comparison': comparison_list,
+        'best_deal': comparison_list[0] if comparison_list else None # প্রথম আইটেমটিই বেস্ট ডিল
     })
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
