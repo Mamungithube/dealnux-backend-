@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils.text import slugify
 from django.db.models import Q
 from .product_matcher import calculate_match_score
-
+import re
 logger = logging.getLogger(__name__)
 
 _CATEGORY_CACHE = None
@@ -440,6 +440,44 @@ def _resolve_category(category_path, title, cache):
 
     return None
 
+# db_helpers.py তে _find_matching_product এর উপরে এই function যোগ করো
+
+
+_BRAND_NOISE = [
+    'restored', 'renewed', 'refurbished', 'pre-owned', 'used',
+    'new listing', 'new', 'sealed', 'oem', 'generic', 'unbranded',
+    'lot of', 'pack of', 'set of', '2 pack', '3 pack', '4 pack',
+    'lot', 'bundle', 'combo', 'kit',
+]
+
+def _clean_brand(brand: str, title: str) -> str:
+
+    if not brand:
+        brand = ''
+
+    brand_lower = brand.lower().strip()
+
+    cleaned = brand_lower
+    for noise in _BRAND_NOISE:
+        cleaned = re.sub(r'\b' + re.escape(noise) + r'\b', '', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+    if cleaned and len(cleaned) > 2:
+        title_words = title.split()
+        for i in range(1, min(4, len(title_words) + 1)):
+            prefix = ' '.join(title_words[:i]).lower()
+            if cleaned in prefix or prefix in cleaned:
+                return ' '.join(title_words[:i])
+        return cleaned.title()
+
+    if title:
+        skip = {'new', 'the', 'a', 'an', 'for', 'restored', 'renewed',
+                'refurbished', 'sealed', 'lot', 'pack', 'set', 'bundle'}
+        words = [w for w in title.split() if w.lower() not in skip and len(w) > 2]
+        return ' '.join(words[:2]) if words else ''
+
+    return ''
+
 
 def _find_matching_product(title, brand, gtin, asin):
     from .models import Product
@@ -585,12 +623,9 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
     if not is_valid_usd_price(product_data.get('_price_raw', ''), price_val):
         return None, None, False
 
-    brand = (product_data.get('brand') or '').strip()
+    brand = _clean_brand((product_data.get('brand') or ''), title)
     gtin = (product_data.get('gtin') or '').strip() or None
     asin = (product_data.get('asin') or '').strip() or None
-
-    if not brand and title:
-        brand = ' '.join(title.split()[:2])
 
     if all_categories is None:
         all_categories = list(Category.objects.all())
