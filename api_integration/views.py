@@ -1350,40 +1350,51 @@ def product_match_score(title1: str, title2: str) -> float:
 
 # In api_integration/views.py
 
-# In api_integration/views.py
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    # 1. মেইন প্রোডাক্ট আনা
+    """
+    In English: 
+    - Fetches the product comparison.
+    - If retailers are missing, triggers sync and WAITS for 3 seconds before responding.
+    - Ensures each platform (Amazon, eBay, etc.) shows only the best price to avoid duplicates.
+    """
+    import time
+    
+    # 1. Fetch the target product
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
     
-    # 2. বর্তমান দোকানের সংখ্যা চেক
-    platforms_count = ProductListing.objects.filter(
+    # 2. Check how many distinct retailers we currently have in DB
+    existing_platforms = ProductListing.objects.filter(
         product=product, is_available=True
-    ).values('platform').distinct().count()
+    ).values_list('platform__code', flat=True).distinct()
 
     sync_triggered = False
+    cache_key = f"sync_v6_lock_{product.id}"
 
-    # 3. Parallel Background Sync (Fast)
-    cache_key = f"sync_lock_final_{product.id}"
-    if platforms_count < 3 and not cache.get(cache_key):
+    # 3. Trigger Sync and WAIT if data is insufficient (less than 3 platforms)
+    if len(existing_platforms) < 3 and not cache.get(cache_key):
         fingerprint = get_product_fingerprint(target_title)
         query_for_api = fingerprint['core_name'] or target_title[:50]
 
-        # ৩টি প্ল্যাটফর্ম একসাথে কল হবে (কোনো গ্যাপ ছাড়া)
+        # Trigger Parallel Tasks
         sync_amazon_task.delay(query_for_api, limit=3)
         sync_ebay_task.delay(query_for_api, limit=3)
         sync_walmart_task.delay(query_for_api, limit=3)
         
-        cache.set(cache_key, True, 1800) # ১৫ মিনিটের জন্য লক
+        # Lock for 15 minutes to save API costs
+        cache.set(cache_key, True, 900) 
         sync_triggered = True
 
-    # 4. DB Candidate Filtering (Performance Fix)
+        # CRITICAL: Wait for Celery worker to finish fetching at least one result
+        # This solves the "First hit 1 result, Second hit 2 results" problem.
+        time.sleep(3.5)
+
+    # 4. Find matching products in DB (Optimized query)
     first_word = target_title.split()[0] if target_title.split() else ""
     candidates = Product.objects.filter(
         category=product.category, 
@@ -1393,28 +1404,33 @@ def compare_prices_api(request, slug):
 
     matched_ids = [product.id]
     
-    # 5. Fast Matching with RapidFuzz
-    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
+    # Strict matching parameters
+    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
     target_is_acc = any(w in target_title.lower() for w in accessory_words)
 
     for cand in candidates:
         if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
             continue
-        if fuzz.token_set_ratio(product.title, cand.title) >= 70:
+        # Use RapidFuzz for speed
+        if fuzz.token_set_ratio(product.title, cand.title) >= 72:
             matched_ids.append(cand.id)
 
-    # 6. Fetching Listings
+    # 5. Fetch and Format results
     listings = ProductListing.objects.filter(
-        product__id__in=matched_ids, is_available=True, price__gt=0
+        product__id__in=matched_ids, 
+        is_available=True, 
+        price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
     comparison_list = []
-    seen_urls = set()
+    seen_platforms = set()
     prices = []
 
     for l in listings:
-        if l.external_url in seen_urls: continue
-        seen_urls.add(l.external_url)
+        # DEDUPLICATION: Only show the cheapest deal PER platform
+        # Example: If Amazon has 3 deals, only the cheapest one is added.
+        if l.platform.code in seen_platforms: continue
+        seen_platforms.add(l.platform.code)
         
         total_p = float(l.get_total_price())
         prices.append(total_p)
@@ -1430,14 +1446,13 @@ def compare_prices_api(request, slug):
             'seller': l.seller_username or "Verified Retailer",
         })
 
-    # 7. Price Analysis (এটি ফ্রন্টএন্ডের জন্য অত্যন্ত জরুরি)
+    # 6. Prepare Response
     analysis = {
         'lowest_price': min(prices) if prices else 0,
         'highest_price': max(prices) if prices else 0,
         'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
     }
 
-    # 8. Final Response (সবগুলো Key ফিরিয়ে আনা হয়েছে)
     return success_response({
         'product': {
             'id': product.id,
@@ -1449,11 +1464,11 @@ def compare_prices_api(request, slug):
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
-            'message': "Searching for more deals in background..." if sync_triggered else "Latest deals retrieved."
+            'message': "Latest deals retrieved from all platforms."
         },
-        'price_analysis': analysis, # ফ্রন্টএন্ড এটি রেন্ডার করে
+        'price_analysis': analysis,
         'price_comparison': comparison_list,
-        'best_deal': comparison_list[0] if comparison_list else None # প্রথম আইটেমটিই বেস্ট ডিল
+        'best_deal': comparison_list[0] if comparison_list else None
     })
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
