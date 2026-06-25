@@ -1902,28 +1902,47 @@ class CartViewSet(viewsets.ModelViewSet):
             return self._error("product_id is required", code=400)
 
         product = None
-        seller_product_obj = None
 
         # 1. SellerProduct দিয়ে খোঁজো
         try:
             from store.models import SellerProduct
+            from api_integration.models import Product, Category
+            from django.utils.text import slugify
+            import uuid
+
             seller_product_obj = SellerProduct.objects.get(
                 id=product_id, status='APPROVED')
             product = seller_product_obj.linked_product
+
+            # linked_product নেই — নতুন Product বানিয়ে link করো
+            if not product:
+                # category match করো
+                category = None
+                if seller_product_obj.category:
+                    category = seller_product_obj.category  # already a Category FK? check করো
+                
+                slug = slugify(seller_product_obj.title)[:490]
+                # slug unique হতে হবে
+                if Product.objects.filter(slug=slug).exists():
+                    slug = f"{slug}-{str(uuid.uuid4())[:8]}"
+
+                product = Product.objects.create(
+                    title=seller_product_obj.title,
+                    slug=slug,
+                    description=seller_product_obj.description or '',
+                    brand=seller_product_obj.brand or '',
+                    main_image='',
+                    category=category,
+                    is_active=True,
+                )
+
+                seller_product_obj.linked_product = product
+                seller_product_obj.save(update_fields=['linked_product'])
+
         except SellerProduct.DoesNotExist:
             pass
 
-        # 2. linked_product নেই — ensure করার চেষ্টা করো
-        if seller_product_obj and not product:
-            try:
-                seller_product_obj._ensure_linked_records()
-                seller_product_obj.save(
-                    update_fields=['linked_product', 'linked_listing', 'reviewed_at'])
-                product = seller_product_obj.linked_product
-            except Exception:
-                pass
-
-        # 3. তাও না পেলে — Product table এ fallback
+        # 2. fallback — Product table এ সরাসরি খোঁজো
         if not product:
             try:
                 product = Product.objects.get(id=product_id)
