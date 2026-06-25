@@ -1355,67 +1355,57 @@ def product_match_score(title1: str, title2: str) -> float:
 def compare_prices_api(request, slug):
     """
     In English: 
-    - Reverted to a more flexible candidate search (up to 200 products).
-    - Lowered matching threshold to 65% to capture more retailer results.
-    - Keeps the parallel sync and 3.5s wait to populate data on first hit.
+    - Reverted to BROAD title-based matching.
+    - Removed strict category constraints (fixes the issue where same product is in different category).
+    - Uses SQL 'icontains' to find any similar title in the entire DB.
     """
     import time
     
-    # 1. Fetch the main product
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
     
-    # 2. Platform Check
+    # --- 1. Background Sync (Keeping this to fetch new data) ---
     existing_platforms = ProductListing.objects.filter(
         product=product, is_available=True
     ).values_list('platform__code', flat=True).distinct()
 
     sync_triggered = False
-    cache_key = f"sync_v7_final_lock_{product.id}"
-
-    # 3. Parallel Sync & Wait Logic
-    if len(existing_platforms) < 3 and not cache.get(cache_key):
+    if len(existing_platforms) < 3:
         fingerprint = get_product_fingerprint(target_title)
         query_for_api = fingerprint['core_name'] or target_title[:50]
-
-        # Trigger all major platforms simultaneously
-        sync_amazon_task.delay(query_for_api, limit=5)
-        sync_ebay_task.delay(query_for_api, limit=5)
-        sync_walmart_task.delay(query_for_api, limit=5)
-        
-        cache.set(cache_key, True, 1200) # 20 min lock
+        sync_all_platforms_task.delay(query_for_api, limit=5)
         sync_triggered = True
+        time.sleep(3.5) # Wait for initial data to land
 
-        # Wait for worker to save results
-        time.sleep(4) 
+    # --- 2. THE FIX: Broad Search across the WHOLE Database ---
+    # We take the first 3 important words and search in ALL categories
+    search_words = [w for w in target_title.split() if len(w) > 2][:3]
+    
+    db_query = Q(is_active=True)
+    if search_words:
+        word_q = Q()
+        for word in search_words:
+            word_q &= Q(title__icontains=word) # Must contain these words
+        db_query &= word_q
 
-    # 4. Smart Candidate Search (Increased from 30 to 200 for more results)
-    # We search the same category but increase the window to find retailers
-    candidates = Product.objects.filter(
-        category=product.category, 
-        is_active=True
-    ).exclude(id=product.id).only('id', 'title', 'brand')[:200]
+    # Search candidates everywhere, ignore category (fixes the 'Storage Device' vs 'Laptop' issue)
+    candidates = Product.objects.filter(db_query).only('id', 'title', 'brand')[:100]
 
     matched_ids = [product.id]
     
-    # Matching Settings
-    THRESHOLD = 65 # Lowered from 75 to be more inclusive as per your feedback
-    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
-    target_is_acc = any(w in target_title.lower() for w in accessory_words)
-
+    # 3. Simple Token Matching (Relaxed Threshold)
     for cand in candidates:
-        if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
-            continue
+        if cand.id == product.id: continue
         
-        # Combine Spacy and Fuzz for best accuracy
-        score = calculate_match_score(product.title, cand.title)
-        if score >= THRESHOLD:
+        # Use simple ratio - if titles are 60% similar, we link them
+        score = fuzz.token_set_ratio(target_title, cand.title)
+        if score >= 60: 
             matched_ids.append(cand.id)
 
-    # 5. Fetch Final Listings
+    # 4. Fetch All Listings for these IDs
     listings = ProductListing.objects.filter(
         product__id__in=matched_ids, 
         is_available=True, 
@@ -1427,7 +1417,7 @@ def compare_prices_api(request, slug):
     prices = []
 
     for l in listings:
-        # Show one best deal per platform
+        # One best deal per store
         if l.platform.code in seen_platforms: continue
         seen_platforms.add(l.platform.code)
         
@@ -1437,15 +1427,14 @@ def compare_prices_api(request, slug):
         comparison_list.append({
             'platform': l.platform.name,
             'platform_code': l.platform.code,
-            'clean_title': clean_display_title(l.product.title),
             'price': float(l.price),
             'total_price': total_p,
             'url': l.external_url,
             'main_image': l.product.main_image,
-            'seller': l.seller_username or "Verified Retailer",
+            'seller': l.seller_username or "Verified Store",
         })
 
-    # 6. Response Construction (Keeping all keys for frontend stability)
+    # 5. Build Response
     analysis = {
         'lowest_price': min(prices) if prices else 0,
         'highest_price': max(prices) if prices else 0,
@@ -1463,7 +1452,6 @@ def compare_prices_api(request, slug):
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
-            'message': "Latest deals retrieved."
         },
         'price_analysis': analysis,
         'price_comparison': comparison_list,
