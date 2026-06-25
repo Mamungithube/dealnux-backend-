@@ -1353,117 +1353,91 @@ def product_match_score(title1: str, title2: str) -> float:
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
-    # 1. মেইন প্রোডাক্ট আনা
+    # 1. মেইন প্রোডাক্টটি ধরুন
     product = Product.objects.filter(slug=slug, is_active=True).first()
     if not product:
         return error_response("Product not found", code=404)
 
     target_title = clean_display_title(product.title)
     
-    # 2. বর্তমান ডিল সংখ্যা চেক করা
-    existing_platforms = ProductListing.objects.filter(
+    # 2. বর্তমান দোকানের সংখ্যা চেক করুন
+    platforms_in_db = ProductListing.objects.filter(
         product=product, is_available=True
     ).values_list('platform__code', flat=True).distinct()
 
     sync_triggered = False
 
-    # 3. স্মার্ট সিঙ্ক ট্রিগার (৬০ সেকেন্ড গ্যাপ কমিয়ে ২ সেকেন্ড করা হয়েছে)
-    cache_key = f"sync_lock_v4_{product.id}"
-    if len(existing_platforms) < 3 and not cache.get(cache_key):
+    # 3. Parallel Sync (টাইম কমানোর মেইন জায়গা)
+    cache_key = f"sync_parallel_lock_{product.id}"
+    if len(platforms_in_db) < 3 and not cache.get(cache_key):
         fingerprint = get_product_fingerprint(target_title)
         query_for_api = fingerprint['core_name'] or target_title[:50]
 
-        # ৬০ সেকেন্ড গ্যাপ অনেক বেশি। আমরা ৫ সেকেন্ড গ্যাপে ৩টি টাস্ক পাঠাবো।
-        # এতে সার্ভার লোডও হবে না, আবার ইউজার ৫-১০ সেকেন্ডের মধ্যে ডাটা পাবে।
+        # এখানে আমরা কোনো 'countdown' বা ওয়েট দেবো না। 
+        # সব প্ল্যাটফর্ম একসাথে সার্চ শুরু করবে (Parallel execution)
         priority_tasks = [
-            sync_amazon_task.s(query_for_api, 3),
-            sync_ebay_task.s(query_for_api, 3),
-            sync_walmart_task.s(query_for_api, 3),
+            sync_amazon_task.delay(query_for_api, limit=3),
+            sync_ebay_task.delay(query_for_api, limit=3),
+            sync_walmart_task.delay(query_for_api, limit=3),
         ]
-        for i, task in enumerate(priority_tasks):
-            # গ্যাপ কমিয়ে ৫ সেকেন্ড করা হয়েছে
-            task.apply_async(countdown=i * 5)
-
-        cache.set(cache_key, True, 3600) # ১ ঘণ্টা লক (সার্ভার বাঁচাতে)
+        
+        # ১ ঘণ্টার জন্য লক করুন যাতে বারবার কল না হয়
+        cache.set(cache_key, True, 3600)
         sync_triggered = True
 
-    # 4. ম্যাচিং লজিক অপ্টিমাইজেশন (এটাই আপনার CPU বাঁচাবে)
-    # প্রথমে ডাটাবেজ লেভেলে টাইটেলের কিছু কমন শব্দ দিয়ে ফিল্টার করে ক্যান্ডিডেট ছোট করুন
-    core_words = target_title.split()[:2]
-    candidate_filter = Q(category=product.category, is_active=True)
-    if core_words:
-        word_q = Q()
-        for w in core_words:
-            if len(w) > 2: word_q &= Q(title__icontains=w)
-        candidate_filter &= word_q
-
-    # শুধু সম্ভাব্য ২০-৩০টি প্রডাক্টের ওপর NLP লজিক চালান (হাজার হাজার প্রডাক্টের ওপর নয়)
-    candidates = Product.objects.filter(candidate_filter).exclude(id=product.id).only('id', 'title', 'brand')[:30]
+    # 4. DB Candidate Optimization (সার্ভার লোড ফিক্স)
+    # প্রডাক্টের নামের প্রথম ২টি শব্দ দিয়ে ডাটাবেজে ক্যান্ডিডেট ছোট করুন (SQL Level)
+    first_two_words = " ".join(target_title.split()[:2])
+    candidates = Product.objects.filter(
+        category=product.category, 
+        is_active=True,
+        title__icontains=first_two_words
+    ).exclude(id=product.id).only('id', 'title', 'brand')[:20] # মাত্র ২০টি আইটেম চেক করবে
 
     matched_ids = [product.id]
-    THRESHOLD = 75
-
-    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
+    
+    # এক্সেসরিজ ফিল্টার
+    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
     target_is_acc = any(w in target_title.lower() for w in accessory_words)
 
+    # দ্রুত ম্যাচিং লজিক
     for cand in candidates:
         if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
             continue
         
-        # RapidFuzz (fuzz.token_set_ratio) ব্যবহার করুন যা Spacy-র চেয়ে অনেক ফাস্ট
-        score = fuzz.token_set_ratio(product.title, cand.title)
-        if score >= THRESHOLD:
+        # RapidFuzz ব্যবহার করা হয়েছে যা Spacy-র চেয়ে ১০০ গুণ ফাস্ট
+        if fuzz.token_set_ratio(product.title, cand.title) >= 70: 
             matched_ids.append(cand.id)
 
-    # 5. ডাটা রিট্রিভ করা
+    # 5. ডাটা রিটার্ন করা
     listings = ProductListing.objects.filter(
-        product__id__in=matched_ids,
-        is_available=True,
-        price__gt=0
+        product__id__in=matched_ids, is_available=True, price__gt=0
     ).select_related('platform', 'product').order_by('price')
 
-    # 6. লিস্ট ফরম্যাটিং
     comparison_list = []
     seen_urls = set()
     prices = []
 
-    for listing in listings:
-        if listing.external_url in seen_urls: continue
-        seen_urls.add(listing.external_url)
-        
-        total_p = float(listing.get_total_price())
-        prices.append(total_p)
-
+    for l in listings:
+        if l.external_url in seen_urls: continue
+        seen_urls.add(l.external_url)
+        prices.append(float(l.get_total_price()))
         comparison_list.append({
-            'platform': listing.platform.name,
-            'platform_code': listing.platform.code,
-            'price': float(listing.price),
-            'total_price': total_p,
-            'url': listing.external_url,
-            'main_image': listing.product.main_image,
-            'seller': listing.seller_username or "Verified Retailer",
+            'platform': l.platform.name,
+            'price': float(l.price),
+            'total_price': float(l.get_total_price()),
+            'url': l.external_url,
+            'main_image': l.product.main_image,
         })
 
-    # 7. রেসপন্স পাঠানো
     return success_response({
-        'product': {
-            'id': product.id,
-            'title': target_title,
-            'brand': product.brand,
-            'main_image': product.main_image,
-        },
+        'product': {'id': product.id, 'title': target_title},
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
-            'message': "Diving deep for more deals..." if sync_triggered else "Latest deals loaded."
-        },
-        'price_analysis': {
-            'lowest_price': min(prices) if prices else 0,
-            'highest_price': max(prices) if prices else 0,
-            'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+            'message': "Diving into all platforms..." if sync_triggered else "Loaded."
         },
         'price_comparison': comparison_list,
-        'best_deal': comparison_list[0] if comparison_list else None
     })
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
