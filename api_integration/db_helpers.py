@@ -440,7 +440,6 @@ def _resolve_category(category_path, title, cache):
 
     return None
 
-# db_helpers.py তে _find_matching_product এর উপরে এই function যোগ করো
 
 
 _BRAND_NOISE = [
@@ -533,7 +532,7 @@ def _find_matching_product(title, brand, gtin, asin):
             brand_query = Q(brand__icontains=brand.split()[0])
 
         # Search the database using the first 2 words of the title.
-        search_words = title.split()[:2]
+        search_words = [w for w in title.split()[:4] if len(w) > 2]
         title_q = Q()
         for word in search_words:
             if len(word) > 2:
@@ -545,7 +544,7 @@ def _find_matching_product(title, brand, gtin, asin):
         best_match = None
         best_score = 0
 
-        REQUIRED_THRESHOLD = 85
+        REQUIRED_THRESHOLD = 72
 
         for cand in candidates:
             score = calculate_match_score(title, cand.title)

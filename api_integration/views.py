@@ -1263,7 +1263,6 @@ def compare_prices_api(request, slug):
             sync_all_platforms_task.delay(query_for_api, limit=5)
             cache.set(cache_key, True, timeout=3600)  
             sync_triggered = True
-            time.sleep(4)
 
     search_words = [w for w in target_clean.split() if len(w) > 2][:6]
 
