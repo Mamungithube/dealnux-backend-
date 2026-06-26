@@ -1258,26 +1258,21 @@ def compare_prices_api(request, slug):
     core_words = [w for w in extract_core_title(product.title).split() if len(w) > 3][:4]
 
     if core_words:
-        must_match = core_words[:2]
-        should_match = core_words[2:]
-
         word_q = Q()
-        for word in must_match:
-            word_q &= Q(title__icontains=word)
+        word_q &= Q(title__icontains=core_words[0])  # শুধু 1টা must
 
-        if should_match:
+        if len(core_words) > 1:
             or_q = Q()
-            for word in should_match:
+            for word in core_words[1:]:
                 or_q |= Q(title__icontains=word)
             word_q &= or_q
 
-        # ++ category filter যোগ করো
         if product.category:
             word_q &= Q(category=product.category)
 
         candidates = Product.objects.filter(
             word_q, is_active=True
-        ).only('id', 'title', 'brand')[:200]
+        ).only('id', 'title', 'brand')[:300]
 
     else:
         candidates = Product.objects.none()
