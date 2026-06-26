@@ -263,8 +263,17 @@ class UserAdmin(ModelAdmin):
             self.message_user(
                 request, "Error: No referrer found.", level="error")
         elif user.has_referral_reward_awarded:
-            self.message_user(
-                request, "Notice: Already awarded.", level="warning")
+            if not is_manager(request.user):
+                self.message_user(request, "Notice: Already awarded.", level="warning")
+            else:
+                # Manager force re-issue করতে পারবে
+                with transaction.atomic():
+                    from account.models import SiteSettings
+                    amount = SiteSettings.get().referral_reward_amount
+                    user.referred_by.refresh_from_db()
+                    user.referred_by.balance += amount
+                    user.referred_by.save(update_fields=['balance'])
+                    self.message_user(request, f"✓ Re-issued {amount} to {user.referred_by.email}", level="warning")
         else:
             with transaction.atomic():
                 from account.models import SiteSettings
