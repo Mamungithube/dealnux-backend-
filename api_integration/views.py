@@ -1240,7 +1240,15 @@ def compare_prices_api(request, slug):
     if not product:
         return error_response("Product not found", code=404)
 
-    MATCH_THRESHOLD = 60
+    def deep_clean(text):
+        noise = ['restored', 'renewed', 'refurbished', 'pre-owned', 'used',
+                 'excellent', 'mint', 'condition']
+        text = text.lower()
+        for word in noise:
+            text = re.sub(r'\b' + re.escape(word) + r'\b', '', text)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    target_clean = deep_clean(product.title)
 
     existing_platforms = ProductListing.objects.filter(
         product=product, is_available=True
@@ -1249,51 +1257,44 @@ def compare_prices_api(request, slug):
     sync_triggered = False
     if len(existing_platforms) < 3:
         fingerprint = get_product_fingerprint(product.title)
-        query_for_api = fingerprint['core_name'] or product.title[:50]
+        query_for_api = fingerprint['core_name'] or target_clean[:50]
         sync_all_platforms_task.delay(query_for_api, limit=5)
         sync_triggered = True
         time.sleep(4)
 
-    # ── Candidate query: AND filter with core words ──
-    core_words = [w for w in extract_core_title(product.title).split() if len(w) > 3][:4]
+    search_words = [w for w in target_clean.split() if len(w) > 2][:6]
 
-    if core_words:
+    if search_words:
         word_q = Q()
-        word_q &= Q(title__icontains=core_words[0])  # শুধু 1টা must
+        for word in search_words:
+            word_q |= Q(title__icontains=word)
 
-        if len(core_words) > 1:
-            or_q = Q()
-            for word in core_words[1:]:
-                or_q |= Q(title__icontains=word)
-            word_q &= or_q
-
+        # category filter
         if product.category:
             word_q &= Q(category=product.category)
-
-        if product.brand:
-            word_q &= Q(brand__iexact=product.brand)
 
         candidates = Product.objects.filter(
             word_q, is_active=True
         ).only('id', 'title', 'brand')[:300]
-
     else:
         candidates = Product.objects.none()
 
     matched_ids = [product.id]
 
     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
-    target_is_acc = any(w in product.title.lower() for w in accessory_words)
+    target_is_acc = any(w in target_clean.lower() for w in accessory_words)
 
     for cand in candidates:
         if cand.id == product.id:
             continue
 
-        if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
+        cand_clean = deep_clean(cand.title)
+
+        if target_is_acc != any(w in cand_clean for w in accessory_words):
             continue
 
-        score = product_match_score(product.title, cand.title)
-        if score >= MATCH_THRESHOLD:
+        score = fuzz.token_set_ratio(target_clean, cand_clean)
+        if score >= 60:
             matched_ids.append(cand.id)
 
     listings = ProductListing.objects.filter(
@@ -1341,8 +1342,119 @@ def compare_prices_api(request, slug):
         'price_comparison': comparison_list,
         'best_deal': comparison_list[0] if comparison_list else None
     })
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def compare_prices_api(request, slug):
+#     # 1. Fetch the main product
+#     product = Product.objects.filter(slug=slug, is_active=True).first()
+#     if not product:
+#         return error_response("Product not found", code=404)
 
+#     target_title = clean_display_title(product.title)
 
+#     # 2. Check current retailers count in DB
+#     existing_platforms_count = ProductListing.objects.filter(
+#         product=product,
+#         is_available=True
+#     ).values('platform').distinct().count()
+
+#     sync_triggered = False
+
+#     # 3. Trigger Background Sync if less than 3 retailers exist
+#     cache_key = f"sync_lock_{product.id}"
+#     if existing_platforms_count < 3 and not cache.get(cache_key):
+#         fingerprint = get_product_fingerprint(target_title)
+#         query_for_api = fingerprint['core_name'] or target_title[:50]
+
+#         # শুধু 3টা priority platform, একে একে 60 sec gap এ
+#         priority_tasks = [
+#             sync_amazon_task.s(query_for_api, 3),
+#             sync_ebay_task.s(query_for_api, 3),
+#             sync_walmart_task.s(query_for_api, 3),
+#         ]
+#         for i, task in enumerate(priority_tasks):
+#             task.apply_async(countdown=i * 60)
+
+#         cache.set(cache_key, True, 86400)  # 24 ঘণ্টা lock
+#         sync_triggered = True
+
+#     # 4. Search for matching products in the DB
+#     candidates = Product.objects.filter(
+#         category=product.category,
+#         is_active=True
+#     ).exclude(id=product.id).only('id', 'title', 'brand')
+
+#     matched_ids = [product.id]
+#     THRESHOLD = 75
+
+#     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
+#     target_is_acc = any(w in target_title.lower() for w in accessory_words)
+
+#     for cand in candidates:
+#         cand_title_lower = cand.title.lower()
+#         cand_is_acc = any(w in cand_title_lower for w in accessory_words)
+#         if target_is_acc != cand_is_acc:
+#             continue
+#         score = calculate_match_score(product.title, cand.title)
+#         if score >= THRESHOLD:
+#             matched_ids.append(cand.id)
+
+#     # 5. Fetch all listings
+#     listings = ProductListing.objects.filter(
+#         product__id__in=matched_ids,
+#         is_available=True,
+#         price__gt=0
+#     ).select_related('platform', 'product').order_by('price')
+
+#     # 6. Format comparison list
+#     comparison_list = []
+#     seen_urls = set()
+#     prices = []
+
+#     for listing in listings:
+#         if listing.external_url in seen_urls:
+#             continue
+#         seen_urls.add(listing.external_url)
+
+#         total_p = float(listing.get_total_price())
+#         prices.append(total_p)
+
+#         comparison_list.append({
+#             'platform': listing.platform.name,
+#             'platform_code': listing.platform.code,
+#             'listing_id': listing.external_id,
+#             'clean_title': clean_display_title(listing.product.title),
+#             'price': float(listing.price),
+#             'total_price': total_p,
+#             'url': listing.external_url,
+#             'main_image': listing.product.main_image,
+#             'seller': listing.seller_username or "Verified Store",
+#         })
+
+#     # 7. Price Analysis
+#     analysis = {
+#         'lowest_price': min(prices) if prices else 0,
+#         'highest_price': max(prices) if prices else 0,
+#         'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+#     }
+
+#     return success_response({
+#         'product': {
+#             'id': product.id,
+#             'title': target_title,
+#             'slug': product.slug,
+#             'brand': product.brand,
+#             'main_image': product.main_image,
+#         },
+#         'meta': {
+#             'total_deals_found': len(comparison_list),
+#             'sync_triggered': sync_triggered,
+#             'message': "Searching for more deals..." if sync_triggered else "Results updated."
+#         },
+#         'price_analysis': analysis,
+#         'price_comparison': comparison_list,
+#         'best_deal': comparison_list[0] if comparison_list else None
+#     }, message="Price comparison fetched successfully")
 
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
