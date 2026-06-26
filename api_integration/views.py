@@ -1231,6 +1231,104 @@ def product_match_score(title1: str, title2: str) -> float:
 
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def compare_prices_api(request, slug):
+    import time
+
+    product = Product.objects.filter(slug=slug, is_active=True).first()
+    if not product:
+        return error_response("Product not found", code=404)
+
+    MATCH_THRESHOLD = 72
+
+    existing_platforms = ProductListing.objects.filter(
+        product=product, is_available=True
+    ).values_list('platform__code', flat=True).distinct()
+
+    sync_triggered = False
+    if len(existing_platforms) < 3:
+        fingerprint = get_product_fingerprint(product.title)
+        query_for_api = fingerprint['core_name'] or product.title[:50]
+        sync_all_platforms_task.delay(query_for_api, limit=5)
+        sync_triggered = True
+        time.sleep(4)
+
+    # ── Candidate query: AND filter with core words ──
+    core_words = [w for w in extract_core_title(product.title).split() if len(w) > 3][:4]
+
+    if core_words:
+        word_q = Q()
+        for word in core_words:
+            word_q &= Q(title__icontains=word)
+        candidates = Product.objects.filter(
+            word_q, is_active=True
+        ).only('id', 'title', 'brand')[:150]
+    else:
+        candidates = Product.objects.none()
+
+    matched_ids = [product.id]
+
+    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
+    target_is_acc = any(w in product.title.lower() for w in accessory_words)
+
+    for cand in candidates:
+        if cand.id == product.id:
+            continue
+
+        if target_is_acc != any(w in cand.title.lower() for w in accessory_words):
+            continue
+
+        score = product_match_score(product.title, cand.title)
+        if score >= MATCH_THRESHOLD:
+            matched_ids.append(cand.id)
+
+    listings = ProductListing.objects.filter(
+        product__id__in=matched_ids,
+        is_available=True,
+        price__gt=0
+    ).select_related('platform', 'product').order_by('price')
+
+    comparison_list = []
+    seen_platforms = set()
+    prices = []
+
+    for l in listings:
+        if l.platform.code in seen_platforms:
+            continue
+        seen_platforms.add(l.platform.code)
+
+        total_p = float(l.get_total_price())
+        prices.append(total_p)
+
+        comparison_list.append({
+            'platform': l.platform.name,
+            'platform_code': l.platform.code,
+            'price': float(l.price),
+            'total_price': total_p,
+            'url': l.external_url,
+            'main_image': l.product.main_image,
+        })
+
+    return success_response({
+        'product': {
+            'id': product.id,
+            'title': clean_display_title(product.title),
+            'main_image': product.main_image,
+        },
+        'meta': {
+            'total_deals_found': len(comparison_list),
+            'sync_triggered': sync_triggered,
+        },
+        'price_analysis': {
+            'lowest_price': min(prices) if prices else 0,
+            'highest_price': max(prices) if prices else 0,
+            'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
+        },
+        'price_comparison': comparison_list,
+        'best_deal': comparison_list[0] if comparison_list else None
+    })
+
 # @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
 # def compare_prices_api(request, slug):
@@ -1345,124 +1443,6 @@ def product_match_score(title1: str, title2: str) -> float:
 #         'best_deal': comparison_list[0] if comparison_list else None
 #     }, message="Price comparison fetched successfully")
 
-
-# In api_integration/views.py
-
-# In api_integration/views.py
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def compare_prices_api(request, slug):
-    import time
-
-    product = Product.objects.filter(slug=slug, is_active=True).first()
-    if not product:
-        return error_response("Product not found", code=404)
-
-    # ১. টাইটেল ক্লিন — word boundary দিয়ে, substring replace নয়
-    def deep_clean(text):
-        noise = ['restored', 'renewed', 'refurbished', 'pre-owned', 'used',
-                 'excellent', 'mint', 'condition']
-        text = text.lower()
-        for word in noise:
-            # \b word boundary — 'new' যাতে 'renewed' বা 'new' শুধু আলাদা word হলেই কাটে
-            text = re.sub(r'\b' + re.escape(word) + r'\b', '', text)
-        return re.sub(r'\s+', ' ', text).strip()
-
-    target_clean = deep_clean(product.title)
-
-    # ২. অটো-সিঙ্ক
-    existing_platforms = ProductListing.objects.filter(
-        product=product, is_available=True
-    ).values_list('platform__code', flat=True).distinct()
-
-    sync_triggered = False
-    if len(existing_platforms) < 3:
-        fingerprint = get_product_fingerprint(product.title)
-        query_for_api = fingerprint['core_name'] or target_clean[:50]
-        sync_all_platforms_task.delay(query_for_api, limit=5)
-        sync_triggered = True
-        time.sleep(4)
-
-    # ৩. ক্যান্ডিডেট খোঁজা — বেশি শব্দ + বড় pool
-    search_words = [w for w in target_clean.split() if len(w) > 2][:6]  # 4 → 6
-
-    if search_words:
-        word_q = Q()
-        for word in search_words:
-            word_q |= Q(title__icontains=word)
-        candidates = Product.objects.filter(
-            word_q, is_active=True
-        ).only('id', 'title', 'brand')[:300]  # 150 → 300
-    else:
-        candidates = Product.objects.none()
-
-    matched_ids = [product.id]
-
-    # ৪. ম্যাচিং — threshold একটু কমানো হয়েছে ভাঙা clean-এর জন্য
-    accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
-    target_is_acc = any(w in target_clean.lower() for w in accessory_words)
-
-    for cand in candidates:
-        if cand.id == product.id:
-            continue
-
-        cand_clean = deep_clean(cand.title)
-
-        if target_is_acc != any(w in cand_clean for w in accessory_words):
-            continue
-
-        score = fuzz.token_set_ratio(target_clean, cand_clean)
-        if score >= 60:  # 65 → 60, কারণ clean হওয়ার পর score কিছুটা কমে
-            matched_ids.append(cand.id)
-
-    # ৫. লিস্টিং প্রসেস (অপরিবর্তিত)
-    listings = ProductListing.objects.filter(
-        product__id__in=matched_ids,
-        is_available=True,
-        price__gt=0
-    ).select_related('platform', 'product').order_by('price')
-
-    comparison_list = []
-    seen_platforms = set()
-    prices = []
-
-    for l in listings:
-        if l.platform.code in seen_platforms:
-            continue
-        seen_platforms.add(l.platform.code)
-
-        total_p = float(l.get_total_price())
-        prices.append(total_p)
-
-        comparison_list.append({
-            'platform': l.platform.name,
-            'platform_code': l.platform.code,
-            'price': float(l.price),
-            'total_price': total_p,
-            'url': l.external_url,
-            'main_image': l.product.main_image,
-        })
-
-    # ৬. রেসপন্স (সম্পূর্ণ অপরিবর্তিত)
-    return success_response({
-        'product': {
-            'id': product.id,
-            'title': clean_display_title(product.title),
-            'main_image': product.main_image,
-        },
-        'meta': {
-            'total_deals_found': len(comparison_list),
-            'sync_triggered': sync_triggered,
-        },
-        'price_analysis': {
-            'lowest_price': min(prices) if prices else 0,
-            'highest_price': max(prices) if prices else 0,
-            'potential_savings': round(max(prices) - min(prices), 2) if len(prices) > 1 else 0
-        },
-        'price_comparison': comparison_list,
-        'best_deal': comparison_list[0] if comparison_list else None
-    })
 
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProductListing.objects.filter(
