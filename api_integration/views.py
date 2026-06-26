@@ -1240,7 +1240,7 @@ def compare_prices_api(request, slug):
     if not product:
         return error_response("Product not found", code=404)
 
-    MATCH_THRESHOLD = 72
+    MATCH_THRESHOLD = 60
 
     existing_platforms = ProductListing.objects.filter(
         product=product, is_available=True
@@ -1260,28 +1260,28 @@ def compare_prices_api(request, slug):
     if core_words:
         must_match = core_words[:2]
         should_match = core_words[2:]
-    
+
         word_q = Q()
         for word in must_match:
             word_q &= Q(title__icontains=word)
-    
+
         if should_match:
             or_q = Q()
             for word in should_match:
                 or_q |= Q(title__icontains=word)
             word_q &= or_q
-    
+
         # ++ category filter যোগ করো
         if product.category:
             word_q &= Q(category=product.category)
-    
+
         candidates = Product.objects.filter(
             word_q, is_active=True
         ).only('id', 'title', 'brand')[:200]
-    
+
     else:
         candidates = Product.objects.none()
-    
+
     matched_ids = [product.id]
 
     accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
