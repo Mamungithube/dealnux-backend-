@@ -1270,6 +1270,9 @@ def compare_prices_api(request, slug):
         if product.category:
             word_q &= Q(category=product.category)
 
+        if product.brand:
+            word_q &= Q(brand__iexact=product.brand)
+
         candidates = Product.objects.filter(
             word_q, is_active=True
         ).only('id', 'title', 'brand')[:300]
