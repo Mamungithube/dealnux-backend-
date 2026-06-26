@@ -523,6 +523,7 @@ class StripeWebhookView(APIView):
                 ):
                     from account.models import SiteSettings
                     amount = SiteSettings.get().referral_reward_amount
+                    referrer.refresh_from_db()
                     referrer.balance += amount
                     referrer.save(update_fields=['balance'])
 
