@@ -521,7 +521,9 @@ class StripeWebhookView(APIView):
                     user_subscription is not None and user_subscription.status == 'ACTIVE' and
                     referrer_subscription is not None and referrer_subscription.status == 'ACTIVE'
                 ):
-                    referrer.balance += Decimal('10')
+                    from account.models import SiteSettings
+                    amount = SiteSettings.get().referral_reward_amount
+                    referrer.balance += amount
                     referrer.save(update_fields=['balance'])
 
                     user.has_referral_reward_awarded = True

@@ -14,6 +14,7 @@ from .views import (
     ProfileSetupView,
      google_login,
      apple_login,
+     site_settings_view
 )
 from django.urls import path
 
@@ -48,5 +49,7 @@ urlpatterns = [
 
      path('google/', google_login, name='google_login'),
      path('apple/', apple_login, name='apple_login'),
+
+     path('site-settings/', site_settings_view, name='site-settings'),
 
 ]

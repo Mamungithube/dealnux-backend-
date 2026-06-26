@@ -328,10 +328,10 @@ class PriceAlert(models.Model):
         unique_together = ('user', 'product') 
 
 class Notification(models.Model):
-    """নোটিফিকেশন হিস্ট্রি রাখার জন্য (Optional but recommended)"""
+    """For notification history (optional but recommended)"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     title = models.CharField(max_length=255)
     body = models.TextField()
-    notification_type = models.CharField(max_length=50) # PRICE_DROP, ORDER_STATUS
+    notification_type = models.CharField(max_length=50) 
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

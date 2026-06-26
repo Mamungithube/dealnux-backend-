@@ -964,3 +964,18 @@ def apple_login(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+    
+
+
+from account.models import SiteSettings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def site_settings_view(request):
+    settings = SiteSettings.get()
+    return Response({
+        'referral_reward_amount': settings.referral_reward_amount,
+    })

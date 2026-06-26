@@ -5,10 +5,12 @@ from unfold.decorators import display
 from unfold.enums import ActionVariant
 from unfold.decorators import action
 from django.utils.html import format_html
+from django.db.models import Exists, OuterRef
 from .models import User, Profile
 from django.contrib.auth.models import Group
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from django.http import HttpResponseRedirect
+
 
 if admin.site.is_registered(User):
     admin.site.unregister(User)
@@ -26,6 +28,7 @@ if admin.site.is_registered(BlacklistedToken):
 def is_manager(user):
     """Superuser = Manager — full access"""
     return user.is_superuser
+
 
 def is_admin_only(user):
     """Staff + Admin group = Admin — limited access"""
@@ -61,12 +64,128 @@ class GroupAdmin(ModelAdmin):
 
 
 # ============================================================================
+# Referral Progress Filter
+# ============================================================================
+class ReferralProgressFilter(admin.SimpleListFilter):
+    title = 'Referral Progress'
+    parameter_name = 'referral_progress'
+
+    def lookups(self, request, model_admin):
+        return [
+            ('rewarded',    '✅ Reward Given'),
+            ('step2',       '⏳ Step 2/3 – Needs Order'),
+            ('step1',       '⏳ Step 1/3 – Needs Subscription'),
+            ('no_referral', '—  No Referral'),
+        ]
+
+    def queryset(self, request, queryset):
+        from payment.models import UserSubscription 
+        from store.models import Order
+
+        if self.value() == 'rewarded':
+            return queryset.filter(has_referral_reward_awarded=True)
+
+        if self.value() == 'no_referral':
+            return queryset.filter(referred_by__isnull=True)
+
+        if self.value() == 'step1':
+            return queryset.filter(
+                referred_by__isnull=False,
+                has_referral_reward_awarded=False,
+            ).filter(subscription__isnull=True) | queryset.filter(
+                referred_by__isnull=False,
+                has_referral_reward_awarded=False,
+                subscription__status__in=['INACTIVE', 'EXPIRED', 'CANCELLED']
+            )
+
+        if self.value() == 'step2':
+            return queryset.filter(
+                referred_by__isnull=False,
+                has_referral_reward_awarded=False,
+                subscription__status='ACTIVE',
+            )
+
+        return queryset
+
+
+from account.models import SiteSettings  # app অনুযায়ী
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(ModelAdmin):
+    def has_add_permission(self, request): return False
+    def has_delete_permission(self, request, obj=None): return False
+    def changelist_view(self, request, extra_context=None):
+        SiteSettings.get()  
+        return super().changelist_view(request, extra_context)
+
+# ============================================================================
 # User Admin
 # ============================================================================
 @admin.register(User)
 class UserAdmin(ModelAdmin):
-    list_display = ('email', 'name', 'display_role', 'is_active', 'balance', 'has_referral_reward_awarded')
+    list_display = ('email', 'name', 'display_role', 'is_active',
+                    'balance', 'has_referral_reward_awarded', 'referral_progress',)
+    list_select_related = ('subscription', 'referred_by',
+                           'referred_by__subscription')
+    list_filter = (ReferralProgressFilter,)
     search_fields = ('email', 'name')
+
+    def get_queryset(self, request):
+        from store.models import Order
+        qs = super().get_queryset(request)
+        return qs.annotate(
+            has_order=Exists(Order.objects.filter(buyer=OuterRef('pk')))
+        )
+
+    @display(description='Referral Progress')
+    def referral_progress(self, obj):
+        """
+        ✅/❌ Has Referral Link
+        ✅/❌ Both Subscriptions Active
+        ✅/❌ Has Placed Order
+        """
+        from store.models import Order
+
+        # রেফারেল নেই — এই ইউজার কারো রেফারে আসেনি
+        if not obj.referred_by:
+            return format_html('<span style="color:#999;font-size:12px;">— No referral</span>')
+
+        # ইতোমধ্যে reward দেওয়া হয়ে গেছে
+        if obj.has_referral_reward_awarded:
+            return format_html(
+                '<span style="background:#16a34a;color:#fff;padding:2px 8px;'
+                'border-radius:4px;font-size:11px;font-weight:600;">✅ Rewarded</span>'
+            )
+
+        # ধাপ ১: Referred user-এর subscription check
+        user_sub = getattr(obj, 'subscription', None)
+        step1 = user_sub is not None and user_sub.status == 'ACTIVE'
+
+        # ধাপ ২: Referrer-এর subscription check
+        referrer_sub = getattr(obj.referred_by, 'subscription', None)
+        step2 = referrer_sub is not None and referrer_sub.status == 'ACTIVE'
+
+        # ধাপ ৩: Order check
+        step3 = getattr(obj, 'has_order', False)
+
+        def badge(ok, label):
+            if ok:
+                return (
+                    f'<span style="background:#dcfce7;color:#166534;padding:1px 6px;'
+                    f'border-radius:3px;font-size:11px;margin-right:3px;">✓ {label}</span>'
+                )
+            else:
+                return (
+                    f'<span style="background:#fee2e2;color:#991b1b;padding:1px 6px;'
+                    f'border-radius:3px;font-size:11px;margin-right:3px;">✗ {label}</span>'
+                )
+
+        html = (
+            badge(step1, "User Sub") +
+            badge(step2, "Referrer Sub") +
+            badge(step3, "Order")
+        )
+        return format_html(html)
 
     def get_fieldsets(self, request, obj=None):
         base = [
@@ -75,15 +194,19 @@ class UserAdmin(ModelAdmin):
         ]
         # Manager only: superuser toggle & financial fields
         if is_manager(request.user):
-            base.append(('Manager Only', {'fields': ('is_superuser', 'balance', 'has_referral_reward_awarded', 'ads_provided')}))
+            base.append(('Manager Only', {'fields': (
+                'is_superuser', 'balance', 'has_referral_reward_awarded', 'ads_provided')}))
         return base
 
     def get_readonly_fields(self, request, obj=None):
-        # Admin (non-manager) cannot change financial or role-escalation fields
         if is_admin_only(request.user):
             return ('email', 'balance', 'is_superuser', 'ads_provided',
                     'has_referral_reward_awarded', 'referred_by', 'referral_code')
-        return ('email',)
+        
+        return ('email', 'name', 'is_active', 'is_staff', 'is_superuser',
+                'groups', 'balance', 'ads_provided', 'has_referral_reward_awarded',
+                'referral_code', 'referred_by', 'total_lifetime_savings',
+                'savings_coupons', 'savings_comparison')
 
     actions_row = [
         'suspend_user_row',
@@ -98,7 +221,8 @@ class UserAdmin(ModelAdmin):
     @action(description="Grant Admin Access", url_path="grant-admin", variant=ActionVariant.SUCCESS)
     def grant_admin_access(self, request, object_id):
         if not is_manager(request.user):
-            self.message_user(request, "Permission denied. Only managers can grant admin access.", level='error')
+            self.message_user(
+                request, "Permission denied. Only managers can grant admin access.", level='error')
             return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
         user = self.get_queryset(request).get(pk=object_id)
@@ -136,16 +260,19 @@ class UserAdmin(ModelAdmin):
         from django.db import transaction
         user = self.get_queryset(request).get(pk=object_id)
         if not user.referred_by:
-            self.message_user(request, "Error: No referrer found.", level="error")
+            self.message_user(
+                request, "Error: No referrer found.", level="error")
         elif user.has_referral_reward_awarded:
-            self.message_user(request, "Notice: Already awarded.", level="warning")
+            self.message_user(
+                request, "Notice: Already awarded.", level="warning")
         else:
             with transaction.atomic():
                 user.referred_by.balance += Decimal('10.00')
                 user.referred_by.save()
                 user.has_referral_reward_awarded = True
                 user.save()
-                self.message_user(request, f"✓ Credit issued to {user.referred_by.email}")
+                self.message_user(
+                    request, f"✓ Credit issued to {user.referred_by.email}")
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
     # --- Suspend ---

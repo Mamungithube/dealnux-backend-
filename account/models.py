@@ -94,3 +94,21 @@ class DeviceToken(models.Model):
     fcm_token = models.TextField(unique=True)
     device_type = models.CharField(max_length=20, blank=True) # android, ios, web
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+
+class SiteSettings(models.Model):
+    referral_reward_amount = models.DecimalField(max_digits=10, decimal_places=2, default=10.00)
+
+    class Meta:
+        verbose_name = 'Site Settings'
+        verbose_name_plural = 'Site Settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1 
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

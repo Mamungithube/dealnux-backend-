@@ -45,7 +45,9 @@ def process_referral_reward_for_user(user):
         ):
             return False
 
-        referrer.balance += Decimal('10')
+        from account.models import SiteSettings
+        amount = SiteSettings.get().referral_reward_amount
+        referrer.balance += amount
         referrer.save(update_fields=['balance'])
 
         user.has_referral_reward_awarded = True

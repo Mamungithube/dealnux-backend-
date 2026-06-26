@@ -273,7 +273,7 @@ _KEYWORD_CATEGORY_MAP = [
     (['backpack for kids', 'school bag', 'pencil case', 'school supply'],
      'school-supplies'),
 
-    # ── AUTOMOTIVE ────────────────────────────────────────────────────────
+    # ── AUTOMOTIVE ──────────────────────────────────────────────────────
     (['car lift', 'headlights', 'obd2', 'diagnosis', 'auto parts'], 'automotive'),
     (['car charger', 'dash cam', 'car stereo', 'gps navigation', 'car speaker',
       'car electronics'],
