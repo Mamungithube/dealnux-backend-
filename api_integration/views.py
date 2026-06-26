@@ -53,7 +53,7 @@ from django.db.models import Q, Value, Case, When, FloatField, Min, Count
 from django.db.models import Value
 from .tasks import sync_amazon_task, sync_ebay_task, sync_walmart_task ,sync_all_platforms_task ,sync_ebay_task
 logger = logging.getLogger(__name__)
-
+from django.core.cache import cache
 
 def clean_display_title(title):
     title = re.sub(r'\d+%?\s*opens?\s+in\s+a\s+new\s+(window|tab)(\s+or\s+(tab|window))?',
@@ -1256,11 +1256,14 @@ def compare_prices_api(request, slug):
 
     sync_triggered = False
     if len(existing_platforms) < 3:
-        fingerprint = get_product_fingerprint(product.title)
-        query_for_api = fingerprint['core_name'] or target_clean[:50]
-        sync_all_platforms_task.delay(query_for_api, limit=5)
-        sync_triggered = True
-        time.sleep(4)
+        cache_key = f"sync_triggered_{product.id}"
+        if not cache.get(cache_key): 
+            fingerprint = get_product_fingerprint(product.title)
+            query_for_api = fingerprint['core_name'] or product.title[:50]
+            sync_all_platforms_task.delay(query_for_api, limit=5)
+            cache.set(cache_key, True, timeout=3600)  
+            sync_triggered = True
+            time.sleep(4)
 
     search_words = [w for w in target_clean.split() if len(w) > 2][:6]
 
