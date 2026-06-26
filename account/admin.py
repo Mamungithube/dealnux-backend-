@@ -267,12 +267,14 @@ class UserAdmin(ModelAdmin):
                 request, "Notice: Already awarded.", level="warning")
         else:
             with transaction.atomic():
-                user.referred_by.balance += Decimal('10.00')
-                user.referred_by.save()
+                from account.models import SiteSettings
+                amount = SiteSettings.get().referral_reward_amount
+                user.referred_by.refresh_from_db()
+                user.referred_by.balance += amount
+                user.referred_by.save(update_fields=['balance'])
                 user.has_referral_reward_awarded = True
-                user.save()
-                self.message_user(
-                    request, f"✓ Credit issued to {user.referred_by.email}")
+                user.save(update_fields=['has_referral_reward_awarded'])
+                self.message_user(request, f"✓ Credit issued to {user.referred_by.email}")
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
     # --- Suspend ---
