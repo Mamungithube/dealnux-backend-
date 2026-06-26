@@ -1258,12 +1258,23 @@ def compare_prices_api(request, slug):
     core_words = [w for w in extract_core_title(product.title).split() if len(w) > 3][:4]
 
     if core_words:
+        must_match = core_words[:2]
+        should_match = core_words[2:]
+    
         word_q = Q()
-        for word in core_words:
+        for word in must_match:
             word_q &= Q(title__icontains=word)
-        candidates = Product.objects.filter(
+    
+        if should_match:
+            or_q = Q()
+            for word in should_match:
+                or_q |= Q(title__icontains=word)
+            word_q &= or_q
+    
+        candidates = Product.objects.filter(   # ← এটা missing ছিলো
             word_q, is_active=True
-        ).only('id', 'title', 'brand')[:150]
+        ).only('id', 'title', 'brand')[:200]
+    
     else:
         candidates = Product.objects.none()
 
