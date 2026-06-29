@@ -284,7 +284,8 @@ class CreateCheckoutSessionView(APIView):
                     automatic_payment_methods={"enabled": True},
                     metadata={
                         'payment_id': payment.id,
-                        'type': 'store_payment'
+                        'type': 'store_payment',
+                        'items_json': json.dumps(validated_items)
                     }
                 )
                 stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
@@ -356,6 +357,9 @@ class StripeWebhookView(APIView):
 
         if event['type'] == 'checkout.session.completed':
             self._handle_checkout_completed(event['data']['object'])
+
+        elif event['type'] == 'payment_intent.succeeded':  
+            self._handle_payment_intent_succeeded(event['data']['object'])
 
         elif event['type'] == 'invoice.paid':
             self._handle_recurring_subscription(event['data']['object'])
@@ -476,6 +480,39 @@ class StripeWebhookView(APIView):
 
         except Exception as e:
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
+
+
+    def _handle_payment_intent_succeeded(self, payment_intent):
+        metadata = payment_intent.get('metadata', {})
+        payment_id = metadata.get('payment_id')
+        p_type = metadata.get('type')
+
+        if not payment_id:
+            return
+
+        try:
+            payment = Payment.objects.get(id=payment_id)
+
+            # Checkout session already handled this — skip
+            if payment.status == 'PAID':
+                return
+
+            payment.status = 'PAID'
+            payment.stripe_payment_intent_id = payment_intent.get('id')
+            payment.save()
+
+            if p_type == 'store_payment':
+                items_json = metadata.get('items_json', '[]')
+                items = json.loads(items_json)
+                create_orders_from_payment(payment, items)
+
+            elif p_type == 'subscription_payment':
+                pass
+
+        except Payment.DoesNotExist:
+            print(f"❌ PaymentIntent: Payment ID {payment_id} not found.")
+        except Exception as e:
+            print(f"❌ Error in _handle_payment_intent_succeeded: {str(e)}")
 
     def _process_referral_reward(self, user):
         """
