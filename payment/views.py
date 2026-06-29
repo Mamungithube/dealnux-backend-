@@ -509,6 +509,18 @@ class StripeWebhookView(APIView):
             elif p_type == 'subscription_payment':
                 pass
 
+            elif p_type == 'ad_payment':
+                ad = payment.ad
+                if ad:
+                    ad.status = 'pending'
+                    ad.save()
+                    send_dealnux_email(
+                        "Ad Submitted for Review - DealNux",
+                        ad.advertiser.email,
+                        "emails/ad_submitted.html",
+                        {"ad": ad, "user": ad.advertiser}
+                    )
+
         except Payment.DoesNotExist:
             print(f"❌ PaymentIntent: Payment ID {payment_id} not found.")
         except Exception as e:
@@ -552,7 +564,7 @@ class StripeWebhookView(APIView):
                         "You've earned a referral reward! - DealNux",
                         referrer.email,
                         "emails/referral_bonus.html",
-                        {"referrer": user, "referred_user": referred_user, "amount": "10"}
+                        {"referrer": user, "referred_user": user, "amount": "10"}
                     )
 
             # If the current user is a referrer, check for any referred users who already have active subscriptions

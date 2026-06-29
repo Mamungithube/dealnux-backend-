@@ -191,11 +191,6 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
                 }
             )
 
-            # 3. Update Seller Flag in User Model
-            user = seller_request.user
-            user.ads_provided = True
-            user.save(update_fields=['ads_provided'])
-
         send_dealnux_email(
             "Marketplace Approved - DealNux",
             seller_request.user.email,

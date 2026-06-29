@@ -98,7 +98,7 @@ class DeviceToken(models.Model):
 
 
 class SiteSettings(models.Model):
-    referral_reward_amount = models.DecimalField(max_digits=10, decimal_places=2, default=10.00)
+    referral_reward_amount = models.DecimalField(max_digits=99, decimal_places=2, default=10.00)
 
     class Meta:
         verbose_name = 'Site Settings'
