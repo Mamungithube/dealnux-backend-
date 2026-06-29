@@ -1317,13 +1317,26 @@ def compare_prices_api(request, slug):
         total_p = float(l.get_total_price())
         prices.append(total_p)
 
+        img_url = l.product.main_image
+        if img_url and not str(img_url).startswith('http'):
+            img_url = request.build_absolute_uri(img_url)
+
         comparison_list.append({
-            'platform': l.platform.name,
+           'platform': l.platform.name,
             'platform_code': l.platform.code,
+            'product_id': l.product.id,
+            'listing_id': l.external_id,
             'price': float(l.price),
             'total_price': total_p,
             'url': l.external_url,
-            'main_image': l.product.main_image,
+            'seller': l.seller_username or "Verified Store",
+            'main_image': img_url,
+            'shipping_cost': str(l.shipping_cost),
+            'is_available': l.is_available,
+            'has_coupon': l.has_coupon,
+            'coupon_text': l.coupon_text,
+            'deal_badge': l.deal_badge,
+            'clean_title': clean_display_title(l.product.title),
         })
 
     return success_response({
