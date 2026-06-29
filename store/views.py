@@ -47,26 +47,19 @@ class CustomPagination(PageNumberPagination):
         if self.page.has_previous():
             prev_page_number = self.page.previous_page_number()
 
-        return Response({
-            "success": True,
-            "code": 200,
-            "message": "Success",
-            "timestamp": int(time.time()),
-            "data": {
-                "count": len(data),
-                "results": data
-            },
+        paginated_data = {
+            "count": len(data),
+            "results": data,
             "pagination": {
                 "total_count": self.page.paginator.count,
                 "total_pages": self.page.paginator.num_pages,
                 "current_page": self.page.number,
                 "page_size": self.get_page_size(self.request),
-                "has_next": self.page.has_next(),
-                "has_previous": self.page.has_previous(),
                 "next_page": next_page_number,
                 "prev_page": prev_page_number,
-            }
-        })
+            },
+        }
+        return success_response(paginated_data)
 # ============================================================================
 # Helpers
 # ============================================================================

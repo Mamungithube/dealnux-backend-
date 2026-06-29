@@ -38,6 +38,7 @@ class Payment(models.Model):
     total_amount        = models.DecimalField(max_digits=10, decimal_places=2)
     discount_amount     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     final_amount        = models.DecimalField(max_digits=10, decimal_places=2)
+    balance_used        = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     currency            = models.CharField(max_length=10, default='usd')
     stripe_checkout_session_id = models.CharField(max_length=500, blank=True)
     stripe_payment_intent_id = models.CharField(max_length=500, blank=True)

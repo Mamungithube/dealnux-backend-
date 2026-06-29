@@ -1,10 +1,7 @@
 from custom_ads.utils import send_dealnux_email
 import json
 from datetime import timedelta
-
-from elasticsearch import logger
 from payment.utils import refresh_subscription_limits
-from redis import event
 import stripe
 from decimal import Decimal
 
@@ -24,6 +21,7 @@ from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 from store.models import SellerProduct, Order, Coupon
 from api_integration.models import ProductListing
 from account.models import User
+from .services import create_orders_from_payment
 from . serializers import (
     SubscriptionPlanSerializer, CheckoutSerializer, ShippingAddressSerializer
 
@@ -121,8 +119,15 @@ class CreateCheckoutSessionView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        """
+        Handles the creation of a checkout session for purchasing products.
+        It calculates total amounts, applies user balance if requested, and creates a Stripe session.
+        """
         items_data = request.data.get('items', [])
+        use_balance = request.data.get('use_balance', False)
+        user = request.user
         shipping_address = request.data.get('shipping_address')
+        
         root_coupon_code = (
             request.data.get('coupon_code')
             or request.data.get('couponCode')
@@ -131,6 +136,7 @@ class CreateCheckoutSessionView(APIView):
         ).strip()
 
         if not items_data or not shipping_address:
+            # Basic validation for required fields
             return Response({'error': 'Items and shipping address are required.'}, status=400)
 
         total_item_price = Decimal('0')
@@ -139,6 +145,7 @@ class CreateCheckoutSessionView(APIView):
         line_items = []
         validated_items = []
 
+        # Loop through each item in the cart to calculate totals and prepare for Stripe
         for item in items_data:
             p_id = item.get('seller_product')
             qty = int(item.get('quantity', 1))
@@ -153,11 +160,9 @@ class CreateCheckoutSessionView(APIView):
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
             except SellerProduct.DoesNotExist:
                 return Response({'error': f'Product ID {p_id} not found.'}, status=404)
-
-            # ১. বাগ ফিক্স: _calculate_order_amounts থেকে আসা ডিসকাউন্ট ব্যবহার করা
+            
+            # Calculate amounts for this specific item (price, discount, shipping, etc.)
             res = _calculate_order_amounts(product, qty, c_code)
-
-            # ডিসকাউন্ট করা প্রাইস নিচ্ছি
             item_total = res['item_total']
             discount_amt = res['discount_amount']
 
@@ -165,10 +170,10 @@ class CreateCheckoutSessionView(APIView):
             total_shipping_fee += res['shipping_fee']
             total_discount += discount_amt
 
+            # Prepare line item for Stripe checkout session
             line_items.append({
                 'price_data': {
                     'currency': 'usd',
-                    # ডিসকাউন্ট করা প্রাইস Stripe-এ যাবে
                     'unit_amount': int((item_total / qty) * 100),
                     'product_data': {
                         'name': product.title,
@@ -179,6 +184,7 @@ class CreateCheckoutSessionView(APIView):
                 'quantity': qty,
             })
 
+            # Keep a validated list of items for order creation later
             validated_items.append({
                 'id': p_id,
                 'qty': qty,
@@ -187,28 +193,41 @@ class CreateCheckoutSessionView(APIView):
                 'item_total': float(item_total)
             })
 
+        # Calculate final totals including the service fee
         service_fee = (total_item_price + total_shipping_fee) * Decimal('0.08')
-        pre_tax_grand_total = total_item_price + total_shipping_fee + service_fee
+        grand_total_before_balance = total_item_price + total_shipping_fee + service_fee
 
-        # ২. বাগ ফিক্স (NotNullViolation): total_amount এবং shipping_address (JSON format)
+        # Apply user's balance if they chose to use it
+        applied_balance = Decimal('0')
+        if use_balance and user.balance > 0:
+            applied_balance = min(user.balance, grand_total_before_balance)
+
+        amount_to_pay = grand_total_before_balance - applied_balance
+
+        # Deduct the used balance from the user's account
+        if applied_balance > 0:
+            # This is an optimistic deduction; it will be rolled back if payment fails
+            user.balance -= applied_balance
+            user.save(update_fields=['balance'])
+
         payment = Payment.objects.create(
             buyer=request.user,
             payment_type='STORE',
-            # টেক্সট ফিল্ডে ডাম্প করে রাখা নিরাপদ
             shipping_address=json.dumps(shipping_address),
             unit_price=total_item_price,
-            # এটিই আপনার missing Not-Null কলাম
             total_amount=total_item_price + total_discount,
             discount_amount=total_discount,
             quantity=len(items_data),
             item_total=total_item_price,
             shipping_fee=total_shipping_fee,
             service_fee=service_fee,
-            final_amount=pre_tax_grand_total,
+            balance_used=applied_balance,
+            final_amount=amount_to_pay,
             currency='usd',
             status='PENDING',
         )
-
+        
+        # Add service fee as a separate line item for Stripe
         line_items.append({
             'price_data': {
                 'currency': 'usd',
@@ -218,6 +237,7 @@ class CreateCheckoutSessionView(APIView):
             'quantity': 1,
         })
 
+        # Add shipping fee as a line item if applicable
         if total_shipping_fee > 0:
             line_items.append({
                 'price_data': {
@@ -228,63 +248,68 @@ class CreateCheckoutSessionView(APIView):
                 'quantity': 1,
             })
 
-        try:
-            session = stripe.checkout.Session.create(
-                ui_mode='embedded',
-                line_items=line_items,
-                mode='payment',
-                automatic_tax={'enabled': True},
-                return_url=settings.STRIPE_RETURN_URL +
-                "?session_id={CHECKOUT_SESSION_ID}",
-                metadata={
-                    'payment_id': payment.id,
-                    'type': 'store_payment',
-                    'items_json': json.dumps(validated_items)
-                },
-                customer_email=request.user.email,
-            )
-
-            mobile_intent = stripe.PaymentIntent.create(
-                amount=int(payment.final_amount * 100),
-                currency='usd',
-                automatic_payment_methods={"enabled": True},
-                metadata={
-                    'payment_id': payment.id,
-                    'type': 'store_payment'
-                }
-            )
-
-            # ৩. বাগ ফিক্স: Stripe Tax রিড করা
-            stripe_tax = Decimal(
-                str(session.total_details.amount_tax or 0)) / 100
-            final_grand_total = pre_tax_grand_total + stripe_tax
-
-            payment.stripe_checkout_session_id = session.id
-            payment.stripe_payment_intent_id = mobile_intent.id
-            payment.final_amount = final_grand_total
-            payment.save(update_fields=[
-                         'stripe_checkout_session_id', 'final_amount', 'updated_at'])
-
+        # If the user's balance covers the entire cost, no need to go to Stripe
+        if amount_to_pay <= 0:
+            payment.status = 'PAID'
+            payment.save(update_fields=['status'])
+            
+            # Create the order directly, similar to how the webhook would
+            create_orders_from_payment(payment, validated_items)
             return Response({
-                'client_secret': session.client_secret,
-                'payment_intent_client_secret': mobile_intent.client_secret,
+                'success': True,
+                'message': 'Order placed successfully using your balance.',
                 'payment_id': payment.id,
-                'breakdown': {
-                    "subtotal": float(total_item_price),
-                    "shipping": float(total_shipping_fee),
-                    "service_fee": float(service_fee),
-                    "tax": float(stripe_tax),
-                    "grand_total": float(final_grand_total)
-                }
-            })
+            }, status=200)
+        else:
+            # If payment is still required, create a Stripe Checkout and Payment Intent
+            try:
+                session = stripe.checkout.Session.create(
+                    ui_mode='embedded',
+                    line_items=line_items,
+                    mode='payment',
+                    automatic_tax={'enabled': True},
+                    return_url=settings.STRIPE_RETURN_URL +
+                    "?session_id={CHECKOUT_SESSION_ID}",
+                    metadata={
+                        'payment_id': payment.id,
+                        'type': 'store_payment',
+                        'items_json': json.dumps(validated_items)
+                    },
+                    customer_email=request.user.email,
+                )
 
-        except Exception as e:
-            if payment.id:
+                mobile_intent = stripe.PaymentIntent.create(
+                    amount=int(payment.final_amount * 100),
+                    currency='usd',
+                    automatic_payment_methods={"enabled": True},
+                    metadata={
+                        'payment_id': payment.id,
+                        'type': 'store_payment'
+                    }
+                )
+                stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
+                final_grand_total = amount_to_pay + stripe_tax
+
+                payment.stripe_checkout_session_id = session.id
+                payment.stripe_payment_intent_id = mobile_intent.id
+                payment.final_amount = final_grand_total
+                payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
+
+                return Response({
+                    'client_secret': session.client_secret,
+                    'payment_intent_client_secret': mobile_intent.client_secret,
+                    'payment_id': payment.id,
+                })
+
+            except Exception as e:
+                # If Stripe session creation fails, refund the balance to the user
+                user.balance += applied_balance
+                user.save(update_fields=['balance'])
                 payment.delete()
-            return Response({'error': str(e)}, status=500)
+                return Response({'error': str(e)}, status=500)
 
 # ============================================================================
-# 2. Session Status —> Frontend will call and confirm this after payment is complete.
+# Session Status —> Frontend will call and confirm this after payment is complete.
 # ============================================================================
 
 
@@ -379,7 +404,9 @@ class StripeWebhookView(APIView):
                 payment.save()
 
                 if p_type == 'store_payment':
-                    self._process_store_orders(payment, metadata)
+                    items_json = metadata.get('items_json', '[]')
+                    items = json.loads(items_json)
+                    create_orders_from_payment(payment, items)
                 elif p_type == 'ad_payment':
                     ad = payment.ad
                     if ad:
@@ -387,60 +414,12 @@ class StripeWebhookView(APIView):
                         ad.save()
                         send_dealnux_email(
                             "Ad Submitted for Review - DealNux",
-                            ad.seller.email,  # seller field অনুযায়ী adjust করো
+                            ad.seller.email, 
                             "emails/ad_submitted.html",
                             {"ad": ad, "user": ad.seller}
                         )
             except Payment.DoesNotExist:
                 print(f"Error: Payment ID {payment_id} not found in database.")
-
-    def _process_store_orders(self, payment, metadata):
-        items_json = metadata.get('items_json', '[]')
-        items = json.loads(items_json)
-
-        buyer = payment.buyer
-
-        with transaction.atomic():
-            for item_data in items:
-                try:
-                    seller_product = SellerProduct.objects.get(
-                        id=item_data['id'])
-
-                    Order.objects.create(
-                        buyer=buyer,
-                        seller=seller_product.seller,
-                        seller_product=seller_product,
-                        listing=seller_product.linked_listing,
-                        quantity=item_data['qty'],
-                        unit_price=seller_product.price,
-                        item_total=Decimal(str(item_data['item_total'])),
-                        shipping_fee=Decimal(str(item_data['shipping'])),
-                        service_fee=(Decimal(str(
-                            item_data['item_total'])) + Decimal(str(item_data['shipping']))) * Decimal('0.08'),
-                        total_price=payment.final_amount,
-                        currency=payment.currency,
-                        shipping_address=payment.shipping_address,
-                        status='PENDING',
-                    )
-
-                    seller_product.quantity -= item_data['qty']
-                    seller_product.save()
-
-                    seller = seller_product.seller
-                    amount_for_seller = Decimal(
-                        str(item_data['item_total'])) + Decimal(str(item_data['shipping']))
-                    seller.pending_balance += amount_for_seller
-                    seller.total_orders += 1
-                    seller.save()
-
-                except Exception as e:
-                    logger.error(f"Error processing item in webhook: {str(e)}")
-
-            from api_integration.models import CartItem
-            CartItem.objects.filter(user=buyer).delete()
-            print(f"✅ Cart cleared for user: {buyer.email}")
-
-            self._process_referral_reward(buyer)
 
     def _handle_subscription_success(self, session):
         """Activates the paid subscription plan for the user in the database."""
@@ -552,7 +531,9 @@ class StripeWebhookView(APIView):
                         referred_user, 'subscription', None)
                     if referred_subscription is not None and referred_subscription.status == 'ACTIVE':
                         if Order.objects.filter(buyer=referred_user).exists():
-                            user.balance += Decimal('10')
+                            from account.models import SiteSettings
+                            amount = SiteSettings.get().referral_reward_amount
+                            user.balance += amount
                             user.save(update_fields=['balance'])
 
                             referred_user.has_referral_reward_awarded = True
@@ -939,7 +920,7 @@ class CreateSubscriptionCheckoutView(APIView):
             )
 
             mobile_intent = stripe.PaymentIntent.create(
-                # সেন্টে কনভার্ট (যেমন: 7.99 -> 799)
+                # Convert to cents (e.g., 7.99 -> 799)
                 amount=int(plan.price * 100),
                 currency='usd',
                 payment_method_types=['card'],

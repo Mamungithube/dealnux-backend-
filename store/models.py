@@ -492,9 +492,9 @@ class Order(models.Model):
         SellerProfile, on_delete=models.SET_NULL, null=True, related_name='orders')
 
     seller_product = models.ForeignKey(
-        SellerProduct, on_delete=models.SET_NULL, null=True)
+        SellerProduct, on_delete=models.PROTECT, related_name='orders')
     listing = models.ForeignKey(
-        ProductListing, on_delete=models.SET_NULL, null=True)
+        ProductListing, on_delete=models.PROTECT, related_name='orders')
 
     # --- Pricing Breakdown (As per Client Doc) ---
     quantity = models.PositiveIntegerField(default=1)

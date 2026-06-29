@@ -1,31 +1,19 @@
 from django.core.cache import cache
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db import transaction
+from django.http import HttpResponseRedirect
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import display, action
 from unfold.enums import ActionVariant
-
 from .models import (
     SellerRequest, SellerProfile,
     SellerProduct, SellerProductImage,
     Order, Coupon,
 )
-from django.core.exceptions import ValidationError
-from django.contrib import messages
-from django.db import transaction
-from django.http import HttpResponseRedirect
-from django.contrib import admin
-from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
-from unfold.admin import ModelAdmin
-from unfold.decorators import display, action
-from django.contrib import messages
-from .models import SellerRequest
-from django.core.mail import send_mail
-from custom_ads.utils import send_dealnux_email 
-from django.utils.translation import gettext_lazy as _
+from custom_ads.utils import send_dealnux_email
 # ============================================================================
 # Inline
 # ============================================================================
@@ -44,15 +32,6 @@ class SellerProductImageInline(TabularInline):
 # Seller Request Admin
 # ============================================================================
 
-from django.contrib import admin, messages
-from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
-from django.http import HttpResponseRedirect
-from django.db import transaction
-from unfold.admin import ModelAdmin
-from unfold.decorators import display, action
-from unfold.enums import ActionVariant
-from .models import SellerRequest
 
 @admin.register(SellerRequest)
 class SellerRequestAdmin(ModelAdmin):
@@ -81,7 +60,6 @@ class SellerRequestAdmin(ModelAdmin):
     list_filter = ['status', 'legal_business_type', 'created_at']
     search_fields = ['trade_name', 'user__email', 'contact_full_name']
     
-    # [FIXED] readonly_fields এর নাম আর নিচের ফাংশনের নাম এখন হুবহু এক
     readonly_fields = [
         'user', 'trade_name', 'legal_business_type', 'business_reg_number',
         'contact_full_name', 'job_title', 'contact_email', 'contact_phone',
@@ -92,7 +70,7 @@ class SellerRequestAdmin(ModelAdmin):
         'display_fulfillment_methods', 
         'display_shipping_regions',   
         'return_policy_description', 'return_policy_document', 
-        'display_gov_id', 'display_license', 'display_utility_bill', # এখানে নাম ঠিক করা হয়েছে
+        'display_gov_id', 'display_license', 'display_utility_bill', 
         'has_prior_experience', 'experience_description', 
         'digital_signature', 'reviewed_at', 'created_at'
     ]
@@ -158,7 +136,6 @@ class SellerRequestAdmin(ModelAdmin):
     def display_status(self, obj): 
         return obj.status
 
-    # --- ৪. অ্যাকশনসমূহ (Actions with Redirect Fix) ---
     actions_row = ['action_approve_row', 'action_reject_row']
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
@@ -216,17 +193,11 @@ class SellerProfileAdmin(ModelAdmin):
         'created_at',
     ]
     
-    # বাটনগুলো সিরিয়াল অনুযায়ী: Suspend, Reinstate, Delete Marketplace
     actions_row = ['suspend_seller', 'reinstate_seller', 'delete_seller_marketplace', 'pause_payout']
 
-    # ========================================================================
-    # Permissions Logic (Manager vs Admin)
-    # Manager (Superuser) সব পারবে। Admin গ্রুপ আর্থিক বিষয় বা সেলার এপ্রুভাল পারবে না।
-    # ========================================================================
     def get_readonly_fields(self, request, obj=None):
         readonly = list(self.readonly_fields)
         if request.user.groups.filter(name='Admin').exists() and not request.user.is_superuser:
-            # Admin হলে ব্যালেন্স এডিট বা দেখা সীমিত হবে
             readonly += ['pending_balance', 'available_balance', 'total_earnings']
         return readonly
 
@@ -442,7 +413,7 @@ class SellerProductAdmin(ModelAdmin):
         actions = ['delete_product_with_notification']
     actions_row = ['delete_product_row']
  
-    # ✅ Row-level delete button
+    # Row-level delete button
     @action(
         description="Delete & Notify Seller",
         url_path='delete-product',
@@ -474,7 +445,7 @@ class SellerProductAdmin(ModelAdmin):
  
         return HttpResponseRedirect('../..')
  
-    # ✅ Bulk delete action
+    # Bulk delete action
     @admin.action(description="Delete selected products & notify sellers")
     def delete_product_with_notification(self, request, queryset):
         count = 0
