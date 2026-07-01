@@ -975,9 +975,11 @@ from rest_framework.response import Response
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def site_settings_view(request):
+    from .models import SiteSettings
+    from .serializers import SiteSettingsSerializer  # Assuming you have this serializer
+
     settings_instance = SiteSettings.get()
-    from .serializers import ProfileSerializer # Local import to avoid circular dependency if any
-    serializer = ProfileSerializer(settings_instance)
+    serializer = SiteSettingsSerializer(settings_instance)
     data = serializer.data
 
     if request.user.is_authenticated:

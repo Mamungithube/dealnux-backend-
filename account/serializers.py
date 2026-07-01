@@ -3,7 +3,7 @@ from account.models import Profile, User
 from django.contrib.auth import get_user_model, password_validation
 from django.template.loader import render_to_string
 from django.core.mail import EmailMessage
-from django.conf import settings
+from django.conf import settings 
 from rest_framework_simplejwt.tokens import RefreshToken
 import json
 import random
@@ -272,3 +272,11 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+from .models import SiteSettings
+
+class SiteSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteSettings
+        fields = ['referral_reward_amount']
