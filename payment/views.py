@@ -255,10 +255,21 @@ class CreateCheckoutSessionView(APIView):
             
             # Create the order directly, similar to how the webhook would
             create_orders_from_payment(payment, validated_items)
+            
+            cost_breakdown = {
+                'subtotal': float(total_item_price),
+                'shipping': float(total_shipping_fee),
+                'service_fee': float(service_fee),
+                'discount': float(total_discount),
+                'tax': 0.0, # No tax calculated for balance-only payments
+                'balance_used': float(applied_balance),
+                'grand_total': float(payment.final_amount)
+            }
             return Response({
                 'success': True,
                 'message': 'Order placed successfully using your balance.',
                 'payment_id': payment.id,
+                'costs': cost_breakdown,
             }, status=200)
         else:
             # If payment is still required, create a Stripe Checkout and Payment Intent
@@ -296,10 +307,21 @@ class CreateCheckoutSessionView(APIView):
                 payment.final_amount = final_grand_total
                 payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
 
+                cost_breakdown = {
+                    'subtotal': float(total_item_price),
+                    'shipping': float(total_shipping_fee),
+                    'service_fee': float(service_fee),
+                    'discount': float(total_discount),
+                    'tax': float(stripe_tax),
+                    'balance_used': float(applied_balance),
+                    'grand_total': float(final_grand_total)
+                }
+
                 return Response({
                     'client_secret': session.client_secret,
                     'payment_intent_client_secret': mobile_intent.client_secret,
                     'payment_id': payment.id,
+                    'costs': cost_breakdown,
                 })
 
             except Exception as e:
@@ -560,11 +582,12 @@ class StripeWebhookView(APIView):
                     print(
                         f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
 
+                    # FIX: Pass correct referrer and referred_user objects to the email context. Use dynamic amount.
                     send_dealnux_email(
                         "You've earned a referral reward! - DealNux",
                         referrer.email,
                         "emails/referral_bonus.html",
-                        {"referrer": user, "referred_user": user, "amount": "10"}
+                        {"referrer": referrer, "referred_user": user, "amount": amount}
                     )
 
             # If the current user is a referrer, check for any referred users who already have active subscriptions
@@ -591,12 +614,12 @@ class StripeWebhookView(APIView):
                             print(
                                 f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
 
+                            # FIX: Correct the context for the deferred reward email. The current 'user' is the referrer.
                             send_dealnux_email(
                                 "You've earned a referral reward! - DealNux",
                                 user.email,
                                 "emails/referrer_reward.html",
-                                {"referrer": referrer,
-                                    "referred_user": user, "amount": "10"}
+                                {"referrer": user, "referred_user": referred_user, "amount": amount}
                             )
 
         except Exception as e:
