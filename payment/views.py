@@ -321,7 +321,7 @@ class CreateCheckoutSessionView(APIView):
                     'client_secret': session.client_secret,
                     'payment_intent_client_secret': mobile_intent.client_secret,
                     'payment_id': payment.id,
-                    'costs': cost_breakdown,
+                    'breakdown': cost_breakdown,
                 })
 
             except Exception as e:
