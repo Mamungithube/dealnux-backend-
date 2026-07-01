@@ -975,7 +975,12 @@ from rest_framework.response import Response
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def site_settings_view(request):
-    settings = SiteSettings.get()
-    return Response({
-        'referral_reward_amount': settings.referral_reward_amount,
-    })
+    settings_instance = SiteSettings.get()
+    from .serializers import SiteSettingsSerializer # Local import to avoid circular dependency if any
+    serializer = SiteSettingsSerializer(settings_instance)
+    data = serializer.data
+
+    if request.user.is_authenticated:
+        data['balance'] = request.user.balance
+
+    return Response({"success": True, "data": data})
