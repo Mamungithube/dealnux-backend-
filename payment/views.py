@@ -269,7 +269,7 @@ class CreateCheckoutSessionView(APIView):
                 'success': True,
                 'message': 'Order placed successfully using your balance.',
                 'payment_id': payment.id,
-                'costs': cost_breakdown,
+                'breakdown': cost_breakdown,
             }, status=200)
         else:
             # If payment is still required, create a Stripe Checkout and Payment Intent
