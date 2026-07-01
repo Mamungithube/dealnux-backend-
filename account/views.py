@@ -976,8 +976,8 @@ from rest_framework.response import Response
 @permission_classes([AllowAny])
 def site_settings_view(request):
     settings_instance = SiteSettings.get()
-    from .serializers import SiteSettingsSerializer # Local import to avoid circular dependency if any
-    serializer = SiteSettingsSerializer(settings_instance)
+    from .serializers import ProfileSerializer # Local import to avoid circular dependency if any
+    serializer = ProfileSerializer(settings_instance)
     data = serializer.data
 
     if request.user.is_authenticated:
