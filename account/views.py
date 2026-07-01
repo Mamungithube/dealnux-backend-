@@ -975,6 +975,7 @@ from rest_framework.response import Response
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def site_settings_view(request):
+    from .models import SiteSettings
     settings_instance = SiteSettings.get()
     
     data = {
@@ -983,6 +984,6 @@ def site_settings_view(request):
     }
 
     if request.user.is_authenticated:
-        data['user_referral_amount'] = request.user.balance
+        data['user_referral_amount'] = float(request.user.balance)
 
     return Response(data)
