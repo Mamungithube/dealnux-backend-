@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Privacy_Policy, Cookie_Policy, Terms_Of_Service , Review
+from .models import PressInquiry, Privacy_Policy, Cookie_Policy, Terms_Of_Service , Review
 
 class PrivacyPolicySerializer(serializers.ModelSerializer):
     class Meta:

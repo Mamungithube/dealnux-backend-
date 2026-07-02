@@ -134,3 +134,4 @@ class ContactMessage(models.Model):
 
     def __str__(self):
         return f"{self.ticket_id} - {self.full_name} - {self.subject}"
+    

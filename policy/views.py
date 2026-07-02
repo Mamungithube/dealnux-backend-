@@ -488,6 +488,8 @@ Team Dealnux""",
         )
 
 
+
+
 class ContactMessageListView(generics.ListAPIView):
     serializer_class = ContactMessageSerializer
     permission_classes = [permissions.IsAdminUser]
@@ -501,13 +503,11 @@ from django.utils import timezone
 import time
 
 class CookieConsentView(APIView):
-    # সবার জন্য উন্মুক্ত (Logged in + Guest)
     permission_classes = [AllowAny]
 
     def post(self, request):
         preferences = request.data
         
-        # ১. যদি ইউজার লগইন করা থাকে (ডাটাবেজে সেভ হবে)
         if request.user.is_authenticated:
             user = request.user
             user.cookie_preferences = preferences
@@ -520,7 +520,6 @@ class CookieConsentView(APIView):
                 "data": preferences
             })
 
-        # ২. যদি গেস্ট ইউজার হয় (শুধু পজিটিভ রেসপন্স যাবে)
         else:
             return Response({
                 "success": True, 
