@@ -58,6 +58,9 @@ class User(AbstractUser):
     agreed_to_terms = models.BooleanField(default=False)
     agreed_to_privacy = models.BooleanField(default=False)
 
+    cookie_consent = models.BooleanField(default=False)
+    cookie_consent_date = models.DateTimeField(null=True, blank=True)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 

@@ -23,6 +23,8 @@ from policy.serializers import (
     ReturnPolicySerializer
 )
 from django.core.mail import EmailMessage
+from django.utils import timezone
+from rest_framework.permissions import AllowAny
 # 🔹 Common API Response
 
 
@@ -490,3 +492,39 @@ class ContactMessageListView(generics.ListAPIView):
     serializer_class = ContactMessageSerializer
     permission_classes = [permissions.IsAdminUser]
     queryset = ContactMessage.objects.all()
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from django.utils import timezone
+import time
+
+class CookieConsentView(APIView):
+    # সবার জন্য উন্মুক্ত (Logged in + Guest)
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        preferences = request.data
+        
+        # ১. যদি ইউজার লগইন করা থাকে (ডাটাবেজে সেভ হবে)
+        if request.user.is_authenticated:
+            user = request.user
+            user.cookie_preferences = preferences
+            user.cookie_consent_date = timezone.now()
+            user.save()
+            return Response({
+                "success": True, 
+                "type": "authenticated", 
+                "timestamp": int(time.time()),
+                "data": preferences
+            })
+
+        # ২. যদি গেস্ট ইউজার হয় (শুধু পজিটিভ রেসপন্স যাবে)
+        else:
+            return Response({
+                "success": True, 
+                "type": "guest",
+                "timestamp": int(time.time()),
+                "message": "Consent received. Frontend should store this in LocalStorage/Cookie."
+            })

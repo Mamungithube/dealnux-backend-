@@ -13,6 +13,7 @@ from .views import (
     PreOrderPolicyView,
     RefundPolicyView,
     ReturnPolicyView,
+    CookieConsentView
 )
 
 urlpatterns = [
@@ -32,4 +33,6 @@ urlpatterns = [
     path('pre-order-policy/',   PreOrderPolicyView.as_view(),   name='pre-order-policy'),
     path('refund-policy/',      RefundPolicyView.as_view(),     name='refund-policy'),
     path('return-policy/',      ReturnPolicyView.as_view(),     name='return-policy'),
+
+    path('cookie-consent/', CookieConsentView.as_view(), name='cookie-consent'),
 ]
