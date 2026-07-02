@@ -31,5 +31,6 @@ urlpatterns = [
     path('dashboard/', views.DashboardSavingsView.as_view(), name='dashboard-savings'),
     path('products/category/<slug:slug>/compare_prices/', views.category_compare_prices, name='category-compare-prices'),
 
-    path('barcode-lookup/', views.barcode_lookup_api, name='barcode-lookup'),
+    path('barcode-lookup/', views.barcode_scanner_pipeline, name='barcode-lookup'),
+    path('decode-barcode/', views.decode_barcode_to_slug, name='decode-barcode'),
 ]

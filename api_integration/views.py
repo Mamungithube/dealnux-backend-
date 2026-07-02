@@ -2704,84 +2704,94 @@ class NotificationListView(generics.ListAPIView):
             ]
         }, status=200)
 
+from django.shortcuts import redirect
+from django.urls import reverse
+import requests
+def get_title_from_barcode_safely(barcode):
+    """একাধিক সোর্স থেকে টাইটেল খোঁজা এবং এরর হ্যান্ডল করা"""
+    sources = [
+        f"https://api.upcitemdb.com/prod/trial/lookup?upc={barcode}",
+        f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
+    ]
+    
+    for url in sources:
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                # upcitemdb logic
+                if 'items' in data and len(data['items']) > 0:
+                    return data['items'][0].get('title')
+                # openfoodfacts logic
+                if data.get('status') == 1:
+                    return data.get('product', {}).get('product_name')
+        except Exception:
+            continue
+    return None
+
+
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def barcode_lookup_api(request):
+def barcode_scanner_pipeline(request):
     """
-    In English: 
-    Accepts UPC/EAN barcode from the app.
-    Checks local DB first by GTIN. 
-    If not enough deals, triggers real-time API sync using the barcode.
-    Returns sorted comparison results.
+    In English:
+    1. Receives barcode.
+    2. Converts to product name using external lookup.
+    3. Finds or Creates a product in DB to get a slug.
+    4. Internally redirects to the existing 'compare_prices_api' logic.
     """
     barcode = request.query_params.get('code', '').strip()
     if not barcode:
         return error_response("Barcode is required", code=400)
 
-    # 1. Search in local database by GTIN (Global Trade Item Number)
-    # Most barcodes are stored in our 'gtin' or 'asin' fields
+    product = Product.objects.filter(Q(gtin=barcode) | Q(asin=barcode)).first()
+    if not product:
+        title_found = get_title_from_barcode_safely(barcode)
+        
+        if title_found:
+            from django.utils.text import slugify
+            import uuid
+            
+            base_slug = slugify(title_found)[:490]
+            final_slug = base_slug if not Product.objects.filter(slug=base_slug).exists() else f"{base_slug}-{uuid.uuid4().hex[:5]}"
+
+            product = Product.objects.create(
+                title=title_found,
+                slug=final_slug,
+                gtin=barcode,
+                is_active=True
+            )
+        else:
+            return error_response("Could not identify this barcode. Try manual search.", code=404)
+
+    return compare_prices_api(request._request, slug=product.slug)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def decode_barcode_to_slug(request):
+    """
+    Takes a barcode, finds the product title, creates a temporary product,
+    and then calls the compare_prices_api to get all deals.
+    """
+    barcode = request.query_params.get('code', '').strip()
+    if not barcode:
+        return error_response("Query parameter 'code' is required.", code=400)
+
     product = Product.objects.filter(Q(gtin=barcode) | Q(asin=barcode)).first()
 
-    # 2. If product not found OR we want to find fresh deals across all platforms
-    # We trigger the sync task using the barcode as the query
-    sync_triggered = False
-    if not product or product.listings.count() < 2:
-        # Trigger parallel sync using the numeric barcode
-        sync_amazon_task.delay(barcode, limit=3)
-        sync_ebay_task.delay(barcode, limit=3)
-        sync_walmart_task.delay(barcode, limit=3)
-        sync_triggered = True
-        
-        # Wait a few seconds for the first set of data to land (Compliance with 2-5s requirement)
-        import time
-        time.sleep(3.5)
-        
-        # Re-fetch product after sync
-        product = Product.objects.filter(Q(gtin=barcode) | Q(asin=barcode)).first()
-
     if not product:
-        return error_response("We couldn't find this product. Try scanning again or search manually.", code=404)
+        title_found = get_title_from_barcode_safely(barcode)
+        if not title_found:
+            return error_response(f"Could not find a product title for barcode '{barcode}'.", code=404)
 
-    # 3. Fetch all listings for this exact product
-    listings = ProductListing.objects.filter(
-        product=product, is_available=True, price__gt=0
-    ).select_related('platform').order_by('price')
-
-    # 4. Prepare Comparison Data
-    comparison_list = []
-    prices = []
-    
-    for l in listings:
-        total_p = float(l.get_total_price())
-        prices.append(total_p)
+        from django.utils.text import slugify
+        import uuid
+        base_slug = slugify(title_found)[:490]
+        final_slug = base_slug if not Product.objects.filter(slug=base_slug).exists() else f"{base_slug}-{uuid.uuid4().hex[:5]}"
         
-        # Distinguish between Marketplace and External
-        is_marketplace = l.platform.code.startswith('local-seller-')
-        
-        comparison_list.append({
-            'platform': l.platform.name,
-            'platform_code': l.platform.code,
-            'type': 'MARKETPLACE' if is_marketplace else 'EXTERNAL',
-            'price': float(l.price),
-            'total_price': total_p,
-            'currency': l.currency,
-            'availability': 'Available Nearby' if is_marketplace else 'In Stock',
-            'url': l.external_url,
-            'seller': l.seller_username,
-            'image': l.product.main_image
-        })
+        product = Product.objects.create(title=title_found, slug=final_slug, gtin=barcode, is_active=True)
 
-    # 5. Build Final Response
-    return success_response({
-        'product': {
-            'id': product.id,
-            'title': product.title,
-            'brand': product.brand,
-            'main_image': product.main_image,
-            'gtin': barcode
-        },
-        'best_deal': comparison_list[0] if comparison_list else None,
-        'price_comparison': comparison_list,
-        'sync_status': 'sync_completed' if sync_triggered else 'cached'
-    })
+    return compare_prices_api(request._request, slug=product.slug)
