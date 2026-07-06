@@ -402,37 +402,83 @@ class AboutUsView(PolicyGetBaseView):
     serializer_class = AboutUsSerializer
     policy_name = "About Us"
 
+from django.db import IntegrityError, transaction
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class ReviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        reviews = Review.objects.all().order_by('-created_at')
-        serializer = ReviewSerializer(reviews, many=True)
-        return api_response(
-            success=True,
-            code=status.HTTP_200_OK,
-            message="Reviews retrieved successfully.",
-            data=serializer.data
-        )
-
-    def post(self, request):
-        serializer = ReviewSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(user=request.user)
+        try:
+            reviews = Review.objects.all().order_by('-created_at')
+            serializer = ReviewSerializer(reviews, many=True)
             return api_response(
                 success=True,
-                code=status.HTTP_201_CREATED,
-                message="Review created successfully.",
+                code=status.HTTP_200_OK,
+                message="Reviews retrieved successfully.",
+                data=serializer.data
+            )
+        except Exception as e:
+            logger.error(f"Error fetching reviews: {str(e)}")
+            return api_response(
+                success=False,
+                code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Something went wrong while fetching reviews.",
+                data=None
+            )
+
+    def post(self, request):
+        try:
+            existing_review = Review.objects.filter(user=request.user).first()
+
+            if existing_review:
+                serializer = ReviewSerializer(existing_review, data=request.data, partial=True)
+                message = "Review updated successfully."
+                success_code = status.HTTP_200_OK
+            else:
+                serializer = ReviewSerializer(data=request.data)
+                message = "Review created successfully."
+                success_code = status.HTTP_201_CREATED
+
+            if not serializer.is_valid():
+                return api_response(
+                    success=False,
+                    code=status.HTTP_400_BAD_REQUEST,
+                    message="Validation error.",
+                    data=serializer.errors
+                )
+
+            # race condition guard: দুইটা রিকোয়েস্ট একসাথে এলে DB constraint যাতে crash না করে
+            with transaction.atomic():
+                serializer.save(user=request.user)
+
+            return api_response(
+                success=True,
+                code=success_code,
+                message=message,
                 data=serializer.data
             )
 
-        return api_response(
-            success=False,
-            code=status.HTTP_400_BAD_REQUEST,
-            message="Validation error.",
-            data=serializer.errors
-        )
+        except IntegrityError as e:
+            logger.warning(f"Review IntegrityError for user {request.user.id}: {str(e)}")
+            return api_response(
+                success=False,
+                code=status.HTTP_400_BAD_REQUEST,
+                message="You have already submitted a review.",
+                data=None
+            )
 
+        except Exception as e:
+            logger.error(f"Unexpected error creating review for user {request.user.id}: {str(e)}")
+            return api_response(
+                success=False,
+                code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Something went wrong. Please try again later.",
+                data=None
+            )
 
 class ContactMessageCreateView(generics.CreateAPIView):
     serializer_class = ContactMessageSerializer
