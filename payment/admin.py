@@ -11,6 +11,8 @@ from .models import Payment, SellerPayout, SubscriptionPlan, UserSubscription
 from account.utils.admin_permissions import ManagerOnlyMixin, AdminReadOnlyFinancialMixin
 from django.utils.translation import gettext_lazy as _
 from unfold.enums import ActionVariant
+from django import forms
+import json
 # ============================================================================
 # Payment Admin
 # ============================================================================
@@ -309,13 +311,49 @@ class SellerPayoutAdmin(ManagerOnlyMixin, ModelAdmin):
         return '—'
 
 
+# ============================================================================
+# SubscriptionPlan Form - Converts newline-separated features to/from JSON
+# ============================================================================
+class SubscriptionPlanForm(forms.ModelForm):
+    """Custom form to handle features as newline-separated text instead of JSON."""
+    features = forms.CharField(
+        widget=forms.Textarea(attrs={
+            'rows': 6,
+            'placeholder': 'Enter one feature per line:\n• Unlimited searches\n• Priority support\n• AI optimization',
+            'style': 'font-family: monospace; width: 100%;'
+        }),
+        required=False,
+        label='Features',
+        help_text='Enter one feature per line (no JSON needed)'
+    )
+
+    class Meta:
+        model = SubscriptionPlan
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Convert JSON array to newline-separated text for editing
+        if self.instance.pk and self.instance.features:
+            self.fields['features'].initial = '\n'.join(self.instance.features)
+
+    def clean_features(self):
+        features_text = self.cleaned_data.get('features', '')
+        if not features_text.strip():
+            return []
+        # Convert newline-separated text to list
+        features_list = [line.strip() for line in features_text.split('\n') if line.strip()]
+        return features_list
+
+
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
+    form = SubscriptionPlanForm
     list_display = [
-        'id',
         'name',
-        'display_price',
         'plan_type',
+        'id',
+        'display_price',
         'display_trial_days',
         'display_limits',
         'display_features',
