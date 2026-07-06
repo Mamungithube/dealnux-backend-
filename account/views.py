@@ -680,13 +680,19 @@ class ProfileSetupView(APIView):
                 user.save()
 
                 profile_data = ProfileSerializer(profile).data
+                from rest_framework_simplejwt.tokens import RefreshToken
+                refresh = RefreshToken.for_user(user)
 
                 return Response({
                     "success": True,
                     "code": status.HTTP_201_CREATED,
-                    "message": "Profile setup completed successfully. You can now login.",
+                    "message": "Profile setup completed successfully.",
                     "timestamp": int(time.time()),
-                    "data": profile_data
+                    "data": {
+                        "access": str(refresh.access_token),
+                        "refresh": str(refresh),
+                        "profile": profile_data
+                    }
                 }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
