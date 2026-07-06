@@ -312,20 +312,26 @@ class SellerPayoutAdmin(ManagerOnlyMixin, ModelAdmin):
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
     list_display = [
-        'id', 
-        'name', 
-        'display_price', 
-        'plan_type', 
-        'display_trial_days', 
-        'display_limits', 
+        'id',
+        'name',
+        'display_price',
+        'plan_type',
+        'display_trial_days',
+        'display_limits',
+        'display_features',
         'is_active'
     ]
     list_filter = ['plan_type', 'is_active']
     search_fields = ['name', 'stripe_price_id']
-    
+    readonly_fields = ['stripe_price_id']
+
     fieldsets = (
         ('General Information', {
             'fields': ('name', 'plan_type', 'price', 'is_active')
+        }),
+        ('Features', {
+            'fields': ('features',),
+            'description': 'Add features as a JSON array, for example: ["Unlimited searches", "Priority support"]'
         }),
         ('Trial & Limits', {
             'fields': ('trial_days', 'clicks_per_day', 'price_alerts_limit')
@@ -353,6 +359,12 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
             'Clicks: <b>{}</b> | Alerts: <b>{}</b>',
             obj.clicks_per_day, alerts
         )
+
+    @display(description='Features')
+    def display_features(self, obj):
+        if not obj.features:
+            return '—'
+        return format_html('<span>{}</span>', ', '.join(obj.features[:5]))
 
 
 @admin.register(UserSubscription)
