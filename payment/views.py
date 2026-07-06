@@ -504,10 +504,67 @@ class StripeWebhookView(APIView):
             print(f"❌ Error in _handle_subscription_success: {str(e)}")
 
 
+    def _handle_subscription_success_intent(self, payment_intent):
+        """Activates the paid subscription plan for the user in the database via PaymentIntent."""
+        metadata = payment_intent.get('metadata', {})
+        user_id = metadata.get('user_id')
+        plan_id = metadata.get('plan_id')
+        stripe_cust_id = payment_intent.get('customer')
+
+        if not user_id or not plan_id:
+            return
+
+        try:
+            from account.models import User
+            from payment.models import SubscriptionPlan, UserSubscription
+            from django.utils import timezone
+            from datetime import timedelta
+
+            user = User.objects.get(id=user_id)
+            plan = SubscriptionPlan.objects.get(id=plan_id)
+
+            # Define duration based on plan type
+            days = 365 if 'YEARLY' in plan.plan_type else 30
+            now = timezone.now()
+
+            # Update or create the subscription record
+            subscription, _ = UserSubscription.objects.update_or_create(
+                user=user,
+                defaults={
+                    'plan': plan,
+                    'status': 'ACTIVE',
+                    'stripe_subscription_id': payment_intent.get('id'), # Use PaymentIntent ID as fallback
+                    'stripe_customer_id': stripe_cust_id,
+                    'started_at': now,
+                    'expires_at': now + timedelta(days=days),
+                    'trial_ends_at': now
+                }
+            )
+            print(f"✅ Subscription activated via PaymentIntent for: {user.email}")
+
+            self._process_referral_reward(user)
+
+            send_dealnux_email(
+                "Your DealNux Subscription is Active!",
+                user.email,
+                "emails/subscription_active.html",
+                {
+                    "user": user,
+                    "plan": plan,
+                    "renewal_date": subscription.expires_at
+                }
+            )
+        except Exception as e:
+            print(f"❌ Error in _handle_subscription_success_intent: {str(e)}")
+
     def _handle_payment_intent_succeeded(self, payment_intent):
         metadata = payment_intent.get('metadata', {})
         payment_id = metadata.get('payment_id')
         p_type = metadata.get('type')
+
+        if p_type == 'subscription_payment':
+            self._handle_subscription_success_intent(payment_intent)
+            return
 
         if not payment_id:
             return
@@ -991,17 +1048,33 @@ class CreateSubscriptionCheckoutView(APIView):
                 customer_email=user.email,
             )
 
-            mobile_intent = stripe.PaymentIntent.create(
-                # Convert to cents (e.g., 7.99 -> 799)
-                amount=int(plan.price * 100),
-                currency='usd',
-                payment_method_types=['card'],
-                metadata={
+            sub = UserSubscription.objects.filter(user=user).first()
+            stripe_cust_id = sub.stripe_customer_id if sub else None
+
+            if not stripe_cust_id:
+                try:
+                    customer = stripe.Customer.create(
+                        email=user.email,
+                        metadata={'user_id': user.id}
+                    )
+                    stripe_cust_id = customer.id
+                except Exception:
+                    pass
+
+            intent_params = {
+                'amount': int(plan.price * 100),
+                'currency': 'usd',
+                'payment_method_types': ['card'],
+                'metadata': {
                     'user_id': user.id,
                     'plan_id': plan.id,
                     'type': 'subscription_payment'
                 }
-            )
+            }
+            if stripe_cust_id:
+                intent_params['customer'] = stripe_cust_id
+
+            mobile_intent = stripe.PaymentIntent.create(**intent_params)
 
             return Response({
                 "client_secret": session.client_secret,
