@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Sum, Avg, Count
-from stripe.climate import Product
+
 
 from payment.views import _calculate_order_amounts
 from payment.utils import process_referral_reward_for_user
@@ -683,6 +683,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.status = 'ACCEPTED'
         order.save(update_fields=['status', 'updated_at'])
 
+
+
         return success_response(
             {"order_number": order.order_number, "status": order.status},
             message="Order accepted by seller."
@@ -708,6 +710,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.status = 'SHIPPED'
         order.save()
+
+
 
         send_dealnux_email(
             "Your Order Has Been Shipped - DealNux",
@@ -790,6 +794,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.is_accepted_by_buyer = True
             order.accepted_at = timezone.now()
             order.save()
+
+
 
             # ওয়ালেট আপডেট লজিক
             seller_profile = order.seller

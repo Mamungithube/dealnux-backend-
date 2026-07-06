@@ -440,9 +440,9 @@ class StripeWebhookView(APIView):
                         ad.save()
                         send_dealnux_email(
                             "Ad Submitted for Review - DealNux",
-                            ad.seller.email, 
+                            ad.advertiser.email, 
                             "emails/ad_submitted.html",
-                            {"ad": ad, "user": ad.seller}
+                            {"ad": ad, "user": ad.advertiser}
                         )
             except Payment.DoesNotExist:
                 print(f"Error: Payment ID {payment_id} not found in database.")

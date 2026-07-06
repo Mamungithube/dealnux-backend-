@@ -17,7 +17,7 @@ def _get_save_fn():
     return save_generic_product_to_db
 
 @shared_task
-def sync_ebay_task(query, limit=10):
+def sync_ebay_task(query='deals', limit=10):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='ebay',
@@ -86,7 +86,7 @@ def sync_ebay_task(query, limit=10):
 
 
 @shared_task
-def sync_amazon_task(query, limit=10):
+def sync_amazon_task(query='deals', limit=10):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='amazon',
@@ -115,7 +115,7 @@ def sync_amazon_task(query, limit=10):
 
 
 @shared_task
-def sync_walmart_task(query, limit=100):
+def sync_walmart_task(query='deals', limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='walmart',
@@ -144,7 +144,7 @@ def sync_walmart_task(query, limit=100):
 
 
 @shared_task
-def sync_sephora_task(query, limit=100):
+def sync_sephora_task(query='makeup', limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='sephora',
@@ -173,7 +173,7 @@ def sync_sephora_task(query, limit=100):
 
 
 @shared_task
-def sync_target_task(query, limit=100):
+def sync_target_task(query='deals', limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='target',
@@ -202,7 +202,7 @@ def sync_target_task(query, limit=100):
 
 
 @shared_task
-def sync_wayfair_task(query, limit=100):
+def sync_wayfair_task(query='furniture', limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='wayfair',
@@ -231,7 +231,7 @@ def sync_wayfair_task(query, limit=100):
 
 
 @shared_task
-def sync_aliexpress_task(query, limit=100):
+def sync_aliexpress_task(query='deals', limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='aliexpress',
@@ -260,7 +260,7 @@ def sync_aliexpress_task(query, limit=100):
 
 
 @shared_task
-def sync_bestbuy_task(query, limit=100):
+def sync_bestbuy_task(query='deals', limit=100):
     try:
         platform, _ = Platform.objects.get_or_create(
             code='bestbuy',

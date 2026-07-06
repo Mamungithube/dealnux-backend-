@@ -14,6 +14,17 @@ def validate_and_increment_click(user, product_id=None):
             subscription.last_click_date = today
 
         if subscription.daily_click_count >= subscription.plan.clicks_per_day:
+            try:
+                from notifications.utils import create_notification
+                create_notification(
+                    user=user,
+                    title="Retailer Click Limit Reached! ⚠️",
+                    body="You have reached your daily click limit for retailer links. Upgrade your plan to continue browsing unlimited deals!",
+                    notification_type="SUBSCRIPTION_REMINDER",
+                    channel="SYSTEM"
+                )
+            except Exception:
+                pass
             return False, "Daily click limit reached!"
 
         subscription.daily_click_count += 1
@@ -46,9 +57,12 @@ def process_referral_reward_for_user(user):
             return False
 
         from account.models import SiteSettings
+        from notifications.utils import send_referral_reward_notification
         amount = SiteSettings.get().referral_reward_amount
         referrer.balance += amount
         referrer.save(update_fields=['balance'])
+
+        send_referral_reward_notification(referrer, amount)
 
         user.has_referral_reward_awarded = True
         user.save(update_fields=['has_referral_reward_awarded'])

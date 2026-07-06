@@ -729,6 +729,18 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                 review_count=incoming_reviews,
             )
 
+        was_available = True
+        was_coupon = False
+        try:
+            old_listing = ProductListing.objects.only('is_available', 'has_coupon').get(
+                platform=platform,
+                external_id=external_id
+            )
+            was_available = old_listing.is_available
+            was_coupon = old_listing.has_coupon
+        except ProductListing.DoesNotExist:
+            was_available = False
+
         shipping = product_data.get('shipping_info', {})
         listing, listing_created = ProductListing.objects.update_or_create(
             platform=platform,
@@ -761,6 +773,65 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             }
         )
 
+        try:
+            from notifications.utils import send_back_in_stock_notification, send_flash_sale_notification, create_notification
+            from .models import Favorite
+            
+            is_now_available = bool(product_data.get('is_available', True))
+            has_now_coupon = bool(product_data.get('has_coupon', False)) or bool(product_data.get('coupon_text', ''))
+            
+            if not was_available and is_now_available:
+                favorites = Favorite.objects.filter(product=product).select_related('user')
+                for fav in favorites:
+                    send_back_in_stock_notification(
+                        fav.user,
+                        product.title,
+                        product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                    )
+            
+            has_discount = product_data.get('discount_percentage') or (
+                product_data.get('original_price') and price_val < float(product_data['original_price'])
+            )
+            if has_discount:
+                favorites = Favorite.objects.filter(product=product).select_related('user')
+                for fav in favorites:
+                    create_notification(
+                        user=fav.user,
+                        title="Wishlist Item on Sale! 🏷️",
+                        body=f"Your favorite item '{product.title}' is now on sale for ${price_val}!",
+                        notification_type="WISHLIST_SALE",
+                        channel="SYSTEM"
+                    )
+            
+            if not was_coupon and has_now_coupon:
+                favorites = Favorite.objects.filter(product=product).select_related('user')
+                for fav in favorites:
+                    send_flash_sale_notification(
+                        fav.user,
+                        title="Special Coupon Available! 🎟️",
+                        body=f"A coupon is now available for '{product.title}': {product_data.get('coupon_text') or 'Discount applied'}",
+                        product_url=product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                    )
+            
+            if platform.code.startswith('local-seller-') and is_now_available:
+                cheapest_online = ProductListing.objects.filter(
+                    product=product,
+                    is_available=True
+                ).exclude(platform__code__startswith='local-seller-').order_by('price').first()
+                
+                if cheapest_online and price_val < cheapest_online.price:
+                    favorites = Favorite.objects.filter(product=product).select_related('user')
+                    for fav in favorites:
+                        create_notification(
+                            user=fav.user,
+                            title="Better Local Deal Found! 📍",
+                            body=f"A local seller has listed '{product.title}' for ${price_val}, which is cheaper than online stores!",
+                            notification_type="LOCAL_DEAL",
+                            channel="SYSTEM"
+                        )
+        except Exception as e:
+            logger.error(f"Error sending automatic notifications: {str(e)}")
+
         if listing_created:
             PriceHistory.objects.create(
                 listing=listing, price=listing.price, currency=listing.currency
@@ -786,8 +857,8 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                 )
 
     try:
-        from .models import PriceAlert, Notification
-        from .firebase_utils import send_push_notification
+        from notifications.utils import send_price_drop_notification, send_target_price_reached_notification
+        from .models import PriceAlert
 
         active_alerts = PriceAlert.objects.filter(
             product=product,
@@ -798,15 +869,10 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         for alert in active_alerts:
             title = "Price Drop Alert! 📉"
             body = f"Good news! {product.title} is now ${price_val} on {platform.name}. Buy it before the price goes up!"
+            send_price_drop_notification(alert.user, product.title, product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None)
 
-            send_push_notification(user=alert.user, title=title, body=body)
-
-            Notification.objects.create(
-                user=alert.user,
-                title=title,
-                body=body,
-                notification_type='PRICE_DROP'
-            )
+            if alert.target_price and float(alert.target_price) >= float(price_val):
+                send_target_price_reached_notification(alert.user, product.title, product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None)
 
     except Exception as e:
         logger.error(

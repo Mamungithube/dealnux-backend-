@@ -33,14 +33,16 @@ from difflib import SequenceMatcher
 import re
 from .models import (
     Product, ProductListing, Platform, Category,
-    CartItem, SavingsActivity, Favorite, PriceAlert, Notification
+    CartItem, SavingsActivity, Favorite, PriceAlert
 )
 from .serializers import (
     ProductSerializer, ProductDetailSerializer,
     ProductListingSerializer, PlatformSerializer,
     CategorySerializer, PriceHistorySerializer,
-    CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer, PriceAlertSerializer, NotificationSerializer
+    CartItemSerializer, FavoriteSerializer, CategoryTreeSerializer, CategoryChildSerializer, PriceAlertSerializer
 )
+from notifications.models import Notification
+from notifications.serializers import NotificationSerializer
 from store.serializers import SellerProductSerializer
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
@@ -2638,20 +2640,6 @@ def amazon_promo_details(request):
     return success_response(data, message="Promo code details fetched")
 
 
-class DeviceTokenView(APIView):
-    """Save user device token for FCM"""
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        token = request.data.get('fcm_token')
-        if not token:
-            return Response({"error": "fcm_token is required"}, status=400)
-
-        from account.models import DeviceToken
-        DeviceToken.objects.get_or_create(user=request.user, fcm_token=token)
-        return success_response(None, message="FCM token saved.")
-
-
 class PriceAlertViewSet(viewsets.ModelViewSet):
     """User can set up to 5 alerts (Free) or Unlimited (Paid)"""
     permission_classes = [IsAuthenticated]
@@ -2677,32 +2665,6 @@ class PriceAlertViewSet(viewsets.ModelViewSet):
 
         return super().create(request, *args, **kwargs)
 
-
-class NotificationListView(generics.ListAPIView):
-    """Show notification history for the user"""
-    permission_classes = [IsAuthenticated]
-    serializer_class = NotificationSerializer
-
-    def list(self, request):
-        notifications = Notification.objects.filter(
-            user=request.user
-        ).order_by('-created_at')[:20]
-
-        return Response({
-            "success": True,
-            "code": 200,
-            "message": "Notifications fetched successfully.",
-            "timestamp": int(time.time()),
-            "data": [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "body": n.body,
-                    "is_read": n.is_read,
-                    "created_at": n.created_at,
-                } for n in notifications
-            ]
-        }, status=200)
 
 from django.shortcuts import redirect
 from django.urls import reverse

@@ -413,7 +413,8 @@ class FavoriteSerializer(serializers.ModelSerializer):
         ).data
 
 
-from .models import PriceAlert, Notification
+from .models import PriceAlert
+from notifications.models import Notification
 
 class PriceAlertSerializer(serializers.ModelSerializer):
     class Meta:

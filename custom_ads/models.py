@@ -125,9 +125,6 @@ class AdSetting(models.Model):
         return f"Current CPC: {self.cpc_amount}"
 
     def save(self, *args, **kwargs):
-        if self.status == 'active':
-            if self.end_date <= timezone.now() or self.spent_amount >= self.total_budget:
-                self.status = 'expired'
         if not self.id:
             self.full_clean()
 

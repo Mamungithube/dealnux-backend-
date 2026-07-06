@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'account',
     'custom_ads',
     'policy',
+    'notifications',
     'api_integration',
     'store',
     'payment',
@@ -298,6 +299,14 @@ CELERY_BEAT_SCHEDULE = {
     'daily-category-sync': {
         'task': 'api_integration.tasks.safe_category_sync',
         'schedule': crontab(hour=2, minute=0), 
+    },
+    'process-scheduled-notifications': {
+        'task': 'notifications.tasks.send_scheduled_notifications',
+        'schedule': crontab(minute='*'),  # Run every minute
+    },
+    'daily-subscription-reminders': {
+        'task': 'notifications.tasks.send_subscription_reminders',
+        'schedule': crontab(hour=9, minute=0),  # Run daily at 9:00 AM
     },
 }
 

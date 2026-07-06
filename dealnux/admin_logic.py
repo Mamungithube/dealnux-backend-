@@ -17,6 +17,8 @@ def dashboard_callback(request, context):
         Listing = apps.get_model('api_integration', 'ProductListing')
         PriceAlert = apps.get_model('api_integration', 'PriceAlert')
         Favorite = apps.get_model('api_integration', 'Favorite')
+        Notification = apps.get_model('notifications', 'Notification')
+        NotificationPreference = apps.get_model('notifications', 'NotificationPreference')
     except Exception as e:
         logger.error(f"Dashboard Model Load Error: {e}")
         return context
@@ -36,6 +38,8 @@ def dashboard_callback(request, context):
     active_users = User.objects.filter(is_active=True).count()
     alerts = PriceAlert.objects.filter(is_active=True).count()
     saves = Favorite.objects.count()
+    notification_count = Notification.objects.count()
+    pref_count = NotificationPreference.objects.count()
 
     context.update({
         "kpi_cards": [
@@ -48,6 +52,8 @@ def dashboard_callback(request, context):
             {"title": "Active Users", "metric": active_users, "footer": "Total Registered", "icon": "people"},
             {"title": "Price Alerts", "metric": alerts, "footer": "Active trackings", "icon": "notifications_active"},
             {"title": "Saved Deals", "metric": saves, "footer": "User Favorites", "icon": "favorite"},
+            {"title": "Notifications", "metric": notification_count, "footer": "Total records", "icon": "notifications"},
+            {"title": "Preference Profiles", "metric": pref_count, "footer": "User settings", "icon": "settings_suggest"},
         ],
     })
     return context

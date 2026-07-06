@@ -25,6 +25,21 @@ def handle_seller_request_email(sender, instance, created, **kwargs):
 
 
 
+from django.db.models.signals import pre_save
+from notifications.utils import send_order_notification
+
+@receiver(pre_save, sender=Order)
+def track_order_status_change(sender, instance, **kwargs):
+    if instance.id:
+        try:
+            old_order = Order.objects.only('status').get(id=instance.id)
+            instance._old_status = old_order.status
+        except Order.DoesNotExist:
+            instance._old_status = None
+    else:
+        instance._old_status = None
+
+
 @receiver(post_save, sender=Order)
 def handle_order_notification(sender, instance, created, **kwargs):
     if created:
@@ -40,6 +55,25 @@ def handle_order_notification(sender, instance, created, **kwargs):
             "emails/order_seller.html",
             {"order": instance}
         )
+        # Send push/in-app notification on placed order
+        send_order_notification(instance.buyer, instance, 'Placed')
+    else:
+        old_status = getattr(instance, '_old_status', None)
+        new_status = instance.status
+        if old_status != new_status:
+            status_labels = {
+                'PENDING': 'Pending',
+                'ACCEPTED': 'Accepted',
+                'PROCESSING': 'Processing',
+                'SHIPPED': 'Shipped',
+                'DELIVERED': 'Delivered',
+                'CONFIRMED': 'Confirmed',
+                'CANCELLED': 'Cancelled',
+                'REFUNDED': 'Refunded',
+                'OUT_FOR_DELIVERY': 'Out for delivery',
+            }
+            label = status_labels.get(new_status, new_status.title())
+            send_order_notification(instance.buyer, instance, label)
 
 
 

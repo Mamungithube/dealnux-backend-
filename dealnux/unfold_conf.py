@@ -75,7 +75,16 @@ UNFOLD_CONFIG = {
                 ],
             },
             {
-                "title": "📋 Policy",
+                "title": "� Notifications",
+                "separator": True,
+                "items": [
+                    {"title": "Notifications", "icon": "notifications", "link": "/admin/notifications/notification/"},
+                    {"title": "Preferences", "icon": "tune", "link": "/admin/notifications/notificationpreference/"},
+                    {"title": "Device Tokens", "icon": "devices", "link": "/admin/notifications/devicetoken/"},
+                ],
+            },
+            {
+                "title": "�📋 Policy",
                 "separator": True,
                 "items": [
                     {"title": "Privacy Policy", "icon": "privacy_tip", "link": "/admin/policy/privacy_policy/"},
