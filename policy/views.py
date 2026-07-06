@@ -12,7 +12,7 @@ from rest_framework.permissions import IsAdminUser
 from policy.models import (
     Privacy_Policy, Cookie_Policy, Terms_Of_Service, Review,
     EMI_Payment_Policy, Warranty_Policy, Exchange_Policy,
-    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy
+    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy, About_Us
 )
 from policy.serializers import (
     PrivacyPolicySerializer, CookiePolicySerializer,
@@ -20,7 +20,7 @@ from policy.serializers import (
     EMIPaymentPolicySerializer, WarrantyPolicySerializer,
     ExchangePolicySerializer, DeliveryPolicySerializer,
     PreOrderPolicySerializer, RefundPolicySerializer,
-    ReturnPolicySerializer
+    ReturnPolicySerializer , AboutUsSerializer
 )
 from django.core.mail import EmailMessage
 from django.utils import timezone
@@ -393,6 +393,14 @@ class ReturnPolicyView(PolicyGetBaseView):
     serializer_class = ReturnPolicySerializer
     policy_name = "Return Policy"
 
+
+# ==========================
+# About Us View
+# ==========================
+class AboutUsView(PolicyGetBaseView):
+    model = About_Us
+    serializer_class = AboutUsSerializer
+    policy_name = "About Us"
 
 class ReviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]

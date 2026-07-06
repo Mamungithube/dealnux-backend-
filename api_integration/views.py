@@ -2689,6 +2689,19 @@ def get_title_from_barcode_safely(barcode):
                     return data.get('product', {}).get('product_name')
         except Exception:
             continue
+
+    # Fallback to eBay Search API using our EbayRapidService
+    try:
+        from .services.ebay_service import EbayRapidService
+        ebay = EbayRapidService()
+        items = ebay.search_products(barcode, limit=1)
+        if items and len(items) > 0:
+            title = items[0].get('title')
+            if title:
+                return title
+    except Exception:
+        pass
+
     return None
 
 

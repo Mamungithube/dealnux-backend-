@@ -96,6 +96,15 @@ class Return_Policy(models.Model):
         return f"Return Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
 
 
+class About_Us(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"About Us (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
 class Review(models.Model):
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='reviews')

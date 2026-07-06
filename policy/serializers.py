@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import  Privacy_Policy, Cookie_Policy, Terms_Of_Service , Review
+from .models import  Privacy_Policy, Cookie_Policy, Terms_Of_Service , Review , About_Us
 
 class PrivacyPolicySerializer(serializers.ModelSerializer):
     class Meta:
@@ -57,6 +57,10 @@ class ReturnPolicySerializer(serializers.ModelSerializer):
         model  = Return_Policy
         fields = ['id', 'content', 'created_at', 'last_updated']
 
+class AboutUsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = About_Us
+        fields = ['id', 'content', 'created_at', 'last_updated']
 
 class ReviewSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)

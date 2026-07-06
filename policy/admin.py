@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin
 from .models import (
     Privacy_Policy, Terms_Of_Service, Cookie_Policy, Review,
     EMI_Payment_Policy, Warranty_Policy, Exchange_Policy,
-    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy
+    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy,About_Us
 )
 
 
@@ -67,6 +67,9 @@ class RefundPolicyAdmin(BasePolicyAdmin):
 class ReturnPolicyAdmin(BasePolicyAdmin):
     pass
 
+@admin.register(About_Us)
+class AboutUsAdmin(BasePolicyAdmin):
+    pass
 
 @admin.register(Review)
 class ReviewAdmin(ModelAdmin):

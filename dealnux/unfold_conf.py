@@ -88,6 +88,7 @@ UNFOLD_CONFIG = {
                 "separator": True,
                 "items": [
                     {"title": "Privacy Policy", "icon": "privacy_tip", "link": "/admin/policy/privacy_policy/"},
+                    {"title": "About Us", "icon": "info", "link": "/admin/policy/about_us/"},
                     {"title": "Terms of Service", "icon": "assignment", "link": "/admin/policy/terms_of_service/"},
                     {"title": "Cookie Policy", "icon": "cookie", "link": "/admin/policy/cookie_policy/"},
                     {"title": "Refund Policy", "icon": "currency_exchange", "link": "/admin/policy/refund_policy/"},
