@@ -10,11 +10,20 @@ certificate_path = os.path.join(settings.BASE_DIR, 'firebase-key.json')
 import logging
 logger = logging.getLogger(__name__)
 
+import json
+
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate(certificate_path)
-        firebase_admin.initialize_app(cred)
-        logger.info('Firebase initialized successfully using root key.')
+        firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS_JSON')
+        if firebase_creds_json:
+            creds_dict = json.loads(firebase_creds_json)
+            cred = credentials.Certificate(creds_dict)
+            firebase_admin.initialize_app(cred)
+            logger.info('Firebase initialized successfully using environment variable.')
+        else:
+            cred = credentials.Certificate(certificate_path)
+            firebase_admin.initialize_app(cred)
+            logger.info('Firebase initialized successfully using root key file.')
     except Exception as exc:
         logger.error(f'Firebase Error: {exc}')
 

@@ -489,6 +489,15 @@ class StripeWebhookView(APIView):
 
             self._process_referral_reward(user)
 
+            from notifications.utils import create_notification
+            create_notification(
+                user=user,
+                title="Subscription Activated! 🎉",
+                body=f"Your subscription to '{plan.name}' is now active. Enjoy premium features!",
+                notification_type="PROMOTION",
+                channel="SYSTEM"
+            )
+
             send_dealnux_email(
                 "Your DealNux Subscription is Active!",
                 user.email,
@@ -543,6 +552,15 @@ class StripeWebhookView(APIView):
             print(f"✅ Subscription activated via PaymentIntent for: {user.email}")
 
             self._process_referral_reward(user)
+
+            from notifications.utils import create_notification
+            create_notification(
+                user=user,
+                title="Subscription Activated! 🎉",
+                body=f"Your subscription to '{plan.name}' is now active. Enjoy premium features!",
+                notification_type="PROMOTION",
+                channel="SYSTEM"
+            )
 
             send_dealnux_email(
                 "Your DealNux Subscription is Active!",
