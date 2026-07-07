@@ -731,13 +731,15 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
 
         was_available = True
         was_coupon = False
+        was_price = None
         try:
-            old_listing = ProductListing.objects.only('is_available', 'has_coupon').get(
+            old_listing = ProductListing.objects.only('is_available', 'has_coupon', 'price').get(
                 platform=platform,
                 external_id=external_id
             )
             was_available = old_listing.is_available
             was_coupon = old_listing.has_coupon
+            was_price = old_listing.price
         except ProductListing.DoesNotExist:
             was_available = False
 
@@ -774,7 +776,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         )
 
         try:
-            from notifications.utils import send_back_in_stock_notification, send_flash_sale_notification, create_notification
+            from notifications.utils import send_back_in_stock_notification, send_flash_sale_notification, create_notification, send_price_drop_notification
             from .models import Favorite
             
             is_now_available = bool(product_data.get('is_available', True))
@@ -829,6 +831,34 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                             notification_type="LOCAL_DEAL",
                             channel="SYSTEM"
                         )
+            
+            # General Price Drop alert for Wishlist/Favorite users
+            if was_price and price_val < was_price:
+                favorites = Favorite.objects.filter(product=product).select_related('user')
+                for fav in favorites:
+                    send_price_drop_notification(
+                        fav.user,
+                        product.title,
+                        product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                    )
+
+            # New lowest price found check
+            try:
+                from .models import PriceHistory
+                lowest_history = PriceHistory.objects.filter(listing__product=product).order_by('price').first()
+                if lowest_history and price_val < lowest_history.price:
+                    favorites = Favorite.objects.filter(product=product).select_related('user')
+                    for fav in favorites:
+                        create_notification(
+                            user=fav.user,
+                            title="New Lowest Price Found! 💎",
+                            body=f"Fantastic news! '{product.title}' has hit a new lowest price of ${price_val} on {platform.name}!",
+                            notification_type="PRICE_DROP",
+                            channel="SYSTEM"
+                        )
+            except Exception as eh:
+                logger.error(f"Error checking new lowest price: {eh}")
+
         except Exception as e:
             logger.error(f"Error sending automatic notifications: {str(e)}")
 

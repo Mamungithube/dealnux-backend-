@@ -57,6 +57,19 @@ def handle_order_notification(sender, instance, created, **kwargs):
         )
         # Send push/in-app notification on placed order
         send_order_notification(instance.buyer, instance, 'Placed')
+        
+        # Send push/in-app notification to the seller
+        try:
+            from notifications.utils import create_notification
+            create_notification(
+                user=instance.seller.user,
+                title="New Order Received! 📦",
+                body=f"You have received a new order #{instance.order_number} for '{instance.seller_product.product.title}'.",
+                notification_type="ORDER_UPDATE",
+                channel="SYSTEM"
+            )
+        except Exception:
+            pass
     else:
         old_status = getattr(instance, '_old_status', None)
         new_status = instance.status

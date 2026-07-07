@@ -308,6 +308,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.tasks.send_subscription_reminders',
         'schedule': crontab(hour=9, minute=0),  # Run daily at 9:00 AM
     },
+    'daily-ai-recommendations': {
+        'task': 'notifications.tasks.send_daily_ai_recommendations',
+        'schedule': crontab(hour=10, minute=0),  # Run daily at 10:00 AM
+    },
 }
 
 # CELERY_BEAT_SCHEDULE = {

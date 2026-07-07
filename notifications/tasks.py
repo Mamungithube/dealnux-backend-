@@ -85,3 +85,44 @@ def send_subscription_reminders():
         )
 
     return f"Processed reminders for {len(trial_ending_subs) + len(active_ending_subs)} subscriptions."
+
+
+@shared_task
+def send_daily_ai_recommendations():
+    """Send personalized or hot product AI recommendations to active users."""
+    from account.models import User
+    from api_integration.models import ProductListing, Favorite
+    from notifications.utils import send_ai_recommendation_notification
+    import random
+
+    users = User.objects.filter(is_active=True)
+    sent_count = 0
+    for user in users:
+        try:
+            # Try to get user's favorited categories
+            fav_categories = list(Favorite.objects.filter(user=user).values_list('product__category', flat=True).distinct())
+            
+            # Find a deal/listing matching their interests, or a random hot deal
+            listings_qs = ProductListing.objects.filter(is_available=True)
+            if fav_categories:
+                listings_qs = listings_qs.filter(product__category__in=fav_categories)
+                
+            # Grab a random high discount listing
+            hot_deals = list(listings_qs.order_by('-discount_percentage')[:20])
+            if not hot_deals:
+                hot_deals = list(ProductListing.objects.filter(is_available=True).order_by('-discount_percentage')[:20])
+                
+            if hot_deals:
+                deal = random.choice(hot_deals)
+                product = deal.product
+                send_ai_recommendation_notification(
+                    user=user,
+                    title="DEALNUX AI Recommendation ✨",
+                    body=f"Based on your interests, we recommend checking out '{product.title}' now available on {deal.platform.name} for ${deal.price}!",
+                    product_url=product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                )
+                sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send AI recommendation for user {user.id}: {e}")
+
+    return f"AI recommendation task completed. Sent to {sent_count} users."
