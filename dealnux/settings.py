@@ -422,3 +422,7 @@ CELERY_BEAT_SCHEDULE.update({
         'schedule': crontab(hour=3, minute=0),
     },
 })
+
+
+DOCS_USERNAME = os.environ.get('DOCS_USERNAME', 'docsuser')
+DOCS_PASSWORD = os.environ.get('DOCS_PASSWORD', 'changeme')

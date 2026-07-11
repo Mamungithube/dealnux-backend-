@@ -627,6 +627,7 @@ class StripeWebhookView(APIView):
         """
         Award the referral bonus once, only after both the referred user and the referrer
         have active paid subscriptions and the referred user has completed a first DEALNUX purchase.
+        Both the referrer and the referred user receive the same reward amount.
         """
         from decimal import Decimal
         from store.models import Order
@@ -636,7 +637,7 @@ class StripeWebhookView(APIView):
             if not Order.objects.filter(buyer=user).exists():
                 return
 
-            # Only pay the referrer once per referred user.
+            # Only pay out once per referred user.
             if user.referred_by and not user.has_referral_reward_awarded:
                 referrer = user.referred_by
                 user_subscription = getattr(user, 'subscription', None)
@@ -648,16 +649,21 @@ class StripeWebhookView(APIView):
                 ):
                     from account.models import SiteSettings
                     amount = SiteSettings.get().referral_reward_amount
+
+                    # Reward the referrer
                     referrer.refresh_from_db()
                     referrer.balance += amount
                     referrer.save(update_fields=['balance'])
 
+                    # Reward the referred user (the friend) as well
+                    user.refresh_from_db()
+                    user.balance += amount
                     user.has_referral_reward_awarded = True
-                    user.save(update_fields=['has_referral_reward_awarded'])
-                    print(
-                        f"✅ Referral reward paid to {referrer.email} for referred user {user.email}")
+                    user.save(update_fields=['balance', 'has_referral_reward_awarded'])
 
-                    # FIX: Pass correct referrer and referred_user objects to the email context. Use dynamic amount.
+                    print(
+                        f"✅ Referral reward paid to {referrer.email} AND {user.email} (referred user)")
+
                     send_dealnux_email(
                         "You've earned a referral reward! - DealNux",
                         referrer.email,
@@ -665,8 +671,15 @@ class StripeWebhookView(APIView):
                         {"referrer": referrer, "referred_user": user, "amount": amount}
                     )
 
-            # If the current user is a referrer, check for any referred users who already have active subscriptions
-            # and have completed their first purchase.
+                    send_dealnux_email(
+                        "You've earned a referral reward! - DealNux",
+                        user.email,
+                        "emails/referral_bonus.html",
+                        {"referrer": referrer, "referred_user": user, "amount": amount}
+                    )
+
+            # If the current user is a referrer, check for any referred users who already have active
+            # subscriptions and have completed their first purchase (deferred reward case).
             current_subscription = getattr(user, 'subscription', None)
             if current_subscription is not None and current_subscription.status == 'ACTIVE':
                 pending_referred_users = user.referrals.filter(
@@ -680,20 +693,33 @@ class StripeWebhookView(APIView):
                         if Order.objects.filter(buyer=referred_user).exists():
                             from account.models import SiteSettings
                             amount = SiteSettings.get().referral_reward_amount
+
+                            # Reward the referrer
+                            user.refresh_from_db()
                             user.balance += amount
                             user.save(update_fields=['balance'])
 
+                            # Reward the referred user as well
+                            referred_user.refresh_from_db()
+                            referred_user.balance += amount
                             referred_user.has_referral_reward_awarded = True
                             referred_user.save(
-                                update_fields=['has_referral_reward_awarded'])
-                            print(
-                                f"✅ Deferred referral reward paid to {user.email} for referred user {referred_user.email}")
+                                update_fields=['balance', 'has_referral_reward_awarded'])
 
-                            # FIX: Correct the context for the deferred reward email. The current 'user' is the referrer.
+                            print(
+                                f"✅ Deferred referral reward paid to {user.email} AND {referred_user.email}")
+
                             send_dealnux_email(
                                 "You've earned a referral reward! - DealNux",
                                 user.email,
                                 "emails/referrer_reward.html",
+                                {"referrer": user, "referred_user": referred_user, "amount": amount}
+                            )
+
+                            send_dealnux_email(
+                                "You've earned a referral reward! - DealNux",
+                                referred_user.email,
+                                "emails/referral_bonus.html",
                                 {"referrer": user, "referred_user": referred_user, "amount": amount}
                             )
 

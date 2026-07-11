@@ -22,18 +22,21 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.decorators import api_view
 from django.http import JsonResponse
+from account.utils.auth import basic_auth_required 
+from .api_root_view import api_root, health_check
 
-def index(request):
-    """Returns a structured JSON welcome message for the API."""
-    data = {
-        "message": "Welcome to the Dealnux API!",
-        "status": "healthy",
-        "version": "1.0.0"
-    }
-    return JsonResponse(data)
+# def index(request):
+#     """Returns a structured JSON welcome message for the API."""
+#     data = {
+#         "message": "Welcome to the Dealnux API!",
+#         "status": "healthy",
+#         "version": "1.0.0"
+#     }
+#     return JsonResponse(data)
 
 urlpatterns = [
-    path('', index, name='index'),
+    path("", basic_auth_required(api_root), name="api-root"),
+    path("health/", health_check, name="health-check"),
     path('admin/', admin.site.urls),
     path('api/v1/account/', include('account.urls')),
     path('api/v1/ads/', include('custom_ads.urls')),
