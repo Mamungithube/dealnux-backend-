@@ -1,0 +1,22 @@
+{% load i18n %}
+
+<div class="border-b border-base-200 mb-8 pb-6 dark:border-base-800 flex flex-col items-center gap-4">
+    {% if site_logo %}
+        <div class="mb-2">
+            {% if site_logo.light and site_logo.dark %}
+                <img src="{{ site_logo.dark }}" alt="{% trans 'Home' %}" class="h-20 hidden dark:block mx-auto"/>
+                <img src="{{ site_logo.light }}" alt="{% trans 'Home' %}" class="block h-20 dark:hidden mx-auto" />
+            {% else %}
+                <img src="{{ site_logo }}" class="h-20 mx-auto" alt="{% trans 'Home' %}" />
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <h1 class="font-semibold text-center">
+        {% if subtitle %}
+            <span class="block text-sm text-font-important-light dark:text-font-important-dark mb-1">{{ subtitle }} </span>
+        {% endif %}
+
+        <span class="block font-bold text-primary-600 tracking-tight text-2xl dark:text-primary-500">{{ title }}</span>
+    </h1>
+</div>

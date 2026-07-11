@@ -1,6 +1,8 @@
 UNFOLD_CONFIG = {
     "SITE_TITLE": "Dealnux Admin",
     "SITE_HEADER": "Dealnux Administration",
+    "SITE_LOGO": "/static/Logo.png",
+    "SITE_ICON": "/static/Logo.png",
     "SITE_URL": "/",
     "DASHBOARD": {
         "callback": "dealnux.admin_logic.dashboard_callback", 
