@@ -145,6 +145,8 @@ def product_detail(request, pk):
                     'seller_logo': None,
                     'rating': round(stats['avg'] or 0.0, 1),
                     'review_count': stats['total'],
+                    'platform_name': seller_product.seller.shop_name,
+                    'external_url': '',
                 }
             else:
                 standalone_seller_product = seller_product 
