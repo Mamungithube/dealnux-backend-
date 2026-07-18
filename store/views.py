@@ -434,8 +434,8 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
-
-                return SellerProduct.objects.filter(seller=user.seller_profile).order_by('-created_at')
+            
+                return SellerProduct.objects.filter(seller=user.seller_profile, is_active=True).order_by('-created_at')
 
         qs = SellerProduct.objects.filter(
             status='APPROVED', is_active=True).select_related('seller', 'category')
@@ -521,7 +521,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             page, page_size = 1, 10
 
-        qs = SellerProduct.objects.filter(seller=request.user.seller_profile)
+        qs = SellerProduct.objects.filter(seller=request.user.seller_profile, is_active=True)
         total_count = qs.count()
         total_pages = math.ceil(total_count / page_size)
 
