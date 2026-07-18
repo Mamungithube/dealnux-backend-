@@ -438,7 +438,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
                 return SellerProduct.objects.filter(seller=user.seller_profile).order_by('-created_at')
 
         qs = SellerProduct.objects.filter(
-            status='APPROVED').select_related('seller', 'category')
+            status='APPROVED', is_active=True).select_related('seller', 'category')
 
         search = self.request.query_params.get('search')
         if search:
@@ -500,8 +500,12 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if not request.user.is_staff and instance.seller.user != request.user:
             return error_response("Permission denied.", code=403)
-        instance.delete()
+        self.perform_destroy(instance)
         return success_response({}, message="Product deleted.")
+    
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.save(update_fields=['is_active'])
 
     # ── Seller: their own products ─────────────────────────────────────────
 
