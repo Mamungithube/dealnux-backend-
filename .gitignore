@@ -125,3 +125,10 @@ cloudflared-linux-amd64.deb
 "celerybeat-schedule" 
 celerybeat-schedule
 firebase-key.json
+
+# Walmart API Keys
+walmart_private_key.pem
+walmart_public_key.pem
+
+secrets/
+*.pem
