@@ -769,8 +769,8 @@ def pending_products_count(request):
 class DisputeAdmin(ModelAdmin):
     list_fullwidth = True
     list_display = [
-        'id',
         'display_order',
+        'id',
         'reason',
         'status',
         'created_at',
@@ -789,6 +789,8 @@ class DisputeAdmin(ModelAdmin):
     )
 
     actions = ['resolve_seller_fault', 'resolve_buyer_fault', 'reject_disputes']
+    actions_row = ['resolve_seller_fault_row', 'resolve_buyer_fault_row', 'reject_dispute_row']
+    actions_detail = ['resolve_seller_fault_row', 'resolve_buyer_fault_row', 'reject_dispute_row']
 
     @action(description=_("Resolve Selected - Seller Fault"), permissions=["change"])
     def resolve_seller_fault(self, request, queryset):
@@ -847,6 +849,58 @@ class DisputeAdmin(ModelAdmin):
                 self.message_user(request, f"Dispute #{dispute.id} is already {dispute.status}.", messages.WARNING)
         if success_count > 0:
             self.message_user(request, f"Successfully rejected {success_count} disputes (orders set back to SHIPPED).", messages.SUCCESS)
+
+    @action(description=_("Resolve - Seller Fault"), url_path='resolve-seller-fault', icon='gavel', variant=ActionVariant.SUCCESS)
+    def resolve_seller_fault_row(self, request, object_id):
+        dispute = self.get_object(request, object_id)
+        if dispute.status == 'OPEN':
+            try:
+                with transaction.atomic():
+                    dispute.status = 'RESOLVED'
+                    dispute.save()
+                    from store.views import process_order_refund
+                    process_order_refund(dispute.order, 'SELLER')
+                self.message_user(request, f"Dispute resolved. Refunded full amount to buyer due to seller fault.", messages.SUCCESS)
+            except Exception as e:
+                self.message_user(request, f"Error: {str(e)}", messages.ERROR)
+        else:
+            self.message_user(request, f"Dispute is already {dispute.status}.", messages.WARNING)
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+    @action(description=_("Resolve - Buyer Fault"), url_path='resolve-buyer-fault', icon='person', variant=ActionVariant.SUCCESS)
+    def resolve_buyer_fault_row(self, request, object_id):
+        dispute = self.get_object(request, object_id)
+        if dispute.status == 'OPEN':
+            try:
+                with transaction.atomic():
+                    dispute.status = 'RESOLVED'
+                    dispute.save()
+                    from store.views import process_order_refund
+                    process_order_refund(dispute.order, 'BUYER')
+                self.message_user(request, f"Dispute resolved. Refunded item total only due to buyer fault.", messages.SUCCESS)
+            except Exception as e:
+                self.message_user(request, f"Error: {str(e)}", messages.ERROR)
+        else:
+            self.message_user(request, f"Dispute is already {dispute.status}.", messages.WARNING)
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+    @action(description=_("Reject Dispute"), url_path='reject-dispute', icon='cancel', variant=ActionVariant.DANGER)
+    def reject_dispute_row(self, request, object_id):
+        dispute = self.get_object(request, object_id)
+        if dispute.status == 'OPEN':
+            try:
+                with transaction.atomic():
+                    dispute.status = 'REJECTED'
+                    dispute.save()
+                    order = dispute.order
+                    order.status = 'SHIPPED'
+                    order.save()
+                self.message_user(request, f"Dispute rejected. Order status set back to SHIPPED.", messages.SUCCESS)
+            except Exception as e:
+                self.message_user(request, f"Error: {str(e)}", messages.ERROR)
+        else:
+            self.message_user(request, f"Dispute is already {dispute.status}.", messages.WARNING)
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
     @display(description=_('Order'))
     def display_order(self, obj):
