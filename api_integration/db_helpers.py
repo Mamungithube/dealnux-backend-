@@ -788,7 +788,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                     send_back_in_stock_notification(
                         fav.user,
                         product.title,
-                        product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                        f"/product/{product.id}"
                     )
             
             has_discount = product_data.get('discount_percentage') or (
@@ -802,7 +802,9 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                         title="Wishlist Item on Sale! 🏷️",
                         body=f"Your favorite item '{product.title}' is now on sale for ${price_val}!",
                         notification_type="WISHLIST_SALE",
-                        channel="SYSTEM"
+                        channel="SYSTEM",
+                        cta_text="View Product",
+                        cta_link=f"/product/{product.id}"
                     )
             
             if not was_coupon and has_now_coupon:
@@ -812,7 +814,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                         fav.user,
                         title="Special Coupon Available! 🎟️",
                         body=f"A coupon is now available for '{product.title}': {product_data.get('coupon_text') or 'Discount applied'}",
-                        product_url=product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                        product_url=f"/product/{product.id}"
                     )
             
             if platform.code.startswith('local-seller-') and is_now_available:
@@ -829,7 +831,9 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                             title="Better Local Deal Found! 📍",
                             body=f"A local seller has listed '{product.title}' for ${price_val}, which is cheaper than online stores!",
                             notification_type="LOCAL_DEAL",
-                            channel="SYSTEM"
+                            channel="SYSTEM",
+                            cta_text="View Product",
+                            cta_link=f"/product/{product.id}"
                         )
             
             # General Price Drop alert for Wishlist/Favorite users
@@ -839,7 +843,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                     send_price_drop_notification(
                         fav.user,
                         product.title,
-                        product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                        f"/product/{product.id}"
                     )
 
             # New lowest price found check
@@ -854,7 +858,9 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                             title="New Lowest Price Found! 💎",
                             body=f"Fantastic news! '{product.title}' has hit a new lowest price of ${price_val} on {platform.name}!",
                             notification_type="PRICE_DROP",
-                            channel="SYSTEM"
+                            channel="SYSTEM",
+                            cta_text="View Product",
+                            cta_link=f"/product/{product.id}"
                         )
             except Exception as eh:
                 logger.error(f"Error checking new lowest price: {eh}")
@@ -899,10 +905,10 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
         for alert in active_alerts:
             title = "Price Drop Alert! 📉"
             body = f"Good news! {product.title} is now ${price_val} on {platform.name}. Buy it before the price goes up!"
-            send_price_drop_notification(alert.user, product.title, product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None)
-
+            send_price_drop_notification(alert.user, product.title, f"/product/{product.id}")
+ 
             if alert.target_price and float(alert.target_price) >= float(price_val):
-                send_target_price_reached_notification(alert.user, product.title, product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None)
+                send_target_price_reached_notification(alert.user, product.title, f"/product/{product.id}")
 
     except Exception as e:
         logger.error(

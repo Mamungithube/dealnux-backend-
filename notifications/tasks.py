@@ -119,7 +119,7 @@ def send_daily_ai_recommendations():
                     user=user,
                     title="DEALNUX AI Recommendation ✨",
                     body=f"Based on your interests, we recommend checking out '{product.title}' now available on {deal.platform.name} for ${deal.price}!",
-                    product_url=product.get_absolute_url() if hasattr(product, 'get_absolute_url') else None
+                    product_url=f"/product/{product.id}"
                 )
                 sent_count += 1
         except Exception as e:

@@ -83,6 +83,7 @@ def send_price_drop_notification(user, product_title, product_url=None):
         notification_type='PRICE_DROP',
         channel='SYSTEM',
         recipient_type='USER',
+        cta_text='View Product',
         cta_link=product_url or '',
     )
 
@@ -95,6 +96,7 @@ def send_target_price_reached_notification(user, product_title, product_url=None
         notification_type='TARGET_PRICE_REACHED',
         channel='SYSTEM',
         recipient_type='USER',
+        cta_text='View Product',
         cta_link=product_url or '',
     )
 
@@ -107,6 +109,7 @@ def send_back_in_stock_notification(user, product_title, product_url=None):
         notification_type='BACK_IN_STOCK',
         channel='SYSTEM',
         recipient_type='USER',
+        cta_text='View Product',
         cta_link=product_url or '',
     )
 
@@ -119,6 +122,7 @@ def send_flash_sale_notification(user, title, body, product_url=None):
         notification_type='FLASH_SALE',
         channel='SYSTEM',
         recipient_type='USER',
+        cta_text='View Product',
         cta_link=product_url or '',
     )
 
@@ -131,5 +135,6 @@ def send_ai_recommendation_notification(user, title, body, product_url=None):
         notification_type='AI_RECOMMENDATION',
         channel='SYSTEM',
         recipient_type='USER',
+        cta_text='View Product',
         cta_link=product_url or '',
     )
