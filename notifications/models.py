@@ -36,7 +36,7 @@ class Notification(models.Model):
     recipient_type = models.CharField(max_length=30, choices=RECIPIENT_CHOICES, default='USER')
     image_url = models.URLField(blank=True, null=True)
     cta_text = models.CharField(max_length=100, blank=True)
-    cta_link = models.URLField(blank=True, null=True)
+    cta_link = models.CharField(max_length=500, blank=True, null=True)
     is_read = models.BooleanField(default=False)
     is_sent = models.BooleanField(default=True)
     scheduled_at = models.DateTimeField(blank=True, null=True)
