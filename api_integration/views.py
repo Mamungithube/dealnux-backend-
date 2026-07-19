@@ -2719,6 +2719,11 @@ def barcode_scanner_pipeline(request):
     3. Finds or Creates a product in DB to get a slug.
     4. Internally redirects to the existing 'compare_prices_api' logic.
     """
+    # Check subscription permission
+    subscription = getattr(request.user, 'subscription', None)
+    if not subscription or not subscription.is_active:
+        return error_response("Please subscribe to a plan to use barcode scanner.", code=403)
+
     barcode = request.query_params.get('code', '').strip()
     if not barcode:
         return error_response("Barcode is required", code=400)
@@ -2747,12 +2752,17 @@ def barcode_scanner_pipeline(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def decode_barcode_to_slug(request):
     """
     Takes a barcode, finds the product title, creates a temporary product,
     and then calls the compare_prices_api to get all deals.
     """
+    # Check subscription permission
+    subscription = getattr(request.user, 'subscription', None)
+    if not subscription or not subscription.is_active:
+        return error_response("Please subscribe to a plan to use barcode scanner.", code=403)
+
     barcode = request.query_params.get('code', '').strip()
     if not barcode:
         return error_response("Query parameter 'code' is required.", code=400)
