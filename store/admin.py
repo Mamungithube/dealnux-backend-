@@ -11,7 +11,7 @@ from unfold.enums import ActionVariant
 from .models import (
     SellerRequest, SellerProfile,
     SellerProduct, SellerProductImage,
-    Order, Coupon,
+    Order, Coupon, Dispute,
 )
 from custom_ads.utils import send_dealnux_email
 # ============================================================================
@@ -608,6 +608,40 @@ class OrderAdmin(ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+    actions = ['refund_seller_fault', 'refund_buyer_fault']
+
+    @action(description=_("Refund Selected - Seller Fault"), permissions=["change"])
+    def refund_seller_fault(self, request, queryset):
+        success_count = 0
+        for order in queryset:
+            if order.status in ['PENDING', 'ACCEPTED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'DISPUTED']:
+                try:
+                    from store.views import process_order_refund
+                    process_order_refund(order, 'SELLER')
+                    success_count += 1
+                except Exception as e:
+                    self.message_user(request, f"Error refunding order #{order.order_number}: {str(e)}", messages.ERROR)
+            else:
+                self.message_user(request, f"Order #{order.order_number} cannot be refunded (status: {order.status})", messages.WARNING)
+        if success_count > 0:
+            self.message_user(request, f"Successfully processed {success_count} refunds with SELLER fault.", messages.SUCCESS)
+
+    @action(description=_("Refund Selected - Buyer Fault"), permissions=["change"])
+    def refund_buyer_fault(self, request, queryset):
+        success_count = 0
+        for order in queryset:
+            if order.status in ['PENDING', 'ACCEPTED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'DISPUTED']:
+                try:
+                    from store.views import process_order_refund
+                    process_order_refund(order, 'BUYER')
+                    success_count += 1
+                except Exception as e:
+                    self.message_user(request, f"Error refunding order #{order.order_number}: {str(e)}", messages.ERROR)
+            else:
+                self.message_user(request, f"Order #{order.order_number} cannot be refunded (status: {order.status})", messages.WARNING)
+        if success_count > 0:
+            self.message_user(request, f"Successfully processed {success_count} refunds with BUYER fault.", messages.SUCCESS)
+
 
 # ============================================================================
 # 3. Sidebar Badges (Optional - For better UX)
@@ -725,3 +759,95 @@ def pending_products_count(request):
             Q(status='PENDING') | Q(status='DRAFT')).count()
         cache.set('pending_products_count', count, 60)
     return str(count) if count > 0 else None
+
+
+# ============================================================================
+# Dispute Admin
+# ============================================================================
+
+@admin.register(Dispute)
+class DisputeAdmin(ModelAdmin):
+    list_fullwidth = True
+    list_display = [
+        'id',
+        'display_order',
+        'reason',
+        'status',
+        'created_at',
+    ]
+    list_filter = ['status', 'created_at']
+    search_fields = ['order__order_number', 'reason', 'description']
+    readonly_fields = ['order', 'reason', 'description', 'evidence_image', 'created_at']
+
+    fieldsets = (
+        (_('⚖️ Dispute Details'), {
+            'fields': ('order', 'status', 'admin_note'),
+        }),
+        (_('📄 Description & Evidence'), {
+            'fields': ('reason', 'description', 'evidence_image', 'created_at'),
+        }),
+    )
+
+    actions = ['resolve_seller_fault', 'resolve_buyer_fault', 'reject_disputes']
+
+    @action(description=_("Resolve Selected - Seller Fault"), permissions=["change"])
+    def resolve_seller_fault(self, request, queryset):
+        success_count = 0
+        for dispute in queryset:
+            if dispute.status == 'OPEN':
+                try:
+                    with transaction.atomic():
+                        dispute.status = 'RESOLVED'
+                        dispute.save()
+                        from store.views import process_order_refund
+                        process_order_refund(dispute.order, 'SELLER')
+                        success_count += 1
+                except Exception as e:
+                    self.message_user(request, f"Error resolving dispute #{dispute.id}: {str(e)}", messages.ERROR)
+            else:
+                self.message_user(request, f"Dispute #{dispute.id} is already {dispute.status}.", messages.WARNING)
+        if success_count > 0:
+            self.message_user(request, f"Successfully resolved {success_count} disputes with SELLER fault.", messages.SUCCESS)
+
+    @action(description=_("Resolve Selected - Buyer Fault"), permissions=["change"])
+    def resolve_buyer_fault(self, request, queryset):
+        success_count = 0
+        for dispute in queryset:
+            if dispute.status == 'OPEN':
+                try:
+                    with transaction.atomic():
+                        dispute.status = 'RESOLVED'
+                        dispute.save()
+                        from store.views import process_order_refund
+                        process_order_refund(dispute.order, 'BUYER')
+                        success_count += 1
+                except Exception as e:
+                    self.message_user(request, f"Error resolving dispute #{dispute.id}: {str(e)}", messages.ERROR)
+            else:
+                self.message_user(request, f"Dispute #{dispute.id} is already {dispute.status}.", messages.WARNING)
+        if success_count > 0:
+            self.message_user(request, f"Successfully resolved {success_count} disputes with BUYER fault.", messages.SUCCESS)
+
+    @action(description=_("Reject Selected Disputes"), permissions=["change"])
+    def reject_disputes(self, request, queryset):
+        success_count = 0
+        for dispute in queryset:
+            if dispute.status == 'OPEN':
+                try:
+                    with transaction.atomic():
+                        dispute.status = 'REJECTED'
+                        dispute.save()
+                        order = dispute.order
+                        order.status = 'SHIPPED'
+                        order.save()
+                        success_count += 1
+                except Exception as e:
+                    self.message_user(request, f"Error rejecting dispute #{dispute.id}: {str(e)}", messages.ERROR)
+            else:
+                self.message_user(request, f"Dispute #{dispute.id} is already {dispute.status}.", messages.WARNING)
+        if success_count > 0:
+            self.message_user(request, f"Successfully rejected {success_count} disputes (orders set back to SHIPPED).", messages.SUCCESS)
+
+    @display(description=_('Order'))
+    def display_order(self, obj):
+        return obj.order.order_number

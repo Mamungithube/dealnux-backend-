@@ -1,5 +1,7 @@
 from custom_ads.utils import send_dealnux_email
 from decimal import Decimal
+from django.conf import settings
+import stripe
 
 from django.db import transaction
 from django.utils import timezone
@@ -560,6 +562,94 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         return success_response(serializer.data, message="Image uploaded.", code=201)
 
 # ============================================================================
+# Dispute & Refund Reusable Helper
+# ============================================================================
+
+def process_order_refund(order, fault):
+    """
+    Core function to process refund for an order.
+    Sets status to REFUNDED, deducts money from seller pending balance,
+    calculates refund amount, triggers Stripe refunds/Connect reversals,
+    and syncs the associated Payment record.
+    """
+    from decimal import Decimal
+    from django.conf import settings
+    import stripe
+    import logging
+    logger = logging.getLogger(__name__)
+
+    with transaction.atomic():
+        order.status = 'REFUNDED'
+        order.fault_party = fault
+
+        # Deduct money from the seller's pending wallet (because the order failed)
+        seller_profile = order.seller
+        amount_to_deduct = order.item_total + order.shipping_fee
+        seller_profile.pending_balance -= amount_to_deduct
+        seller_profile.save()
+
+        # Calculation of how much will be refunded to the buyer
+        if fault == 'SELLER':
+            # Full refund (price + shipping + fees)
+            refund_amount = order.total_price
+        else:
+            refund_amount = order.item_total  # Partial refund (price only)
+
+        order.refund_amount = refund_amount
+        order.save()
+
+        # --- Stripe & Wallet Refund Integration ---
+        payment = getattr(order, 'payment', None)
+        if payment:
+            payment.status = 'REFUNDED'
+            payment.save(update_fields=['status'])
+
+            stripe_intent_id = payment.stripe_payment_intent_id
+            refunded_from_stripe = Decimal('0')
+
+            if stripe_intent_id:
+                try:
+                    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+                    # Calculate how much to refund to Stripe card vs user wallet balance
+                    stripe_refund_amount = min(refund_amount, payment.final_amount)
+                    if stripe_refund_amount > 0:
+                        stripe.Refund.create(
+                            payment_intent=stripe_intent_id,
+                            amount=int(stripe_refund_amount * 100)
+                        )
+                        refunded_from_stripe = stripe_refund_amount
+
+                        # Reverse any Stripe Connect transfers linked to this order
+                        try:
+                            transfers = stripe.Transfer.list(transfer_group=f"ORDER_{order.order_number}")
+                            for transfer in transfers.auto_paging_iter():
+                                stripe.Transfer.create_reversal(
+                                    transfer.id,
+                                    amount=min(int(refund_amount * 100), transfer.amount)
+                                )
+                        except Exception as trans_err:
+                            logger.error(f"Failed to reverse Stripe Transfer: {str(trans_err)}")
+
+                except Exception as stripe_err:
+                    logger.error(f"Stripe Refund failed: {str(stripe_err)}")
+
+            # Refund the remaining amount (e.g. if balance was used) to user balance
+            remaining_refund = refund_amount - refunded_from_stripe
+            if remaining_refund > 0:
+                buyer = order.buyer
+                buyer.balance += remaining_refund
+                buyer.save(update_fields=['balance'])
+        else:
+            # Fallback if no payment record exists, refund everything to wallet balance
+            buyer = order.buyer
+            buyer.balance += refund_amount
+            buyer.save(update_fields=['balance'])
+
+    return refund_amount
+
+
+# ============================================================================
 # Order ViewSet
 # ============================================================================
 
@@ -857,26 +947,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if fault not in ['SELLER', 'BUYER']:
             return error_response("Invalid fault_party. Must be SELLER or BUYER.", code=400)
 
-        with transaction.atomic():
-            order.status = 'REFUNDED'
-            order.fault_party = fault
-
-            # Deduct money from the seller's pending wallet (because the order failed)
-            seller_profile = order.seller
-            amount_to_deduct = order.item_total + order.shipping_fee
-            seller_profile.pending_balance -= amount_to_deduct
-            seller_profile.save()
-
-            # Calculation of how much will be refunded to the buyer
-            if fault == 'SELLER':
-                # Full refund (price + shipping + fees)
-                refund_amount = order.total_price
-            else:
-                refund_amount = order.item_total  # Partial refund (price only)
-
-            order.refund_amount = refund_amount
-            order.save()
-
+        refund_amount = process_order_refund(order, fault)
         return success_response({"refund_amount": float(refund_amount)}, message=f"Refund processed. Fault: {fault}")
 
     # ── Buyer Action: Open Dispute ──
@@ -922,7 +993,6 @@ class OrderViewSet(viewsets.ModelViewSet):
             dispute = order.dispute
 
             if decision == 'REJECT':
-
                 dispute.status = 'REJECTED'
                 order.status = 'SHIPPED'
                 dispute.save()
@@ -930,22 +1000,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 return success_response(None, message="Dispute rejected. Order set back to Shipped.")
 
             dispute.status = 'RESOLVED'
-            order.status = 'REFUNDED'
-            order.fault_party = fault
-
-            seller = order.seller
-            amount_held = order.item_total + order.shipping_fee
-            seller.pending_balance -= amount_held
-            seller.save()
-
-            if fault == 'SELLER':
-                refund_amount = order.total_price
-            else:
-                refund_amount = order.item_total
-
-            order.refund_amount = refund_amount
-            order.save()
             dispute.save()
+            refund_amount = process_order_refund(order, fault)
 
         return success_response(
             {"refund_amount": float(refund_amount)},
