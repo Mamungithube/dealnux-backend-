@@ -72,6 +72,16 @@ class MarkNotificationsReadView(APIView):
         return Response({'success': True, 'message': 'Notifications marked as read.'})
 
 
+class DeleteAllNotificationsView(APIView):
+    """Delete all notifications for the authenticated user."""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        Notification.objects.filter(user=request.user).delete()
+        return Response({'success': True, 'message': 'All notifications deleted successfully.'})
+
+
+
 class NotificationPreferenceView(APIView):
     """Allow users to manage their notification preferences."""
     permission_classes = [IsAuthenticated]
