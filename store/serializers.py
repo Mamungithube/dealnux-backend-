@@ -52,7 +52,7 @@ class SellerRequestSerializer(serializers.ModelSerializer):
             'fulfillment_methods', 'shipping_regions',
             
             # Step 5: Return Policy
-            'return_policy_description', 'return_policy_document',
+            'agree_return_policy',
             
             # Step 6 & 7: Compliance & Policy
             'agreed_to_compliance', 'agreed_to_prohibited_items',

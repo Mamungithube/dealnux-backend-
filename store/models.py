@@ -44,9 +44,7 @@ class SellerRequest(models.Model):
     shipping_regions = models.JSONField(default=list, blank=True)
 
     # --- STEP 5: Return Policy ---
-    return_policy_description = models.TextField(null=True, blank=True)
-    return_policy_document = models.FileField(
-        upload_to='seller_docs/policies/', blank=True, null=True)
+    agree_return_policy = models.BooleanField(default=False)
 
     # --- STEP 6 & 7: Compliance & Policy ---
     agreed_to_compliance = models.BooleanField(default=False)

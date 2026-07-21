@@ -69,7 +69,7 @@ class SellerRequestAdmin(ModelAdmin):
         'owns_inventory', 
         'display_fulfillment_methods', 
         'display_shipping_regions',   
-        'return_policy_description', 'return_policy_document', 
+        'agree_return_policy', 
         'display_gov_id', 'display_license', 'display_utility_bill', 
         'has_prior_experience', 'experience_description', 
         'digital_signature', 'reviewed_at', 'created_at'
@@ -80,7 +80,7 @@ class SellerRequestAdmin(ModelAdmin):
         (_('🏪 Business Details'), {'fields': ('trade_name', 'legal_business_type', 'business_reg_number'), 'classes': ['tab']}),
         (_('📞 Primary Contact'), {'fields': ('contact_full_name', 'job_title', 'contact_email', 'contact_phone'), 'classes': ['tab']}),
         (_('📦 Product Catalog'), {'fields': ('display_categories_list', 'estimated_sku_count', 'min_price', 'max_price', 'display_product_conditions', 'owns_inventory'), 'classes': ['tab']}),
-        (_('🚚 Shipping & Returns'), {'fields': ('display_fulfillment_methods', 'display_shipping_regions', 'return_policy_description', 'return_policy_document'), 'classes': ['tab']}),
+        (_('🚚 Shipping & Returns'), {'fields': ('display_fulfillment_methods', 'display_shipping_regions', 'agree_return_policy'), 'classes': ['tab']}),
         (_('📄 Documents & Verification'), {'fields': ('display_gov_id', 'display_license', 'display_utility_bill', 'has_prior_experience', 'experience_description'), 'classes': ['tab']}),
         (_('⚖️ Legal & Signature'), {'fields': ('agreed_to_compliance', 'agreed_to_prohibited_items', 'digital_signature'), 'classes': ['tab']}),
     )
