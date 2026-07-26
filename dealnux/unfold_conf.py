@@ -55,6 +55,7 @@ UNFOLD_CONFIG = {
                     {"title": "Seller Requests", "icon": "store", "link": "/admin/store/sellerrequest/"},
                     {"title": "Seller Profiles", "icon": "storefront", "link": "/admin/store/sellerprofile/"},
                     {"title": "Seller Products", "icon": "shopping_bag", "link": "/admin/store/sellerproduct/"},
+                    {"title": "Product Reviews", "icon": "rate_review", "link": "/admin/store/productreview/"},
                     {"title": "Orders", "icon": "receipt_long", "link": "/admin/store/order/"},
                     {"title": "Coupons", "icon": "local_offer", "link": "/admin/store/coupon/"},
                     {"title": "Disputes", "icon": "gavel", "link": "/admin/store/dispute/"},
