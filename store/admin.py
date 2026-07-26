@@ -917,6 +917,7 @@ class ProductReviewAdmin(ModelAdmin):
     compressed_fields = True
     list_fullwidth = True
     list_filter_submit = True
+    actions_row = ['delete_review_row']
     list_display = (
         'id', 'display_rating', 'display_product', 'display_seller',
         'display_buyer', 'short_comment', 'created_at'
@@ -932,6 +933,31 @@ class ProductReviewAdmin(ModelAdmin):
         return super().get_queryset(request).select_related(
             'product', 'product__seller', 'user'
         )
+
+    @action(
+        description=_("Delete"),
+        url_path='delete-review',
+        icon='delete',
+        variant=ActionVariant.DANGER,
+    )
+    def delete_review_row(self, request, object_id):
+        try:
+            review = self.get_object(request, object_id)
+            if review:
+                product_title = review.product.title if review.product else "Product"
+                review.delete()
+                self.message_user(
+                    request,
+                    f"Successfully deleted review for '{product_title}'.",
+                    messages.SUCCESS
+                )
+        except Exception as e:
+            self.message_user(
+                request,
+                f"Error deleting review: {str(e)}",
+                messages.ERROR
+            )
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
     @display(description=_('Rating'))
     def display_rating(self, obj):
@@ -965,4 +991,5 @@ class ProductReviewAdmin(ModelAdmin):
         if not obj.comment:
             return "-"
         return obj.comment[:60] + ("..." if len(obj.comment) > 60 else "")
+
 
