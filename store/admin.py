@@ -919,8 +919,8 @@ class ProductReviewAdmin(ModelAdmin):
     list_filter_submit = True
     actions_row = ['delete_review_row']
     list_display = (
-        'id', 'display_rating', 'display_product', 'display_seller',
-        'display_buyer', 'short_comment', 'created_at'
+        'display_product', 'display_seller', 'display_buyer', 
+        'display_rating', 'short_comment', 'created_at', 'id'
     )
     list_filter = ('rating', 'created_at')
     search_fields = (
