@@ -11,7 +11,7 @@ from unfold.enums import ActionVariant
 from .models import (
     SellerRequest, SellerProfile,
     SellerProduct, SellerProductImage,
-    Order, Coupon, Dispute,
+    Order, Coupon, Dispute, ProductReview,
 )
 from custom_ads.utils import send_dealnux_email
 # ============================================================================
@@ -905,3 +905,64 @@ class DisputeAdmin(ModelAdmin):
     @display(description=_('Order'))
     def display_order(self, obj):
         return obj.order.order_number
+
+
+# ============================================================================
+# Product Review Admin
+# ============================================================================
+
+
+@admin.register(ProductReview)
+class ProductReviewAdmin(ModelAdmin):
+    compressed_fields = True
+    list_fullwidth = True
+    list_filter_submit = True
+    list_display = (
+        'id', 'display_rating', 'display_product', 'display_seller',
+        'display_buyer', 'short_comment', 'created_at'
+    )
+    list_filter = ('rating', 'created_at')
+    search_fields = (
+        'product__title', 'user__email', 'user__first_name',
+        'user__last_name', 'comment'
+    )
+    raw_id_fields = ('product', 'user')
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'product', 'product__seller', 'user'
+        )
+
+    @display(description=_('Rating'))
+    def display_rating(self, obj):
+        return format_html(
+            '<span style="font-weight: bold; color: {};">{} ★</span>',
+            '#ef4444' if obj.rating <= 2 else ('#f59e0b' if obj.rating == 3 else '#10b981'),
+            obj.rating
+        )
+
+    @display(description=_('Product'))
+    def display_product(self, obj):
+        if obj.product:
+            return obj.product.title
+        return "-"
+
+    @display(description=_('Seller'))
+    def display_seller(self, obj):
+        if obj.product and obj.product.seller:
+            return obj.product.seller.shop_name
+        return "-"
+
+    @display(description=_('Buyer'))
+    def display_buyer(self, obj):
+        if obj.user:
+            name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+            return f"{name} ({obj.user.email})" if name else obj.user.email
+        return "-"
+
+    @display(description=_('Comment'))
+    def short_comment(self, obj):
+        if not obj.comment:
+            return "-"
+        return obj.comment[:60] + ("..." if len(obj.comment) > 60 else "")
+
