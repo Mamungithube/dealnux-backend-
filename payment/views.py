@@ -967,6 +967,14 @@ class CreateSubscriptionCheckoutView(APIView):
         except SubscriptionPlan.DoesNotExist:
             return Response({"error": "Invalid Plan selected."}, status=404)
 
+        # Check if user already has an active paid subscription plan
+        current_sub = UserSubscription.objects.filter(user=user).first()
+        if current_sub and current_sub.is_active and current_sub.status == 'ACTIVE':
+            return Response({
+                "success": False,
+                "error": f"You already have an active subscription plan ({current_sub.plan.name}). Please wait until your current plan expires before purchasing a new subscription."
+            }, status=400)
+
         if plan.plan_type == 'FREE':
 
             if UserSubscription.objects.filter(user=user).exists():
