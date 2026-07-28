@@ -1324,11 +1324,11 @@ def compare_prices_api(request, slug):
     prices = []
     seen_urls = set()
 
-    # Add Marketplace Seller offer (Deduplicated to 1 best offer per seller)
+    # Add Marketplace Seller offers
     if sp_target:
         seller_prods = [sp_target]
     elif product:
-        seller_prods = list(SellerProduct.objects.filter(linked_product=product, status='APPROVED').order_by('price')[:1])
+        seller_prods = list(SellerProduct.objects.filter(linked_product=product, status='APPROVED'))
     else:
         seller_prods = []
 
@@ -2848,11 +2848,11 @@ def get_title_from_barcode_safely(barcode):
 
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def barcode_scanner_pipeline(request):
     """
-    1. Receives barcode.
+    1. Receives barcode (via GET query string or POST JSON/body).
     2. Converts to product name using external lookup.
     3. Finds or Creates a product in DB to get a slug.
     4. Internally redirects to the existing 'compare_prices_api' logic.
@@ -2861,7 +2861,14 @@ def barcode_scanner_pipeline(request):
     if not subscription or not subscription.is_active:
         return error_response("Please subscribe to a plan to use barcode scanner.", code=403)
 
-    barcode = request.query_params.get('code', '').strip()
+    barcode = (
+        request.query_params.get('code') or 
+        request.query_params.get('barcode') or 
+        (request.data.get('code') if isinstance(request.data, dict) else None) or 
+        (request.data.get('barcode') if isinstance(request.data, dict) else None) or 
+        ''
+    ).strip()
+
     if not barcode:
         return error_response("Barcode is required", code=400)
 
@@ -2889,7 +2896,7 @@ def barcode_scanner_pipeline(request):
     return compare_prices_api(request._request, slug=product.slug)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def decode_barcode_to_slug(request):
     """
@@ -2900,9 +2907,16 @@ def decode_barcode_to_slug(request):
     if not subscription or not subscription.is_active:
         return error_response("Please subscribe to a plan to use barcode scanner.", code=403)
 
-    barcode = request.query_params.get('code', '').strip()
+    barcode = (
+        request.query_params.get('code') or 
+        request.query_params.get('barcode') or 
+        (request.data.get('code') if isinstance(request.data, dict) else None) or 
+        (request.data.get('barcode') if isinstance(request.data, dict) else None) or 
+        ''
+    ).strip()
+
     if not barcode:
-        return error_response("Query parameter 'code' is required.", code=400)
+        return error_response("Query parameter 'code' or 'barcode' is required.", code=400)
 
     product = Product.objects.filter(Q(gtin=barcode) | Q(asin=barcode)).first()
 
