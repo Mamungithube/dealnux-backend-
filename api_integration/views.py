@@ -1269,83 +1269,71 @@ def compare_prices_api(request, slug):
         return error_response("Product not found", code=404)
 
     target_title = product.title if product else (sp_target.title if sp_target else '')
+    clean_target_title = clean_display_title(target_title)
 
-    def deep_clean(text):
-        noise = ['restored', 'renewed', 'refurbished', 'pre-owned', 'used',
-                 'excellent', 'mint', 'condition']
-        text = text.lower()
-        for word in noise:
-            text = re.sub(r'\b' + re.escape(word) + r'\b', '', text)
-        return re.sub(r'\s+', ' ', text).strip()
-
-    target_clean = deep_clean(target_title)
-
-    matched_ids = [product.id] if product else []
     sync_triggered = False
 
     if product:
-        existing_platforms = ProductListing.objects.filter(
-            product=product, is_available=True
-        ).values_list('platform__code', flat=True).distinct()
+        existing_platforms_count = ProductListing.objects.filter(
+            product=product,
+            is_available=True
+        ).values('platform').distinct().count()
 
-        if len(existing_platforms) < 3:
-            cache_key = f"sync_triggered_{product.id}"
-            if not cache.get(cache_key): 
-                fingerprint = get_product_fingerprint(product.title)
-                query_for_api = fingerprint['core_name'] or product.title[:50]
+        cache_key = f"sync_lock_{product.id}"
+        if existing_platforms_count < 3 and not cache.get(cache_key):
+            fingerprint = get_product_fingerprint(clean_target_title)
+            query_for_api = fingerprint['core_name'] or clean_target_title[:50]
+
+            try:
+                priority_tasks = [
+                    sync_amazon_task.s(query_for_api, 3),
+                    sync_ebay_task.s(query_for_api, 3),
+                    sync_walmart_task.s(query_for_api, 3),
+                ]
+                for i, task in enumerate(priority_tasks):
+                    task.apply_async(countdown=i * 60)
+            except Exception:
                 sync_all_platforms_task.delay(query_for_api, limit=5)
-                cache.set(cache_key, True, timeout=3600)  
-                sync_triggered = True
 
-        search_words = [w for w in target_clean.split() if len(w) > 2][:6]
+            cache.set(cache_key, True, 86400)
+            sync_triggered = True
 
-        if search_words:
-            word_q = Q()
-            for word in search_words:
-                word_q |= Q(title__icontains=word)
+        candidates = Product.objects.filter(
+            category=product.category,
+            is_active=True
+        ).exclude(id=product.id).only('id', 'title', 'brand') if product.category else Product.objects.none()
 
-            if product.category:
-                word_q &= Q(category=product.category)
+        matched_ids = [product.id]
+        THRESHOLD = 75
 
-            candidates = Product.objects.filter(
-                word_q, is_active=True
-            ).only('id', 'title', 'brand')[:300]
-        else:
-            candidates = Product.objects.none()
-
-        accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount']
-        target_is_acc = any(w in target_clean.lower() for w in accessory_words)
+        accessory_words = ['cable', 'case', 'cover', 'charger', 'stand', 'mount', 'station']
+        target_is_acc = any(w in clean_target_title.lower() for w in accessory_words)
 
         for cand in candidates:
-            if cand.id == product.id:
+            cand_title_lower = cand.title.lower()
+            cand_is_acc = any(w in cand_title_lower for w in accessory_words)
+            if target_is_acc != cand_is_acc:
                 continue
-
-            cand_clean = deep_clean(cand.title)
-            if target_is_acc != any(w in cand_clean for w in accessory_words):
-                continue
-
-            score = fuzz.token_set_ratio(target_clean, cand_clean)
-            if score >= 60:
+            score = calculate_match_score(product.title, cand.title)
+            if score >= THRESHOLD:
                 matched_ids.append(cand.id)
+    else:
+        matched_ids = []
 
     comparison_list = []
     prices = []
-    seen_keys = set()
+    seen_urls = set()
 
-    seller_prods = SellerProduct.objects.filter(status='APPROVED')
-    if product:
-        seller_prods = seller_prods.filter(Q(linked_product=product) | Q(linked_product__id__in=matched_ids))
-    elif sp_target:
-        seller_prods = seller_prods.filter(id=sp_target.id)
+    # Add Marketplace Seller offer (Deduplicated to 1 best offer per seller)
+    if sp_target:
+        seller_prods = [sp_target]
+    elif product:
+        seller_prods = list(SellerProduct.objects.filter(linked_product=product, status='APPROVED').order_by('price')[:1])
+    else:
+        seller_prods = []
 
     for sp in seller_prods:
         s_name = sp.seller.shop_name if (sp.seller and sp.seller.shop_name) else "Seller"
-        p_code = f"local-seller-{sp.seller.id if sp.seller else 0}"
-        dedup_key = (p_code, sp.id)
-        if dedup_key in seen_keys:
-            continue
-        seen_keys.add(dedup_key)
-
         total_p = float(sp.price) + (float(getattr(sp, 'shipping_cost', 0) or 0) if not getattr(sp, 'free_shipping', True) else 0)
         prices.append(total_p)
 
@@ -1353,7 +1341,7 @@ def compare_prices_api(request, slug):
 
         comparison_list.append({
             'platform': s_name,
-            'platform_code': p_code,
+            'platform_code': f"local-seller-{sp.seller.id if sp.seller else 0}",
             'product_id': sp.id,
             'listing_id': str(sp.id),
             'price': float(sp.price),
@@ -1369,6 +1357,7 @@ def compare_prices_api(request, slug):
             'clean_title': clean_display_title(sp.title),
         })
 
+    # Add 3rd-party ProductListings (Amazon, eBay, Walmart, etc. from DB)
     if matched_ids:
         listings = ProductListing.objects.filter(
             product__id__in=matched_ids,
@@ -1376,53 +1365,55 @@ def compare_prices_api(request, slug):
             price__gt=0
         ).select_related('platform', 'product').order_by('price')
 
-        for l in listings:
-            p_code = l.platform.code if l.platform else 'external'
-            dedup_key = (p_code, l.external_url or l.id)
-            if dedup_key in seen_keys:
+        for listing in listings:
+            if listing.external_url and listing.external_url in seen_urls:
                 continue
-            seen_keys.add(dedup_key)
+            if listing.external_url:
+                seen_urls.add(listing.external_url)
 
-            total_p = float(l.get_total_price())
+            total_p = float(listing.get_total_price())
             prices.append(total_p)
 
-            img_url = l.product.main_image
+            img_url = listing.product.main_image
             if img_url and not str(img_url).startswith('http'):
                 img_url = request.build_absolute_uri(img_url)
 
             comparison_list.append({
-                'platform': l.platform.name if l.platform else 'Retailer',
-                'platform_code': p_code,
-                'product_id': l.product.id,
-                'listing_id': l.external_id or str(l.id),
-                'price': float(l.price),
+                'platform': listing.platform.name if listing.platform else 'Retailer',
+                'platform_code': listing.platform.code if listing.platform else 'external',
+                'product_id': listing.product.id,
+                'listing_id': listing.external_id or str(listing.id),
+                'price': float(listing.price),
                 'total_price': total_p,
-                'url': l.external_url,
-                'seller': l.seller_username or "Verified Store",
+                'url': listing.external_url,
+                'seller': listing.seller_username or "Verified Store",
                 'main_image': img_url,
-                'shipping_cost': str(l.shipping_cost),
-                'is_available': l.is_available,
-                'has_coupon': l.has_coupon,
-                'coupon_text': l.coupon_text,
-                'deal_badge': l.deal_badge,
-                'clean_title': clean_display_title(l.product.title),
+                'shipping_cost': str(listing.shipping_cost),
+                'is_available': listing.is_available,
+                'has_coupon': listing.has_coupon,
+                'coupon_text': listing.coupon_text,
+                'deal_badge': listing.deal_badge,
+                'clean_title': clean_display_title(listing.product.title),
             })
 
     comparison_list.sort(key=lambda x: float(x['total_price']))
 
     prod_id = product.id if product else (sp_target.id if sp_target else 0)
-    prod_title = clean_display_title(target_title)
+    prod_title = clean_target_title
     prod_img = (product.main_image if product else None) or (request.build_absolute_uri(sp_target.main_image.url) if sp_target and sp_target.main_image else None)
 
     return success_response({
         'product': {
             'id': prod_id,
             'title': prod_title,
+            'slug': product.slug if product else '',
+            'brand': product.brand if product else '',
             'main_image': prod_img,
         },
         'meta': {
             'total_deals_found': len(comparison_list),
             'sync_triggered': sync_triggered,
+            'message': "Searching for more deals..." if sync_triggered else "Results updated."
         },
         'price_analysis': {
             'lowest_price': min(prices) if prices else 0,
@@ -1431,7 +1422,7 @@ def compare_prices_api(request, slug):
         },
         'price_comparison': comparison_list,
         'best_deal': comparison_list[0] if comparison_list else None
-    })
+    }, message="Price comparison fetched successfully")
 # @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
 # def compare_prices_api(request, slug):
