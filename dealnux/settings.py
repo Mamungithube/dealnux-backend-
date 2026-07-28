@@ -173,10 +173,10 @@ REST_FRAMEWORK = {
 }
 
 
-# ==================== JWT ====================
+# ==================== JWT & Session Settings ====================
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=10),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=90),    # Extended from 10 days to 90 days for maximum session persistence
     'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -191,6 +191,11 @@ SIMPLE_JWT = {
     'TOKEN_TYPE_CLAIM': 'token_type',
     'JTI_CLAIM': 'jti',
 }
+
+# Persistent Session Settings
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 90  # 90 Days session cookie
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
