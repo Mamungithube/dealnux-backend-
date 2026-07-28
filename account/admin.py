@@ -112,11 +112,27 @@ from account.models import SiteSettings  # app অনুযায়ী
 
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(ModelAdmin):
-    def has_add_permission(self, request): return False
-    def has_delete_permission(self, request, obj=None): return False
+    list_display = ('display_reward_amount',)
+    fieldsets = (
+        ('🎁 Referral System Settings', {
+            'fields': ('referral_reward_amount',),
+            'description': 'Configure the reward bonus (in USD) automatically credited to a referrer user\'s balance when their referred friend subscribes to a paid plan and completes their first store purchase.'
+        }),
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     def changelist_view(self, request, extra_context=None):
-        SiteSettings.get()  
-        return super().changelist_view(request, extra_context)
+        obj = SiteSettings.get()
+        return self.changeform_view(request, object_id=str(obj.pk), extra_context=extra_context)
+
+    @display(description='Referral Reward Amount')
+    def display_reward_amount(self, obj):
+        return f"${obj.referral_reward_amount:.2f}"
 
 # ============================================================================
 # User Admin

@@ -1077,10 +1077,24 @@ class CreateSubscriptionCheckoutView(APIView):
             }, status=201)
 
         try:
+            if plan.stripe_price_id and plan.stripe_price_id.strip():
+                line_items = [{'price': plan.stripe_price_id.strip(), 'quantity': 1}]
+            else:
+                interval = 'year' if 'YEARLY' in plan.plan_type else 'month'
+                line_items = [{
+                    'price_data': {
+                        'currency': 'usd',
+                        'product_data': {'name': plan.name},
+                        'unit_amount': int(plan.price * 100),
+                        'recurring': {'interval': interval}
+                    },
+                    'quantity': 1,
+                }]
+
             session = stripe.checkout.Session.create(
                 ui_mode='embedded',
                 payment_method_types=['card'],
-                line_items=[{'price': plan.stripe_price_id, 'quantity': 1}],
+                line_items=line_items,
                 mode='subscription',
                 return_url=settings.STRIPE_RETURN_URL +
                 '?session_id={CHECKOUT_SESSION_ID}',

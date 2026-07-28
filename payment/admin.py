@@ -376,7 +376,7 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
         }),
         ('Stripe Integration', {
             'fields': ('stripe_price_id',),
-            'description': 'Copy the Price ID from the Stripe dashboard and paste it here.'
+            'description': 'Optional: Leave blank to automatically use the dynamic price set above.'
         }),
     )
 

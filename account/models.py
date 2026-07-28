@@ -93,7 +93,13 @@ class Profile(models.Model):
 
 
 class SiteSettings(models.Model):
-    referral_reward_amount = models.DecimalField(max_digits=99, decimal_places=2, default=10.00)
+    referral_reward_amount = models.DecimalField(
+        max_digits=100000000,
+        decimal_places=2,
+        default=10.00,
+        verbose_name="Referral Reward Amount ($)",
+        help_text="Amount in USD added to the referrer's account balance when a referred user subscribes and completes their first purchase."
+    )
 
     class Meta:
         verbose_name = 'Site Settings'
