@@ -366,6 +366,38 @@ class CartItemSerializer(serializers.ModelSerializer):
         return image_url
 
     def get_listing(self, obj):
+        from store.models import SellerProduct
+        # 1. Prioritize SellerProduct listing if this product belongs to a DealNux marketplace seller
+        sp = SellerProduct.objects.filter(linked_product=obj.product).first()
+        if not sp:
+            sp = SellerProduct.objects.filter(pk=obj.product.id).first()
+
+        if sp:
+            if sp.linked_listing and sp.linked_listing.is_available:
+                return ProductListingSerializer(sp.linked_listing).data
+
+            seller_name = sp.seller.shop_name if (sp.seller and sp.seller.shop_name) else "Seller"
+            return {
+                "id": sp.id,
+                "platform_name": seller_name,
+                "platform_code": f"local-seller-{sp.seller.id if sp.seller else '0'}",
+                "price": str(sp.price),
+                "currency": getattr(sp, 'currency', 'USD') or 'USD',
+                "original_price": str(sp.original_price) if sp.original_price else str(sp.price),
+                "discount_percentage": sp.discount_percentage,
+                "condition": getattr(sp, 'condition', 'NEW') or 'NEW',
+                "free_shipping": True,
+                "shipping_cost": 0.0,
+                "total_price": float(sp.price),
+                "external_url": "",
+                "is_available": sp.status == 'APPROVED' and sp.quantity > 0,
+                "has_coupon": False,
+                "coupon_text": "",
+                "deal_badge": "",
+                "is_best_seller": False,
+            }
+
+        # 2. Fallback to 3rd party affiliate listing if not a marketplace SellerProduct
         best = obj.product.listings.filter(
             is_available=True
         ).order_by('price').first()
