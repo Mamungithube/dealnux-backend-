@@ -563,35 +563,71 @@ class CouponValidateSerializer(serializers.Serializer):
     def validate(self, attrs):
         items_data = attrs.get('items', [])
         code = attrs.get('coupon_code', '').upper().strip()
-        
+
+        if not items_data:
+            raise serializers.ValidationError({"items": ["No items provided for coupon validation."]})
+
         total_discount = Decimal('0')
         total_original = Decimal('0')
         seller_name = ""
+        coupon_obj = None
+
+        from django.db.models import Q
 
         for item in items_data:
-            p_id = item.get('seller_product')
+            p_id = item.get('seller_product') or item.get('product')
             qty = int(item.get('quantity', 1))
 
             try:
                 product = SellerProduct.objects.get(id=p_id, status='APPROVED')
                 seller_name = product.seller.shop_name
-                
-                # copon validation
-                coupon = Coupon.objects.get(code=code, seller=product.seller)
-                
-                item_subtotal = product.price * qty
+                item_subtotal = Decimal(str(product.price)) * Decimal(str(qty))
                 total_original += item_subtotal
 
-                if coupon.is_valid and item_subtotal >= coupon.min_order_amount:
-                    if coupon.discount_type == 'PERCENTAGE':
-                        total_discount += (item_subtotal * coupon.discount_value) / 100
-                    else:
-                        total_discount += min(coupon.discount_value, item_subtotal)
-            except (SellerProduct.DoesNotExist, Coupon.DoesNotExist):
-                continue 
+                coupon = Coupon.objects.filter(
+                    code=code,
+                    is_active=True
+                ).filter(
+                    Q(seller=product.seller) | Q(seller__isnull=True)
+                ).first()
+
+                if not coupon:
+                    raise serializers.ValidationError({
+                        "coupon_code": [f"Coupon '{code}' is invalid or not available for seller '{seller_name}'."]
+                    })
+
+                if not coupon.is_valid:
+                    raise serializers.ValidationError({
+                        "coupon_code": [f"Coupon '{code}' has expired or reached its maximum usage limit."]
+                    })
+
+                if item_subtotal < coupon.min_order_amount:
+                    raise serializers.ValidationError({
+                        "coupon_code": [f"Minimum order amount of ${coupon.min_order_amount} required to use coupon '{code}'."]
+                    })
+
+                coupon_obj = coupon
+                if coupon.discount_type == 'PERCENTAGE':
+                    item_discount = (item_subtotal * coupon.discount_value) / Decimal('100')
+                else:
+                    item_discount = min(coupon.discount_value, item_subtotal)
+
+                total_discount += item_discount
+
+            except SellerProduct.DoesNotExist:
+                raise serializers.ValidationError({
+                    "items": [f"Product not found or not approved for ID {p_id}."]
+                })
+
+        if not coupon_obj or total_discount <= 0:
+            raise serializers.ValidationError({
+                "coupon_code": [f"Coupon '{code}' could not be applied to the selected items."]
+            })
 
         attrs['total_discount'] = total_discount
         attrs['total_original'] = total_original
         attrs['seller_shop'] = seller_name
         attrs['code'] = code
+        attrs['discount_type'] = coupon_obj.discount_type
+        attrs['discount_value'] = coupon_obj.discount_value
         return attrs

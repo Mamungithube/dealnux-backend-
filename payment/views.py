@@ -67,30 +67,28 @@ class CustomPagination(PageNumberPagination):
 
 
 def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
-    unit_price = seller_product.price
-    subtotal = unit_price * quantity
+    unit_price = Decimal(str(seller_product.price))
+    subtotal = unit_price * Decimal(str(quantity))
     discount = Decimal('0')
 
     if coupon_code:
-        try:
-            coupon = Coupon.objects.get(
-                code=coupon_code.upper().strip(),
-                seller=seller_product.seller,
-                is_active=True
-            )
-            if coupon.is_valid and subtotal >= coupon.min_order_amount:
-                if coupon.discount_type == 'PERCENTAGE':
-                    discount = subtotal * (coupon.discount_value / 100)
-                else:
-                    discount = min(coupon.discount_value, subtotal)
-                print(
-                    f"✅ Discount Applied: {discount} for coupon {coupon_code}")
+        c_code = str(coupon_code).upper().strip()
+        from django.db.models import Q
+        coupon = Coupon.objects.filter(
+            code=c_code,
+            is_active=True
+        ).filter(
+            Q(seller=seller_product.seller) | Q(seller__isnull=True)
+        ).first()
 
+        if coupon and coupon.is_valid and subtotal >= coupon.min_order_amount:
+            if coupon.discount_type == 'PERCENTAGE':
+                discount = (subtotal * Decimal(str(coupon.discount_value))) / Decimal('100')
             else:
-                print(f"⚠️ Coupon invalid or min amount not met.")
-        except Coupon.DoesNotExist:
-            print(
-                f"❌ Coupon {coupon_code} not found for seller {seller_product.seller.shop_name}")
+                discount = min(Decimal(str(coupon.discount_value)), subtotal)
+            print(f"✅ Discount Applied: {discount} for coupon {c_code}")
+        else:
+            print(f"⚠️ Coupon '{c_code}' invalid, expired, or min order amount not met.")
 
     item_total = subtotal - discount
     shipping = seller_product.shipping_cost if not seller_product.free_shipping else Decimal(

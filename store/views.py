@@ -1116,45 +1116,28 @@ class CouponViewSet(viewsets.ModelViewSet):
         serializer = CouponValidateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        items_data = serializer.validated_data['items']
-        code = serializer.validated_data['coupon_code'].upper().strip()
-
-        total_discount = Decimal('0')
-        total_original = Decimal('0')
-        applied_seller_shop = ""
-        last_product_title = ""
-        discount_type = ""
-        discount_value = 0
-
-        for item in items_data:
-            p_id = item.get('seller_product')
-            qty = int(item.get('quantity', 1))
-
-            try:
-                product = SellerProduct.objects.get(id=p_id, status='APPROVED')
-                res = _calculate_order_amounts(product, qty, code)
-
-                total_discount += res['discount_amount']
-                total_original += Decimal(str(product.price * qty))
-
-                applied_seller_shop = product.seller.shop_name
-                last_product_title = product.title if len(
-                    items_data) == 1 else f"Multiple Items ({len(items_data)})"
-
-                coupon = Coupon.objects.filter(
-                    code=code, seller=product.seller).first()
-                if coupon:
-                    discount_type = coupon.discount_type
-                    discount_value = float(coupon.discount_value)
-
-            except (SellerProduct.DoesNotExist, Exception):
-                continue
-
+        v_data = serializer.validated_data
+        code = v_data['code']
+        total_discount = v_data['total_discount']
+        total_original = v_data['total_original']
         final_amount = total_original - total_discount
+        seller_shop = v_data.get('seller_shop', '')
+        discount_type = v_data.get('discount_type', '')
+        discount_value = float(v_data.get('discount_value', 0))
+
+        items_data = v_data.get('items', [])
+        last_product_title = f"Multiple Items ({len(items_data)})"
+        if len(items_data) == 1:
+            p_id = items_data[0].get('seller_product') or items_data[0].get('product')
+            try:
+                sp = SellerProduct.objects.get(id=p_id)
+                last_product_title = sp.title
+            except Exception:
+                pass
 
         return success_response({
             "code":              code,
-            "seller_shop":       applied_seller_shop,
+            "seller_shop":       seller_shop,
             "product_title":     last_product_title,
             "discount_type":     discount_type,
             "discount_value":    discount_value,
