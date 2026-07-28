@@ -367,9 +367,9 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
         ('General Information', {
             'fields': ('name', 'plan_type', 'price', 'is_active')
         }),
-        ('Features', {
+        ('Features List', {
             'fields': ('features',),
-            'description': 'Add features as a JSON array, for example: ["Unlimited searches", "Priority support"]'
+            'description': 'Enter one feature per line (e.g. "40 major retailer clicks/day"). Simple text only, no JSON syntax required.'
         }),
         ('Trial & Limits', {
             'fields': ('trial_days', 'clicks_per_day', 'price_alerts_limit')
@@ -400,9 +400,16 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
 
     @display(description='Features')
     def display_features(self, obj):
-        if not obj.features:
+        if not obj.features or not isinstance(obj.features, list):
             return '—'
-        return format_html('<span>{}</span>', ', '.join(obj.features[:5]))
+        items = [str(x).strip() for x in obj.features if str(x).strip()]
+        if not items:
+            return '—'
+        preview = ' • '.join(items[:3])
+        count = len(items)
+        if count > 3:
+            preview += f' (+{count - 3} more)'
+        return format_html('<span style="color: #4b5563;">{}</span>', preview)
 
 
 @admin.register(UserSubscription)

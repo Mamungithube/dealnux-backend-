@@ -184,6 +184,15 @@ class UserAdmin(ModelAdmin):
         # ধাপ ৩: Order check
         step3 = getattr(obj, 'has_order', False)
 
+        # All 3 criteria met -> Auto-award reward if not awarded yet
+        if step1 and step2 and step3 and not obj.has_referral_reward_awarded:
+            from payment.utils import process_referral_reward_for_user
+            if process_referral_reward_for_user(obj):
+                return format_html(
+                    '<span style="background:#16a34a;color:#fff;padding:2px 8px;'
+                    'border-radius:4px;font-size:11px;font-weight:600;">✅ Rewarded</span>'
+                )
+
         def badge(ok, label):
             if ok:
                 return (
