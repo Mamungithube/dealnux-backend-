@@ -17,6 +17,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='sitesettings',
             name='referral_reward_amount',
-            field=models.DecimalField(decimal_places=2, default=10.0, help_text="Amount in USD added to the referrer's account balance when a referred user subscribes and completes their first purchase.", max_digits=100000000, verbose_name='Referral Reward Amount ($)'),
+            field=models.DecimalField(decimal_places=2, default=10.0, help_text="Amount in USD added to the referrer's account balance when a referred user subscribes and completes their first purchase.", max_digits=10, verbose_name='Referral Reward Amount ($)'),
         ),
     ]
