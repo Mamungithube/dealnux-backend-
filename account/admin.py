@@ -213,25 +213,19 @@ class UserAdmin(ModelAdmin):
         return format_html(html)
 
     def get_fieldsets(self, request, obj=None):
-        base = [
+        return [
             ('Basic Info', {'fields': ('email', 'name', 'is_active')}),
-            ('Roles & Permissions', {'fields': ('is_staff', 'groups')}),
+            ('Financial & Referral Credit', {
+                'fields': ('balance', 'has_referral_reward_awarded', 'referred_by', 'referral_code'),
+                'description': 'Admin can manually update user credit ($ balance) and referral status here.'
+            }),
+            ('Roles & Permissions', {'fields': ('is_staff', 'is_superuser', 'groups')}),
+            ('Usage Details', {'fields': ('ads_provided',)}),
         ]
-        # Manager only: superuser toggle & financial fields
-        if is_manager(request.user):
-            base.append(('Manager Only', {'fields': (
-                'is_superuser', 'balance', 'has_referral_reward_awarded', 'ads_provided')}))
-        return base
 
     def get_readonly_fields(self, request, obj=None):
-        if is_admin_only(request.user):
-            return ('email', 'balance', 'is_superuser', 'ads_provided',
-                    'has_referral_reward_awarded', 'referred_by', 'referral_code')
-        
-        return ('email', 'name', 'is_active', 'is_staff', 'is_superuser',
-                'groups', 'balance', 'ads_provided', 'has_referral_reward_awarded',
-                'referral_code', 'referred_by', 'total_lifetime_savings',
-                'savings_coupons', 'savings_comparison')
+        # Email, referral_code and referred_by remain read-only; balance and referral status are editable!
+        return ('email', 'referral_code', 'referred_by')
 
     actions_row = [
         'suspend_user_row',
