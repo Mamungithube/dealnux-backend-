@@ -184,5 +184,47 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'plan_type', 'price', 'trial_days', 
             'clicks_per_day', 'price_alerts_limit', 'has_ai_optimization', 
-            'has_barcode_scanning','features'
+            'has_barcode_scanning', 'features'
         ]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        raw_features = ret.get('features', [])
+        ret['features'] = self._clean_features(raw_features)
+        return ret
+
+    def _clean_features(self, data):
+        if not data:
+            return []
+        import json, ast, re
+        if isinstance(data, str):
+            data = data.strip()
+            if not data:
+                return []
+            if (data.startswith('[') and data.endswith(']')) or (data.startswith('{') and data.endswith('}')):
+                try:
+                    return self._clean_features(json.loads(data))
+                except Exception:
+                    try:
+                        return self._clean_features(ast.literal_eval(data))
+                    except Exception:
+                        pass
+            if '\n' in data:
+                res = []
+                for line in data.split('\n'):
+                    res.extend(self._clean_features(line))
+                return res
+            if ',' in data and ("'" in data or '"' in data):
+                parts = re.findall(r"['\"]([^'\"]+)['\"]", data)
+                if parts:
+                    return [p.strip() for p in parts if p.strip()]
+            cleaned = data.strip("'\"\\ ").strip()
+            return [cleaned] if cleaned else []
+        if isinstance(data, list):
+            res = []
+            for item in data:
+                for f in self._clean_features(item):
+                    if f and f not in res:
+                        res.append(f)
+            return res
+        return [str(data).strip()]

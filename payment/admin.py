@@ -333,17 +333,51 @@ class SubscriptionPlanForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Convert JSON array to newline-separated text for editing
         if self.instance.pk and self.instance.features:
-            self.fields['features'].initial = '\n'.join(self.instance.features)
+            cleaned_list = self._flatten_features(self.instance.features)
+            self.fields['features'].initial = '\n'.join(cleaned_list)
+
+    def _flatten_features(self, data):
+        if not data:
+            return []
+        import json, ast, re
+        if isinstance(data, str):
+            data = data.strip()
+            if not data:
+                return []
+            if (data.startswith('[') and data.endswith(']')) or (data.startswith('{') and data.endswith('}')):
+                try:
+                    return self._flatten_features(json.loads(data))
+                except Exception:
+                    try:
+                        return self._flatten_features(ast.literal_eval(data))
+                    except Exception:
+                        pass
+            if '\n' in data:
+                res = []
+                for line in data.split('\n'):
+                    res.extend(self._flatten_features(line))
+                return res
+            if ',' in data and ("'" in data or '"' in data):
+                parts = re.findall(r"['\"]([^'\"]+)['\"]", data)
+                if parts:
+                    return [p.strip() for p in parts if p.strip()]
+            cleaned = data.strip("'\"\\ ").strip()
+            return [cleaned] if cleaned else []
+        if isinstance(data, list):
+            res = []
+            for item in data:
+                for f in self._flatten_features(item):
+                    if f and f not in res:
+                        res.append(f)
+            return res
+        return [str(data).strip()]
 
     def clean_features(self):
         features_text = self.cleaned_data.get('features', '')
         if not features_text.strip():
             return []
-        # Convert newline-separated text to list
-        features_list = [line.strip() for line in features_text.split('\n') if line.strip()]
-        return features_list
+        return self._flatten_features(features_text)
 
 
 @admin.register(SubscriptionPlan)
