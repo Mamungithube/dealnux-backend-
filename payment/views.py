@@ -967,14 +967,6 @@ class CreateSubscriptionCheckoutView(APIView):
         except SubscriptionPlan.DoesNotExist:
             return Response({"success": False, "message": "Invalid Plan selected."}, status=200)
 
-        # Block ONLY if user tries to purchase the EXACT SAME active plan
-        current_sub = UserSubscription.objects.filter(user=user).first()
-        if current_sub and current_sub.is_active and current_sub.status == 'ACTIVE' and current_sub.plan and current_sub.plan.id == plan.id:
-            return Response({
-                "success": False,
-                "message": f"You are already subscribed to the '{plan.name}' plan. You can upgrade to a different plan anytime."
-            }, status=200)
-
         if plan.plan_type == 'FREE':
 
             if UserSubscription.objects.filter(user=user).exists():
