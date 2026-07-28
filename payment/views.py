@@ -965,20 +965,20 @@ class CreateSubscriptionCheckoutView(APIView):
         try:
             plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
         except SubscriptionPlan.DoesNotExist:
-            return Response({"error": "Invalid Plan selected."}, status=404)
+            return Response({"success": False, "message": "Invalid Plan selected."}, status=200)
 
-        # Check if user already has an active paid subscription plan
+        # Block ONLY if user tries to purchase the EXACT SAME active plan
         current_sub = UserSubscription.objects.filter(user=user).first()
-        if current_sub and current_sub.is_active and current_sub.status == 'ACTIVE':
+        if current_sub and current_sub.is_active and current_sub.status == 'ACTIVE' and current_sub.plan and current_sub.plan.id == plan.id:
             return Response({
                 "success": False,
-                "error": f"You already have an active subscription plan ({current_sub.plan.name}). Please wait until your current plan expires before purchasing a new subscription."
-            }, status=400)
+                "message": f"You are already subscribed to the '{plan.name}' plan. You can upgrade to a different plan anytime."
+            }, status=200)
 
         if plan.plan_type == 'FREE':
 
             if UserSubscription.objects.filter(user=user).exists():
-                return Response({"error": "You have already used your free trial or have an active plan."}, status=400)
+                return Response({"success": False, "message": "You have already used your free trial or have an active plan."}, status=200)
 
             UserSubscription.objects.create(
                 user=user,
@@ -990,7 +990,7 @@ class CreateSubscriptionCheckoutView(APIView):
             return Response({
                 "success": True,
                 "message": f"Free trial activated for {plan.trial_days} days."
-            }, status=201)
+            }, status=200)
 
         try:
             if plan.stripe_price_id and plan.stripe_price_id.strip():
@@ -1051,14 +1051,15 @@ class CreateSubscriptionCheckoutView(APIView):
             mobile_intent = stripe.PaymentIntent.create(**intent_params)
 
             return Response({
+                "success": True,
                 "client_secret": session.client_secret,
                 "payment_intent_client_secret": mobile_intent.client_secret,
                 "plan_name": plan.name,
                 "amount": float(plan.price)
-            }, status=201)
+            }, status=200)
 
         except Exception as e:
-            return Response({"error": str(e)}, status=500)
+            return Response({"success": False, "message": str(e)}, status=200)
 
 
 class UserSubscriptionStatusView(APIView):
