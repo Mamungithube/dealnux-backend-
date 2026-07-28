@@ -361,7 +361,7 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
     ]
     list_filter = ['plan_type', 'is_active']
     search_fields = ['name', 'stripe_price_id']
-    readonly_fields = ['stripe_price_id']
+    readonly_fields = []
 
     fieldsets = (
         ('General Information', {
