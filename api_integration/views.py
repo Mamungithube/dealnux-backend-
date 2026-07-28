@@ -2733,40 +2733,117 @@ class PriceAlertViewSet(viewsets.ModelViewSet):
 from django.shortcuts import redirect
 from django.urls import reverse
 import requests
-def get_title_from_barcode_safely(barcode):
-    """একাধিক সোর্স থেকে টাইটেল খোঁজা এবং এরর হ্যান্ডল করা"""
-    sources = [
-        f"https://api.upcitemdb.com/prod/trial/lookup?upc={barcode}",
-        f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
-    ]
-    
-    for url in sources:
-        try:
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                # upcitemdb logic
-                if 'items' in data and len(data['items']) > 0:
-                    return data['items'][0].get('title')
-                # openfoodfacts logic
-                if data.get('status') == 1:
-                    return data.get('product', {}).get('product_name')
-        except Exception:
-            continue
 
-    # Fallback to eBay Search API using our EbayRapidService
+def get_title_and_image_from_barcode_safely(barcode):
+    """Fetches product title & image from free & open global barcode databases"""
+    # 1. UPCItemDB
+    try:
+        r = requests.get(f"https://api.upcitemdb.com/prod/trial/lookup?upc={barcode}", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            if 'items' in data and len(data['items']) > 0:
+                item = data['items'][0]
+                title = item.get('title')
+                imgs = item.get('images', [])
+                img = imgs[0] if (imgs and isinstance(imgs, list)) else None
+                if title:
+                    return title, img
+    except Exception:
+        pass
+
+    # 2. Open Food Facts
+    try:
+        r = requests.get(f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('status') == 1:
+                p = data.get('product', {})
+                title = p.get('product_name')
+                img = p.get('image_url') or p.get('image_front_url')
+                if title:
+                    return title, img
+    except Exception:
+        pass
+
+    # 3. Open Beauty Facts
+    try:
+        r = requests.get(f"https://world.openbeautyfacts.org/api/v0/product/{barcode}.json", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('status') == 1:
+                p = data.get('product', {})
+                title = p.get('product_name')
+                img = p.get('image_url') or p.get('image_front_url')
+                if title:
+                    return title, img
+    except Exception:
+        pass
+
+    # 4. Open Products Facts
+    try:
+        r = requests.get(f"https://world.openproductsfacts.org/api/v0/product/{barcode}.json", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('status') == 1:
+                p = data.get('product', {})
+                title = p.get('product_name')
+                img = p.get('image_url') or p.get('image_front_url')
+                if title:
+                    return title, img
+    except Exception:
+        pass
+
+    # 5. Google Books API (ISBN)
+    try:
+        r = requests.get(f"https://www.googleapis.com/books/v1/volumes?q=isbn={barcode}", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            if 'items' in data and len(data['items']) > 0:
+                v = data['items'][0].get('volumeInfo', {})
+                title = v.get('title')
+                img_links = v.get('imageLinks', {})
+                img = img_links.get('thumbnail') or img_links.get('smallThumbnail')
+                if title:
+                    return title, img
+    except Exception:
+        pass
+
+    # 6. Open Library API (ISBN)
+    try:
+        r = requests.get(f"https://openlibrary.org/api/books?bibkeys=ISBN:{barcode}&format=json&jscmd=data", timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            key = f"ISBN:{barcode}"
+            if key in data:
+                b = data[key]
+                title = b.get('title')
+                covers = b.get('cover', {})
+                img = covers.get('large') or covers.get('medium') or covers.get('small')
+                if title:
+                    return title, img
+    except Exception:
+        pass
+
+    # 7. Fallback to eBay Search API
     try:
         from .services.ebay_service import EbayRapidService
         ebay = EbayRapidService()
         items = ebay.search_products(barcode, limit=1)
         if items and len(items) > 0:
-            title = items[0].get('title')
+            item = items[0]
+            title = item.get('title')
+            img = item.get('image') or item.get('main_image')
             if title:
-                return title
+                return title, img
     except Exception:
         pass
 
-    return None
+    return None, None
+
+
+def get_title_from_barcode_safely(barcode):
+    title, _ = get_title_and_image_from_barcode_safely(barcode)
+    return title
 
 
 
@@ -2775,13 +2852,11 @@ def get_title_from_barcode_safely(barcode):
 @permission_classes([IsAuthenticated])
 def barcode_scanner_pipeline(request):
     """
-    In English:
     1. Receives barcode.
     2. Converts to product name using external lookup.
     3. Finds or Creates a product in DB to get a slug.
     4. Internally redirects to the existing 'compare_prices_api' logic.
     """
-    # Check subscription permission
     subscription = getattr(request.user, 'subscription', None)
     if not subscription or not subscription.is_active:
         return error_response("Please subscribe to a plan to use barcode scanner.", code=403)
@@ -2792,7 +2867,7 @@ def barcode_scanner_pipeline(request):
 
     product = Product.objects.filter(Q(gtin=barcode) | Q(asin=barcode)).first()
     if not product:
-        title_found = get_title_from_barcode_safely(barcode)
+        title_found, image_found = get_title_and_image_from_barcode_safely(barcode)
         
         if title_found:
             from django.utils.text import slugify
@@ -2805,6 +2880,7 @@ def barcode_scanner_pipeline(request):
                 title=title_found,
                 slug=final_slug,
                 gtin=barcode,
+                main_image=image_found or '',
                 is_active=True
             )
         else:
@@ -2820,7 +2896,6 @@ def decode_barcode_to_slug(request):
     Takes a barcode, finds the product title, creates a temporary product,
     and then calls the compare_prices_api to get all deals.
     """
-    # Check subscription permission
     subscription = getattr(request.user, 'subscription', None)
     if not subscription or not subscription.is_active:
         return error_response("Please subscribe to a plan to use barcode scanner.", code=403)
@@ -2832,7 +2907,7 @@ def decode_barcode_to_slug(request):
     product = Product.objects.filter(Q(gtin=barcode) | Q(asin=barcode)).first()
 
     if not product:
-        title_found = get_title_from_barcode_safely(barcode)
+        title_found, image_found = get_title_and_image_from_barcode_safely(barcode)
         if not title_found:
             return error_response(f"Could not find a product title for barcode '{barcode}'.", code=404)
 
@@ -2841,6 +2916,12 @@ def decode_barcode_to_slug(request):
         base_slug = slugify(title_found)[:490]
         final_slug = base_slug if not Product.objects.filter(slug=base_slug).exists() else f"{base_slug}-{uuid.uuid4().hex[:5]}"
         
-        product = Product.objects.create(title=title_found, slug=final_slug, gtin=barcode, is_active=True)
+        product = Product.objects.create(
+            title=title_found,
+            slug=final_slug,
+            gtin=barcode,
+            main_image=image_found or '',
+            is_active=True
+        )
 
     return compare_prices_api(request._request, slug=product.slug)
