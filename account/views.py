@@ -993,3 +993,49 @@ def site_settings_view(request):
         data['user_referral_amount'] = float(request.user.balance)
 
     return Response(data)
+
+
+class ReferralStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        from account.models import SiteSettings
+        reward_amount = float(SiteSettings.get().referral_reward_amount)
+
+        referred_users = user.referrals.all().order_by('-date_joined')
+        referrals_list = []
+        successful_referrals_count = 0
+
+        for ref_user in referred_users:
+            is_awarded = ref_user.has_referral_reward_awarded
+            if is_awarded:
+                successful_referrals_count += 1
+
+            sub = getattr(ref_user, 'subscription', None)
+            referrals_list.append({
+                "id": ref_user.id,
+                "name": ref_user.name or ref_user.email,
+                "email": ref_user.email,
+                "date_joined": ref_user.date_joined,
+                "has_claimed": ref_user.has_claimed_referral,
+                "reward_awarded": is_awarded,
+                "has_active_subscription": sub.is_active if sub else False
+            })
+
+        total_earnings = float(successful_referrals_count * reward_amount)
+
+        return Response({
+            "success": True,
+            "code": 200,
+            "message": "Referral statistics retrieved.",
+            "data": {
+                "referral_code": user.referral_code or "",
+                "balance": float(user.balance),
+                "referral_reward_amount": reward_amount,
+                "total_referrals": referred_users.count(),
+                "successful_referrals": successful_referrals_count,
+                "total_earnings": total_earnings,
+                "referrals": referrals_list
+            }
+        })

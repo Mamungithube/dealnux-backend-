@@ -664,19 +664,22 @@ class StripeWebhookView(APIView):
                     print(
                         f"✅ Referral reward paid to {referrer.email} AND {user.email} (referred user)")
 
-                    send_dealnux_email(
-                        "You've earned a referral reward! - DealNux",
-                        referrer.email,
-                        "emails/referral_bonus.html",
-                        {"referrer": referrer, "referred_user": user, "amount": amount}
-                    )
+                    try:
+                        send_dealnux_email(
+                            "You've earned a referral reward! - DealNux",
+                            referrer.email,
+                            "emails/referral_bonus.html",
+                            {"referrer": referrer, "referred_user": user, "amount": amount}
+                        )
 
-                    send_dealnux_email(
-                        "You've earned a referral reward! - DealNux",
-                        user.email,
-                        "emails/referral_bonus.html",
-                        {"referrer": referrer, "referred_user": user, "amount": amount}
-                    )
+                        send_dealnux_email(
+                            "You've earned a referral reward! - DealNux",
+                            user.email,
+                            "emails/referral_bonus.html",
+                            {"referrer": referrer, "referred_user": user, "amount": amount}
+                        )
+                    except Exception as email_err:
+                        print(f"⚠️ Email send warning: {email_err}")
 
             # If the current user is a referrer, check for any referred users who already have active
             # subscriptions and have completed their first purchase (deferred reward case).
@@ -709,19 +712,22 @@ class StripeWebhookView(APIView):
                             print(
                                 f"✅ Deferred referral reward paid to {user.email} AND {referred_user.email}")
 
-                            send_dealnux_email(
-                                "You've earned a referral reward! - DealNux",
-                                user.email,
-                                "emails/referrer_reward.html",
-                                {"referrer": user, "referred_user": referred_user, "amount": amount}
-                            )
+                            try:
+                                send_dealnux_email(
+                                    "You've earned a referral reward! - DealNux",
+                                    user.email,
+                                    "emails/referrer_reward.html",
+                                    {"referrer": user, "referred_user": referred_user, "amount": amount}
+                                )
 
-                            send_dealnux_email(
-                                "You've earned a referral reward! - DealNux",
-                                referred_user.email,
-                                "emails/referral_bonus.html",
-                                {"referrer": user, "referred_user": referred_user, "amount": amount}
-                            )
+                                send_dealnux_email(
+                                    "You've earned a referral reward! - DealNux",
+                                    referred_user.email,
+                                    "emails/referral_bonus.html",
+                                    {"referrer": user, "referred_user": referred_user, "amount": amount}
+                                )
+                            except Exception as email_err:
+                                print(f"⚠️ Email send warning: {email_err}")
 
         except Exception as e:
             print(f"❌ Error processing referral reward: {str(e)}")

@@ -142,6 +142,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     email                = serializers.SerializerMethodField()
     first_name           = serializers.SerializerMethodField() 
     last_name            = serializers.SerializerMethodField() 
+    referral_code        = serializers.SerializerMethodField()
     refaradal_code       = serializers.SerializerMethodField()
     interests            = serializers.SerializerMethodField()
     balance              = serializers.SerializerMethodField()
@@ -155,7 +156,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             'profile_picture',
             'address', 'address_2', 'city', 'state', 'zip_code', 'country',  
             'interests',
-            'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by',
+            'referral_code', 'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by',
         ]
 
     def get_name(self, obj):
@@ -169,6 +170,9 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_last_name(self, obj):   
         return getattr(obj.user, 'last_name', '') if obj.user else ''
+
+    def get_referral_code(self, obj):
+        return getattr(obj.user, 'referral_code', '') if obj.user else ''
 
     def get_refaradal_code(self, obj):
         return getattr(obj.user, 'referral_code', '') if obj.user else ''

@@ -13,7 +13,8 @@ from .views import (
     ProfileSetupView,
      google_login,
      apple_login,
-     site_settings_view
+     site_settings_view,
+     ReferralStatsView
 )
 from django.urls import path
 
@@ -48,5 +49,6 @@ urlpatterns = [
      path('apple/', apple_login, name='apple_login'),
 
      path('site-settings/', site_settings_view, name='site-settings'),
+     path('referral/stats/', ReferralStatsView.as_view(), name='referral-stats'),
 
 ]

@@ -286,20 +286,31 @@ class UserAdmin(ModelAdmin):
                 with transaction.atomic():
                     from account.models import SiteSettings
                     amount = SiteSettings.get().referral_reward_amount
+
                     user.referred_by.refresh_from_db()
                     user.referred_by.balance += amount
                     user.referred_by.save(update_fields=['balance'])
-                    self.message_user(request, f"✓ Re-issued {amount} to {user.referred_by.email}", level="warning")
+
+                    user.refresh_from_db()
+                    user.balance += amount
+                    user.save(update_fields=['balance'])
+
+                    self.message_user(request, f"✓ Re-issued {amount} credit to {user.referred_by.email} AND {user.email}", level="warning")
         else:
             with transaction.atomic():
                 from account.models import SiteSettings
                 amount = SiteSettings.get().referral_reward_amount
+
                 user.referred_by.refresh_from_db()
                 user.referred_by.balance += amount
                 user.referred_by.save(update_fields=['balance'])
+
+                user.refresh_from_db()
+                user.balance += amount
                 user.has_referral_reward_awarded = True
-                user.save(update_fields=['has_referral_reward_awarded'])
-                self.message_user(request, f"✓ Credit issued to {user.referred_by.email}")
+                user.save(update_fields=['balance', 'has_referral_reward_awarded'])
+
+                self.message_user(request, f"✓ Referral credit issued to {user.referred_by.email} AND {user.email}")
         return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/admin/'))
 
     # --- Suspend ---

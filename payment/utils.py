@@ -50,26 +50,37 @@ def process_referral_reward_for_user(user):
         user_subscription = getattr(user, 'subscription', None)
         referrer_subscription = getattr(referrer, 'subscription', None)
 
-        if (
-            user_subscription is None or user_subscription.status != 'ACTIVE' or
-            referrer_subscription is None or referrer_subscription.status != 'ACTIVE'
-        ):
+        user_is_active = user_subscription is not None and getattr(user_subscription, 'is_active', False)
+        referrer_is_active = referrer_subscription is not None and getattr(referrer_subscription, 'is_active', False)
+
+        if not user_is_active or not referrer_is_active:
             return False
 
         from account.models import SiteSettings
         from notifications.utils import send_referral_reward_notification
         amount = SiteSettings.get().referral_reward_amount
+
+        # Credit balance to referrer
+        referrer.refresh_from_db()
         referrer.balance += amount
         referrer.save(update_fields=['balance'])
 
-        send_referral_reward_notification(referrer, amount)
-
+        # Credit balance to referred user
+        user.refresh_from_db()
+        user.balance += amount
         user.has_referral_reward_awarded = True
-        user.save(update_fields=['has_referral_reward_awarded'])
-        print(f"Referral reward paid to {referrer.email} for referred user {user.email}")
+        user.save(update_fields=['balance', 'has_referral_reward_awarded'])
+
+        try:
+            send_referral_reward_notification(referrer, amount)
+            send_referral_reward_notification(user, amount)
+        except Exception:
+            pass
+
+        print(f"✅ Referral reward paid to {referrer.email} AND {user.email}")
         return True
     except Exception as e:
-        print(f"Error processing referral reward in helper: {str(e)}")
+        print(f"❌ Error processing referral reward in helper: {str(e)}")
         return False
 
 
