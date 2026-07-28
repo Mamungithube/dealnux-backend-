@@ -479,6 +479,8 @@ class StripeWebhookView(APIView):
                     'stripe_customer_id': stripe_cust_id,
                     'started_at': now,
                     'expires_at': now + timedelta(days=days),
+                    'daily_click_count': 0,
+                    'last_click_date': now.date(),
                     'trial_ends_at': now
                 }
             )
@@ -544,6 +546,8 @@ class StripeWebhookView(APIView):
                     'stripe_customer_id': stripe_cust_id,
                     'started_at': now,
                     'expires_at': now + timedelta(days=days),
+                    'daily_click_count': 0,
+                    'last_click_date': now.date(),
                     'trial_ends_at': now
                 }
             )
