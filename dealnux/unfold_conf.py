@@ -75,7 +75,7 @@ UNFOLD_CONFIG = {
                 "items": [
                     {"title": "Payments", "icon": "payments", "link": "/admin/payment/payment/"},
                     {"title": "Seller Payouts", "icon": "account_balance_wallet", "link": "/admin/payment/sellerpayout/"},
-                    {"title": "Site Settings", "icon": "settings", "link": "/admin/account/sitesettings/"},
+                    {"title": "Referral Reward Settings", "icon": "card_giftcard", "link": "/admin/account/sitesettings/"},
                 ],
             },
             {

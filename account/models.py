@@ -102,8 +102,8 @@ class SiteSettings(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Site Settings'
-        verbose_name_plural = 'Site Settings'
+        verbose_name = 'Referral Reward Settings'
+        verbose_name_plural = 'Referral Reward Settings'
 
     def save(self, *args, **kwargs):
         self.pk = 1 
