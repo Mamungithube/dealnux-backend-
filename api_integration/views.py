@@ -1400,7 +1400,23 @@ def compare_prices_api(request, slug):
 
     prod_id = product.id if product else (sp_target.id if sp_target else 0)
     prod_title = clean_target_title
-    prod_img = (product.main_image if product else None) or (request.build_absolute_uri(sp_target.main_image.url) if sp_target and sp_target.main_image else None)
+
+    prod_img = None
+    if product and product.main_image:
+        img_val = str(product.main_image.url if hasattr(product.main_image, 'url') else product.main_image).strip()
+        if img_val:
+            prod_img = img_val if img_val.startswith('http') else request.build_absolute_uri(img_val)
+
+    if not prod_img and sp_target and sp_target.main_image:
+        img_val = str(sp_target.main_image.url if hasattr(sp_target.main_image, 'url') else sp_target.main_image).strip()
+        if img_val:
+            prod_img = img_val if img_val.startswith('http') else request.build_absolute_uri(img_val)
+
+    if not prod_img and comparison_list:
+        for deal in comparison_list:
+            if deal.get('main_image'):
+                prod_img = deal['main_image']
+                break
 
     return success_response({
         'product': {
@@ -2892,6 +2908,12 @@ def barcode_scanner_pipeline(request):
             )
         else:
             return error_response("Could not identify this barcode. Try manual search.", code=404)
+    else:
+        if not product.main_image:
+            _, image_found = get_title_and_image_from_barcode_safely(barcode)
+            if image_found:
+                product.main_image = image_found
+                product.save(update_fields=['main_image'])
 
     return compare_prices_api(request._request, slug=product.slug)
 
@@ -2937,5 +2959,11 @@ def decode_barcode_to_slug(request):
             main_image=image_found or '',
             is_active=True
         )
+    else:
+        if not product.main_image:
+            _, image_found = get_title_and_image_from_barcode_safely(barcode)
+            if image_found:
+                product.main_image = image_found
+                product.save(update_fields=['main_image'])
 
     return compare_prices_api(request._request, slug=product.slug)

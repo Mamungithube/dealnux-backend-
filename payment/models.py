@@ -65,8 +65,8 @@ class SellerPayout(models.Model):
         ('FAILED',     'Failed'),
     ]
     seller               = models.ForeignKey(SellerProfile, on_delete=models.CASCADE, related_name='payouts')
-    payment              = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name='payouts')
-    order                = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, related_name='payouts')
+    payment              = models.ForeignKey(Payment, on_delete=models.SET_NULL, null=True, blank=True, related_name='payouts')
+    order                = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='payouts')
     gross_amount         = models.DecimalField(max_digits=10, decimal_places=2)
     platform_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=10)
     platform_fee_amount  = models.DecimalField(max_digits=10, decimal_places=2)

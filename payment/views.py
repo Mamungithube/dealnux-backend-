@@ -287,8 +287,11 @@ class CreateCheckoutSessionView(APIView):
                     customer_email=request.user.email,
                 )
 
+                stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
+                final_grand_total = amount_to_pay + stripe_tax
+
                 mobile_intent = stripe.PaymentIntent.create(
-                    amount=int(payment.final_amount * 100),
+                    amount=int(final_grand_total * 100),
                     currency='usd',
                     automatic_payment_methods={"enabled": True},
                     metadata={
@@ -297,13 +300,11 @@ class CreateCheckoutSessionView(APIView):
                         'items_json': json.dumps(validated_items)
                     }
                 )
-                stripe_tax = Decimal(str(session.total_details.amount_tax or 0)) / 100
-                final_grand_total = amount_to_pay + stripe_tax
 
                 payment.stripe_checkout_session_id = session.id
                 payment.stripe_payment_intent_id = mobile_intent.id
                 payment.final_amount = final_grand_total
-                payment.save(update_fields=['stripe_checkout_session_id', 'final_amount', 'updated_at'])
+                payment.save(update_fields=['stripe_checkout_session_id', 'stripe_payment_intent_id', 'final_amount', 'updated_at'])
 
                 cost_breakdown = {
                     'subtotal': float(total_item_price),
@@ -422,6 +423,10 @@ class StripeWebhookView(APIView):
             try:
                 from .models import Payment
                 payment = Payment.objects.get(id=payment_id)
+                if payment.status == 'PAID':
+                    print(f"✅ Payment ID {payment_id} already marked as PAID. Skipping duplicate processing in checkout.session.completed.")
+                    return
+
                 payment.status = 'PAID'
                 payment.stripe_payment_intent_id = session.get(
                     'payment_intent', '')
@@ -712,6 +717,17 @@ class RequestPayoutView(APIView):
             seller.available_balance -= amount
             seller.total_withdrawn += amount
             seller.save()
+
+            # Create SellerPayout record so admin can track/approve and seller history is saved
+            payout = SellerPayout.objects.create(
+                seller=seller,
+                stripe_account_id=seller.stripe_account_id or '',
+                gross_amount=amount,
+                platform_fee_percent=Decimal('0'),
+                platform_fee_amount=Decimal('0'),
+                seller_amount=amount,
+                status='PENDING'
+            )
 
             send_dealnux_email(
                 "Payout Request Received - DealNux",
