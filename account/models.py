@@ -94,7 +94,7 @@ class Profile(models.Model):
 
 class SiteSettings(models.Model):
     referral_reward_amount = models.DecimalField(
-        max_digits=100000000,
+        max_digits=10,
         decimal_places=2,
         default=10.00,
         verbose_name="Referral Reward Amount ($)",
