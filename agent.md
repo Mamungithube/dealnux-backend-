@@ -1,10 +1,3 @@
-
-
-
-        payment/migrations/0013_alter_sellerpayout_order_alter_sellerpayout_payment.py
-Please move or remove them before you merge.
-Aborting
-root@srv1351261:~/dealnux-backend-# docker compose exec web python manage.py migrate
 Operations to perform:
   Apply all migrations: account, admin, api_integration, auth, blog, career, contenttypes, custom_ads, homepage, notifications, pages, payment, policy, sessions, store
 Running migrations:
@@ -79,3 +72,16 @@ Traceback (most recent call last):
     return self.cursor.execute(sql)
            ^^^^^^^^^^^^^^^^^^^^^^^^
 django.db.utils.DataError: NUMERIC precision 100000000 must be between 1 and 1000
+
+[+] Building 17.7s (15/15) FINISHED
+ => [internal] load local bake definitions                                                                                                                                                                  0.0s
+ => => reading from stdin 554B                                                                                                                                                                              0.0s
+ => [internal] load build definition from Dockerfile                                                                                                                                                        0.0s
+ => => transferring dockerfile: 482B                                                                                                                                                                        0.0s
+ => [internal] load metadata for docker.io/library/python:3.12-slim                                                                                                                                         0.3s
+ => [internal] load .dockerignore                                                                                                                                                                           0.0s
+ => => transferring context: 2B                                                                                                                                                                             0.0s
+ => ERROR importing cache manifest from dealnux-backend                                                                                                                                                     0.1s
+ => [stage-0 1/7] FROM docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de                                                                           0.0s
+ => => resolve docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de                                                                                   0.0s
+ => [internal] load build context 
