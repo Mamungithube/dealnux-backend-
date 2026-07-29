@@ -376,12 +376,26 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='dashboard/payouts')
     def dashboard_payouts(self, request):
         seller = request.user.seller_profile
+        from payment.models import SellerPayout
+        payouts = SellerPayout.objects.filter(seller=seller).order_by('-created_at')
+        payout_history = []
+        for p in payouts:
+            payout_history.append({
+                "id": p.id,
+                "amount": float(p.seller_amount) if p.seller_amount is not None else 0.0,
+                "gross_amount": float(p.gross_amount) if p.gross_amount is not None else 0.0,
+                "status": p.status,
+                "stripe_transfer_id": p.stripe_transfer_id or "",
+                "created_at": p.created_at,
+                "failure_reason": p.failure_reason or ""
+            })
+
         data = {
             "available_balance": float(seller.available_balance),
             "pending_balance": float(seller.pending_balance),
             "total_withdrawn": float(seller.total_withdrawn),
             "total_earned": float(seller.total_earnings),
-            "payout_history": []  # This will be populated from the payment app later
+            "payout_history": payout_history
         }
         return success_response(data)
 
