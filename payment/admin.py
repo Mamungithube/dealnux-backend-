@@ -261,13 +261,70 @@ class SellerPayoutAdmin(ManagerOnlyMixin, ModelAdmin):
             return False
         return super().has_delete_permission(request, obj)
 
-    # --- গুরুত্বপূর্ণ: আপনার Approve/Reject একশনেও এটি চেক করতে হবে ---
-    @action(description=_('Approve'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
+    # --- Action to approve and send money via Stripe ---
+    @action(description=_('Approve & Transfer'), url_path='approve-request', icon='check_circle', variant=ActionVariant.SUCCESS)
     def action_approve_row(self, request, object_id):
-        # যদি ইউজার এসোসিয়েট হয়, তাকে এরর মেসেজ দিন
         if request.user.groups.filter(name='Admin_Associate').exists():
-            self.message_user(request, "Permission Denied: Admin Associates cannot approve sellers.", level='error')
+            self.message_user(request, "Permission Denied: Admin Associates cannot approve payouts.", level='error')
             return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+        payout = self.get_object(request, object_id)
+        if not payout:
+            self.message_user(request, "Payout request not found.", level='error')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+        if payout.status == 'COMPLETED':
+            self.message_user(request, "This payout is already completed.", level='warning')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+        seller = payout.seller
+        if seller.stripe_account_id and seller.stripe_onboarding_completed:
+            try:
+                import stripe
+                transfer = stripe.Transfer.create(
+                    amount=int(payout.seller_amount * 100),
+                    currency='usd',
+                    destination=seller.stripe_account_id,
+                    metadata={'payout_id': payout.id, 'seller_id': seller.id}
+                )
+                payout.stripe_transfer_id = transfer.id
+                payout.status = 'COMPLETED'
+                payout.save(update_fields=['stripe_transfer_id', 'status', 'updated_at'])
+                self.message_user(request, f"Successfully transferred ${payout.seller_amount} via Stripe to {seller.shop_name}!", level='success')
+            except Exception as e:
+                payout.status = 'FAILED'
+                payout.failure_reason = str(e)
+                payout.save(update_fields=['status', 'failure_reason', 'updated_at'])
+                self.message_user(request, f"Stripe Transfer Error: {str(e)}", level='error')
+        else:
+            payout.status = 'COMPLETED'
+            payout.save(update_fields=['status', 'updated_at'])
+            self.message_user(request, f"Approved payout of ${payout.seller_amount} for {seller.shop_name} (Manual payment / No Stripe Account).", level='info')
+
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+    @action(description=_('Reject & Refund Balance'), url_path='reject-request', icon='cancel', variant=ActionVariant.DANGER)
+    def action_reject_row(self, request, object_id):
+        if request.user.groups.filter(name='Admin_Associate').exists():
+            self.message_user(request, "Permission Denied: Admin Associates cannot reject payouts.", level='error')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+        payout = self.get_object(request, object_id)
+        if not payout or payout.status in ['COMPLETED', 'FAILED']:
+            self.message_user(request, "Payout cannot be rejected or is already processed.", level='warning')
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
+
+        seller = payout.seller
+        seller.available_balance += payout.seller_amount
+        seller.total_withdrawn -= payout.seller_amount
+        seller.save(update_fields=['available_balance', 'total_withdrawn'])
+
+        payout.status = 'FAILED'
+        payout.failure_reason = 'Rejected by Admin'
+        payout.save(update_fields=['status', 'failure_reason', 'updated_at'])
+
+        self.message_user(request, f"Rejected payout request of ${payout.seller_amount}. Balance restored to seller.", level='info')
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '../..'))
 
     @display(description='Seller')
     def display_seller(self, obj):
