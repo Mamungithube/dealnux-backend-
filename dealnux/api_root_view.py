@@ -1,6 +1,13 @@
 import json
+import time
 from datetime import datetime
 from django.http import HttpResponse, JsonResponse
+from django.db import connection
+from django.core.cache import cache
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework import status
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from account.utils.auth import basic_auth_required
 
 
@@ -143,14 +150,116 @@ document.getElementById('json').innerHTML = syntaxHighlight(document.getElementB
     return response
 
 
+@extend_schema(
+    summary="System Health Check",
+    description="Provides lightweight or comprehensive health status for database, cache, celery, and system services.",
+    parameters=[
+        OpenApiParameter(
+            name="full",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            description="If true, performs deep connectivity tests on DB, Cache, and background workers.",
+            required=False,
+            default=False
+        )
+    ],
+    responses={
+        200: OpenApiTypes.OBJECT,
+        503: OpenApiTypes.OBJECT
+    },
+    tags=["Health"]
+)
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def health_check(request):
     """
-    Lightweight, unauthenticated health check endpoint for uptime monitoring
-    (e.g. UptimeRobot, load balancers, k8s liveness/readiness probes).
-    Intentionally has NO basic_auth_required so monitoring tools can hit it freely.
-    Keep this endpoint fast — avoid DB/external calls unless you need deep health checks.
+    Unauthenticated health check endpoint for uptime monitoring and readiness probes.
+    Usage:
+      - /health/ (Fast ping - for load balancers / liveness probes)
+      - /health/?full=true (Deep check - verifies DB, Redis, Celery)
     """
-    return JsonResponse({
-        'status': 'ok',
+    full_check = request.GET.get('full', '').lower() in ['true', '1', 'yes']
+
+    if not full_check:
+        return JsonResponse({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'services': {
+                'api': 'ok'
+            }
+        }, status=status.HTTP_200_OK)
+
+    # Deep Health Check
+    services_status = {}
+    is_healthy = True
+
+    # 1. Database Check
+    start_time = time.time()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1;")
+        db_latency = round((time.time() - start_time) * 1000, 2)
+        services_status['database'] = {
+            'status': 'healthy',
+            'latency_ms': db_latency
+        }
+    except Exception as e:
+        is_healthy = False
+        services_status['database'] = {
+            'status': 'unhealthy',
+            'error': str(e)
+        }
+
+    # 2. Redis Cache Check
+    start_time = time.time()
+    try:
+        cache_key = '_health_check_test_key'
+        cache.set(cache_key, 'ok', timeout=10)
+        cached_val = cache.get(cache_key)
+        redis_latency = round((time.time() - start_time) * 1000, 2)
+        if cached_val == 'ok':
+            services_status['cache'] = {
+                'status': 'healthy',
+                'latency_ms': redis_latency
+            }
+        else:
+            is_healthy = False
+            services_status['cache'] = {
+                'status': 'unhealthy',
+                'error': 'Cache read/write verification failed'
+            }
+    except Exception as e:
+        services_status['cache'] = {
+            'status': 'unhealthy',
+            'error': str(e)
+        }
+
+    # 3. Celery Worker Check
+    try:
+        from dealnux.celery import app as celery_app
+        inspector = celery_app.control.inspect(timeout=0.5)
+        active_workers = inspector.ping()
+        if active_workers:
+            services_status['celery'] = {
+                'status': 'healthy',
+                'workers_online': list(active_workers.keys())
+            }
+        else:
+            services_status['celery'] = {
+                'status': 'warning',
+                'message': 'No active Celery workers responded to ping'
+            }
+    except Exception as e:
+        services_status['celery'] = {
+            'status': 'warning',
+            'error': str(e)
+        }
+
+    response_data = {
+        'status': 'healthy' if is_healthy else 'unhealthy',
         'timestamp': datetime.now().isoformat(),
-    })
+        'services': services_status
+    }
+
+    http_code = status.HTTP_200_OK if is_healthy else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JsonResponse(response_data, status=http_code)
