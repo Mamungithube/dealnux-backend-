@@ -533,9 +533,64 @@ class LoginAPIView(APIView):
 class DeleteAccountView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def delete(self, request, *args, **kwargs):
+    def _perform_delete(self, request):
         user = request.user
+        data = request.data if hasattr(request, 'data') and request.data else {}
+        email = data.get('email')
+        password = data.get('password')
+
+        errors = {}
+        if not email:
+            errors['email'] = ["Email address is required."]
+        if not password:
+            errors['password'] = ["Password is required."]
+
+        if errors:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Email and password are required to confirm account deletion.",
+                    "timestamp": int(time.time()),
+                    "data": errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if str(email).strip().lower() != str(user.email).strip().lower():
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Email address does not match your account.",
+                    "timestamp": int(time.time()),
+                    "data": {"email": ["The provided email does not match your account email."]}
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.has_usable_password() and not user.check_password(password):
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_400_BAD_REQUEST,
+                    "message": "Invalid password.",
+                    "timestamp": int(time.time()),
+                    "data": {"password": ["Incorrect password provided."]}
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        refresh_token = data.get('refresh')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except Exception:
+                pass
+
         user.delete()
+
         return Response(
             {
                 "success": True,
@@ -546,6 +601,14 @@ class DeleteAccountView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+    def delete(self, request, *args, **kwargs):
+        return self._perform_delete(request)
+
+    def post(self, request, *args, **kwargs):
+        return self._perform_delete(request)
+
+
 
 
 """========================= Profile Setup View ========================="""

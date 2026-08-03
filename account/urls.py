@@ -43,7 +43,7 @@ urlpatterns = [
     path('profile/update/',
          ProfileUpdateView.as_view(), name='profile-detail'),
 
-     path('profile/delete/', DeleteAccountView.as_view(), name='delete-account'),
+     path('profile/delete/', DeleteAccountView.as_view(), name='profile-delete'),
 
      path('google/', google_login, name='google_login'),
      path('apple/', apple_login, name='apple_login'),
