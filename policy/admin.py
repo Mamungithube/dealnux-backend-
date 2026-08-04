@@ -3,7 +3,9 @@ from unfold.admin import ModelAdmin
 from .models import (
     Privacy_Policy, Terms_Of_Service, Cookie_Policy, Review,
     EMI_Payment_Policy, Warranty_Policy, Exchange_Policy,
-    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy,About_Us
+    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy, About_Us,
+    Seller_Policy, Buyer_Protection_Policy, Prohibited_Products_Policy,
+    Intellectual_Property_Policy, Community_Guidelines
 )
 
 
@@ -66,6 +68,32 @@ class RefundPolicyAdmin(BasePolicyAdmin):
 @admin.register(Return_Policy)
 class ReturnPolicyAdmin(BasePolicyAdmin):
     pass
+
+
+@admin.register(Seller_Policy)
+class SellerPolicyAdmin(BasePolicyAdmin):
+    pass
+
+
+@admin.register(Buyer_Protection_Policy)
+class BuyerProtectionPolicyAdmin(BasePolicyAdmin):
+    pass
+
+
+@admin.register(Prohibited_Products_Policy)
+class ProhibitedProductsPolicyAdmin(BasePolicyAdmin):
+    pass
+
+
+@admin.register(Intellectual_Property_Policy)
+class IntellectualPropertyPolicyAdmin(BasePolicyAdmin):
+    pass
+
+
+@admin.register(Community_Guidelines)
+class CommunityGuidelinesAdmin(BasePolicyAdmin):
+    pass
+
 
 @admin.register(About_Us)
 class AboutUsAdmin(BasePolicyAdmin):

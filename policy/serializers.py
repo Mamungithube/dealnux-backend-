@@ -19,7 +19,9 @@ class TermsOfServiceSerializer(serializers.ModelSerializer):
 from .models import (
     Privacy_Policy, Cookie_Policy, Terms_Of_Service, Review,
     EMI_Payment_Policy, Warranty_Policy, Exchange_Policy,
-    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy
+    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy,
+    Seller_Policy, Buyer_Protection_Policy, Prohibited_Products_Policy,
+    Intellectual_Property_Policy, Community_Guidelines
 )
 
 class EMIPaymentPolicySerializer(serializers.ModelSerializer):
@@ -55,6 +57,31 @@ class RefundPolicySerializer(serializers.ModelSerializer):
 class ReturnPolicySerializer(serializers.ModelSerializer):
     class Meta:
         model  = Return_Policy
+        fields = ['id', 'content', 'created_at', 'last_updated']
+
+class SellerPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Seller_Policy
+        fields = ['id', 'content', 'created_at', 'last_updated']
+
+class BuyerProtectionPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Buyer_Protection_Policy
+        fields = ['id', 'content', 'created_at', 'last_updated']
+
+class ProhibitedProductsPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Prohibited_Products_Policy
+        fields = ['id', 'content', 'created_at', 'last_updated']
+
+class IntellectualPropertyPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Intellectual_Property_Policy
+        fields = ['id', 'content', 'created_at', 'last_updated']
+
+class CommunityGuidelinesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Community_Guidelines
         fields = ['id', 'content', 'created_at', 'last_updated']
 
 class AboutUsSerializer(serializers.ModelSerializer):

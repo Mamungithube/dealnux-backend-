@@ -12,7 +12,9 @@ from rest_framework.permissions import IsAdminUser
 from policy.models import (
     Privacy_Policy, Cookie_Policy, Terms_Of_Service, Review,
     EMI_Payment_Policy, Warranty_Policy, Exchange_Policy,
-    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy, About_Us
+    Delivery_Policy, PreOrder_Policy, Refund_Policy, Return_Policy, About_Us,
+    Seller_Policy, Buyer_Protection_Policy, Prohibited_Products_Policy,
+    Intellectual_Property_Policy, Community_Guidelines
 )
 from policy.serializers import (
     PrivacyPolicySerializer, CookiePolicySerializer,
@@ -20,7 +22,10 @@ from policy.serializers import (
     EMIPaymentPolicySerializer, WarrantyPolicySerializer,
     ExchangePolicySerializer, DeliveryPolicySerializer,
     PreOrderPolicySerializer, RefundPolicySerializer,
-    ReturnPolicySerializer , AboutUsSerializer
+    ReturnPolicySerializer, AboutUsSerializer,
+    SellerPolicySerializer, BuyerProtectionPolicySerializer,
+    ProhibitedProductsPolicySerializer, IntellectualPropertyPolicySerializer,
+    CommunityGuidelinesSerializer
 )
 from django.core.mail import EmailMessage
 from django.utils import timezone
@@ -392,6 +397,51 @@ class ReturnPolicyView(PolicyGetBaseView):
     model = Return_Policy
     serializer_class = ReturnPolicySerializer
     policy_name = "Return Policy"
+
+
+# ==========================
+# Seller Policy View
+# ==========================
+class SellerPolicyView(PolicyGetBaseView):
+    model = Seller_Policy
+    serializer_class = SellerPolicySerializer
+    policy_name = "Seller Policy"
+
+
+# ==========================
+# Buyer Protection Policy View
+# ==========================
+class BuyerProtectionPolicyView(PolicyGetBaseView):
+    model = Buyer_Protection_Policy
+    serializer_class = BuyerProtectionPolicySerializer
+    policy_name = "Buyer Protection Policy"
+
+
+# ==========================
+# Prohibited Products Policy View
+# ==========================
+class ProhibitedProductsPolicyView(PolicyGetBaseView):
+    model = Prohibited_Products_Policy
+    serializer_class = ProhibitedProductsPolicySerializer
+    policy_name = "Prohibited Products Policy"
+
+
+# ==========================
+# Intellectual Property Policy View
+# ==========================
+class IntellectualPropertyPolicyView(PolicyGetBaseView):
+    model = Intellectual_Property_Policy
+    serializer_class = IntellectualPropertyPolicySerializer
+    policy_name = "Intellectual Property Policy"
+
+
+# ==========================
+# Community Guidelines View
+# ==========================
+class CommunityGuidelinesView(PolicyGetBaseView):
+    model = Community_Guidelines
+    serializer_class = CommunityGuidelinesSerializer
+    policy_name = "Community Guidelines"
 
 
 # ==========================

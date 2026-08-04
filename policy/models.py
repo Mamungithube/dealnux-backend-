@@ -96,6 +96,51 @@ class Return_Policy(models.Model):
         return f"Return Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
 
 
+class Seller_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Seller Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Buyer_Protection_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Buyer Protection Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Prohibited_Products_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Prohibited Products Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Intellectual_Property_Policy(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Intellectual Property Policy (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class Community_Guidelines(models.Model):
+    content      = models.TextField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Community Guidelines (Last Updated: {self.last_updated.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
 class About_Us(models.Model):
     content      = models.TextField()
     created_at   = models.DateTimeField(auto_now_add=True)

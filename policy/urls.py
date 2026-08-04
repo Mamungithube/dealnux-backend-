@@ -14,7 +14,12 @@ from .views import (
     RefundPolicyView,
     ReturnPolicyView,
     CookieConsentView,
-    AboutUsView
+    AboutUsView,
+    SellerPolicyView,
+    BuyerProtectionPolicyView,
+    ProhibitedProductsPolicyView,
+    IntellectualPropertyPolicyView,
+    CommunityGuidelinesView
 )
 
 urlpatterns = [
@@ -34,6 +39,11 @@ urlpatterns = [
     path('pre-order-policy/',   PreOrderPolicyView.as_view(),   name='pre-order-policy'),
     path('refund-policy/',      RefundPolicyView.as_view(),     name='refund-policy'),
     path('return-policy/',      ReturnPolicyView.as_view(),     name='return-policy'),
+    path('seller-policy/',                 SellerPolicyView.as_view(),               name='seller-policy'),
+    path('buyer-protection-policy/',      BuyerProtectionPolicyView.as_view(),      name='buyer-protection-policy'),
+    path('prohibited-products-policy/',   ProhibitedProductsPolicyView.as_view(),   name='prohibited-products-policy'),
+    path('intellectual-property-policy/', IntellectualPropertyPolicyView.as_view(), name='intellectual-property-policy'),
+    path('community-guidelines/',         CommunityGuidelinesView.as_view(),        name='community-guidelines'),
     path('about-us/',           AboutUsView.as_view(),          name='about-us'),
 
     path('cookie-consent/', CookieConsentView.as_view(), name='cookie-consent'),
