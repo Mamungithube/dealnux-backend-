@@ -100,7 +100,7 @@ UNFOLD_CONFIG = {
                     {"title": "Warranty Policy", "icon": "verified_user", "link": "/admin/policy/warranty_policy/"},
                     {"title": "Exchange Policy", "icon": "swap_horiz", "link": "/admin/policy/exchange_policy/"},
                     {"title": "Delivery Policy", "icon": "local_shipping", "link": "/admin/policy/delivery_policy/"},
-                    {"title": "Pre-Order Policy", "icon": "pending_actions", "link": "/admin/policy/pre_order_policy/"},
+                    {"title": "Pre-Order Policy", "icon": "pending_actions", "link": "/admin/policy/preorder_policy/"},
                     {"title": "Return Policy", "icon": "assignment_return", "link": "/admin/policy/return_policy/"},
                     {"title": "Seller Policy", "icon": "store", "link": "/admin/policy/seller_policy/"},
                     {"title": "Buyer Protection Policy", "icon": "gavel", "link": "/admin/policy/buyer_protection_policy/"},
