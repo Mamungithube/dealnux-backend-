@@ -9,85 +9,15 @@ from .models import (
 )
 
 
-from django.forms import Textarea
-from django.utils.safestring import mark_safe
-from django.db import models
-
-
-class RichTextEditorWidget(Textarea):
-    """
-    Visual WYSIWYG Rich Text Editor Widget (TinyMCE CDN)
-    Allows non-technical admins to format text visually (Bold, Italic, Headings, Lists, Links)
-    without writing any HTML tags manually.
-    """
-    def render(self, name, value, attrs=None, renderer=None):
-        html = super().render(name, value, attrs, renderer)
-        element_id = attrs.get('id', f'id_{name}')
-        init_js = f"""
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-        <script>
-            (function() {{
-                function initEditor() {{
-                    if (window.tinymce) {{
-                        tinymce.remove('#{element_id}');
-                        tinymce.init({{
-                            selector: '#{element_id}',
-                            height: 520,
-                            branding: false,
-                            promotion: false,
-                            menubar: 'edit insert format table',
-                            plugins: 'advlist autolink lists link image charmap preview anchor searchreplace visualblocks code fullscreen insertdatetime table help wordcount',
-                            toolbar: 'undo redo | blocks | bold italic underline | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link table | removeformat code fullscreen',
-                            content_style: 'body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; padding: 12px; }}'
-                        }});
-                    }}
-                }}
-                if (document.readyState === 'complete' || document.readyState === 'interactive') {{
-                    setTimeout(initEditor, 300);
-                }} else {{
-                    document.addEventListener('DOMContentLoaded', initEditor);
-                }}
-            }})();
-        </script>
-        """
-        return mark_safe(html + init_js)
-
-
 # ==========================
 # Reusable Base Policy Admin
 # ==========================
 class BasePolicyAdmin(ModelAdmin):
-    list_display       = ('get_policy_name', 'get_content_preview', 'last_updated', 'created_at')
+    list_display       = ('last_updated', 'created_at')
     ordering           = ('-last_updated',)
+    search_fields      = ('last_updated', 'created_at')
     readonly_fields    = ('last_updated', 'created_at')
-    
-    fieldsets = (
-        ("📄 Policy Document Editor", {
-            "fields": ("content",),
-            "description": "Use the visual buttons below (Bold, Heading, Lists, Links, etc.) to format your policy document like MS Word."
-        }),
-        ("🕒 History & Timestamps", {
-            "fields": ("created_at", "last_updated"),
-            "classes": ("collapse",),
-        }),
-    )
-
-    formfield_overrides = {
-        models.TextField: {
-            'widget': RichTextEditorWidget()
-        }
-    }
-
-    @admin.display(description="Policy Name")
-    def get_policy_name(self, obj):
-        return obj._meta.verbose_name.title()
-
-    @admin.display(description="Content Preview")
-    def get_content_preview(self, obj):
-        if not obj.content:
-            return "Empty"
-        text = obj.content.replace('\n', ' ')
-        return text[:80] + ('...' if len(text) > 80 else '')
+    list_filter_submit = True
 
 
 @admin.register(Privacy_Policy)
