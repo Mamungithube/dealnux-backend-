@@ -179,4 +179,15 @@ def send_policy_update_notification(policy_name, cta_link=None):
         except Exception:
             pass
 
+    # Trigger email notifications for active users asynchronously
+    try:
+        from .tasks import send_policy_update_emails_task
+        send_policy_update_emails_task.delay(policy_name=policy_name, cta_link=link)
+    except Exception:
+        try:
+            from .tasks import send_policy_update_emails_task
+            send_policy_update_emails_task(policy_name=policy_name, cta_link=link)
+        except Exception:
+            pass
+
     return len(notifications)

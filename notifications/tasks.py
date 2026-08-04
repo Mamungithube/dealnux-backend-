@@ -126,3 +126,67 @@ def send_daily_ai_recommendations():
             logger.error(f"Failed to send AI recommendation for user {user.id}: {e}")
 
     return f"AI recommendation task completed. Sent to {sent_count} users."
+
+
+@shared_task
+def send_policy_update_emails_task(policy_name, cta_link=None):
+    """Send email notifications to all active users when a policy is updated."""
+    from account.models import User
+    from django.conf import settings
+    from django.core.mail import EmailMultiAlternatives
+
+    active_users = User.objects.filter(is_active=True).exclude(email='').values_list('email', flat=True)
+    emails_list = list(set(active_users))
+    if not emails_list:
+        return "No active users with email addresses found."
+
+    site_url = getattr(settings, 'SITE_URL', 'https://www.dealnux.shop') or 'https://www.dealnux.shop'
+    relative_link = cta_link or f"/policy/{policy_name.lower().replace(' ', '-')}/"
+    full_url = f"{site_url.rstrip('/')}{relative_link}" if not relative_link.startswith('http') else relative_link
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or getattr(settings, 'EMAIL_HOST_USER', 'noreply@dealnux.shop')
+
+    subject = f"[DealNux Notice] Updated Policy: {policy_name}"
+    
+    text_content = (
+        f"Important Policy Update Notice\n\n"
+        f"Our {policy_name} has been updated.\n"
+        f"Please take a moment to review the updated policy terms to stay informed about your rights and how we handle data and services on DealNux.\n\n"
+        f"Review Policy: {full_url}\n\n"
+        f"If you have questions, please contact info@dealnux.shop.\n"
+        f"DealNux Platform"
+    )
+
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #ffffff;">
+        <h2 style="color: #1a202c; margin-top: 0;">Important Policy Update Notice</h2>
+        <p style="color: #4a5568; font-size: 15px; line-height: 1.6;">Dear Valued DealNux User,</p>
+        <p style="color: #4a5568; font-size: 15px; line-height: 1.6;">We are writing to inform you that we have updated our <strong>{policy_name}</strong>.</p>
+        <p style="color: #4a5568; font-size: 15px; line-height: 1.6;">Please take a moment to review the updated policy terms to stay informed about your rights and how we handle data and services on the DealNux Platform.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{full_url}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Review {policy_name}</a>
+        </div>
+        <p style="color: #718096; font-size: 13px;">If you have any questions or concerns regarding these changes, please contact us at <a href="mailto:info@dealnux.shop" style="color: #2563eb;">info@dealnux.shop</a>.</p>
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
+        <p style="color: #a0aec0; font-size: 12px; text-align: center; margin: 0;">&copy; DealNux Platform - Brightway Consult & HR Recruiting Solutions LLC</p>
+    </div>
+    """
+
+    sent_count = 0
+    batch_size = 50
+    for i in range(0, len(emails_list), batch_size):
+        batch = emails_list[i:i + batch_size]
+        for recipient in batch:
+            try:
+                msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_content,
+                    from_email=from_email,
+                    to=[recipient]
+                )
+                msg.attach_alternative(html_content, "text/html")
+                msg.send(fail_silently=True)
+                sent_count += 1
+            except Exception as e:
+                logger.error(f"Failed to send policy update email to {recipient}: {e}")
+
+    return f"Sent policy update email for {policy_name} to {sent_count} users."
