@@ -9,15 +9,50 @@ from .models import (
 )
 
 
+from django.forms import Textarea
+from django.db import models
+
+
 # ==========================
 # Reusable Base Policy Admin
 # ==========================
 class BasePolicyAdmin(ModelAdmin):
-    list_display       = ('last_updated', 'created_at')
+    list_display       = ('get_policy_name', 'get_content_preview', 'last_updated', 'created_at')
     ordering           = ('-last_updated',)
-    search_fields      = ('last_updated', 'created_at')
     readonly_fields    = ('last_updated', 'created_at')
-    list_filter_submit = True
+    
+    fieldsets = (
+        ("📄 Policy Document Content", {
+            "fields": ("content",),
+            "description": "Write or edit the official policy text below. HTML tags (such as <h2>, <p>, <ul>, <li>, <strong>) are supported for formatting."
+        }),
+        ("🕒 History & Timestamps", {
+            "fields": ("created_at", "last_updated"),
+            "classes": ("collapse",),
+        }),
+    )
+
+    formfield_overrides = {
+        models.TextField: {
+            'widget': Textarea(attrs={
+                'rows': 22,
+                'cols': 90,
+                'style': 'font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.65; border-radius: 10px; padding: 16px; width: 100%; min-height: 400px;',
+                'placeholder': 'Write or paste your policy content here...\n\nExample HTML structure:\n<h2>1. Overview</h2>\n<p>Welcome to DealNux...</p>\n\n<h2>2. Terms</h2>\n<ul>\n  <li>Point A</li>\n  <li>Point B</li>\n</ul>'
+            })
+        }
+    }
+
+    @admin.display(description="Policy Name")
+    def get_policy_name(self, obj):
+        return obj._meta.verbose_name.title()
+
+    @admin.display(description="Content Preview")
+    def get_content_preview(self, obj):
+        if not obj.content:
+            return "Empty"
+        text = obj.content.replace('\n', ' ')
+        return text[:80] + ('...' if len(text) > 80 else '')
 
 
 @admin.register(Privacy_Policy)

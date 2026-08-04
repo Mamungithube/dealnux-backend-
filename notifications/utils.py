@@ -138,3 +138,45 @@ def send_ai_recommendation_notification(user, title, body, product_url=None):
         cta_text='View Product',
         cta_link=product_url or '',
     )
+
+
+def send_policy_update_notification(policy_name, cta_link=None):
+    """
+    Sends a system notification to all active users when a policy is updated or created.
+    """
+    from account.models import User
+    from .models import Notification
+    from .firebase_utils import send_push_notification
+
+    active_users = User.objects.filter(is_active=True)
+    if not active_users.exists():
+        return 0
+
+    title = f"Policy Updated: {policy_name}"
+    body = f"Our {policy_name} has been updated. Please take a moment to review the latest changes."
+    link = cta_link or f"/policy/{policy_name.lower().replace(' ', '-')}/"
+
+    notifications = [
+        Notification(
+            user=user,
+            title=title,
+            body=body,
+            notification_type='POLICY_UPDATE',
+            channel='SYSTEM',
+            recipient_type='ALL_USERS',
+            cta_text='Review Policy',
+            cta_link=link,
+            is_sent=True
+        )
+        for user in active_users
+    ]
+    Notification.objects.bulk_create(notifications)
+
+    # Trigger push notifications for users with FCM tokens
+    for user in active_users.filter(fcm_tokens__isnull=False).distinct():
+        try:
+            send_push_notification(user=user, title=title, body=body)
+        except Exception:
+            pass
+
+    return len(notifications)
