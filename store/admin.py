@@ -410,7 +410,7 @@ class SellerProductAdmin(ModelAdmin):
             del actions['delete_selected']
         return actions
     
-        actions = ['delete_product_with_notification']
+    actions = ['delete_product_with_notification']
     actions_row = ['delete_product_row']
  
     # Row-level delete button
@@ -442,6 +442,8 @@ class SellerProductAdmin(ModelAdmin):
             self.message_user(request, f"✓ '{product_title}' deleted. Seller notified.")
         except SellerProduct.DoesNotExist:
             self.message_user(request, "Product not found.", level='error')
+        except Exception as e:
+            self.message_user(request, f"Error deleting product: {str(e)}", level='error')
  
         return HttpResponseRedirect('../..')
  
