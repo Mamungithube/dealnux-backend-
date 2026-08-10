@@ -467,9 +467,16 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
         }),
         ('Stripe & Apple Integrations', {
             'fields': ('stripe_price_id', 'apple_product_id'),
-            'description': 'Stripe Price ID for Web/Android, and Apple Product ID (e.g. com.dealnux.app.pro.monthly) for iOS In-App Purchase.'
+            'description': 'Stripe Price ID for Web/Android, and Apple Product ID for iOS In-App Purchase (Restricted to Superusers).'
         }),
     )
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        # Lock Product & Price IDs for non-superusers to prevent accidental modification
+        if not request.user.is_superuser:
+            readonly.extend(['apple_product_id', 'stripe_price_id', 'plan_type'])
+        return readonly
 
     @display(description='Price', ordering='price')
     def display_price(self, obj):

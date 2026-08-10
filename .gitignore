@@ -132,3 +132,11 @@ walmart_public_key.pem
 
 secrets/
 *.pem
+
+# ===========================
+# Planning & Guideline Docs (Not needed on VPS)
+# ===========================
+iOS-IAP-Plan.md
+iOS-IAP-Plan 2.md
+frontend_ios_iap_guideline.md
+
