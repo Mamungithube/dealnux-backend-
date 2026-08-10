@@ -9,6 +9,7 @@ from store.models import SellerRequest
 from .serializers import (UserSerializer, RegisterSerializer, UserLoginSerializer, ChangePasswordSerializer, ResetPasswordSerializer,
                           LoginSerializer, ProfileSerializer, ProfileUpdateSerializer, ProfileSetupSerializer)
 from .models import User, Profile
+from .services import verify_user_otp, complete_profile_setup, send_otp_email
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
@@ -135,60 +136,29 @@ class VerifyOTPApiView(APIView):
                 "data": {}
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        success, msg, user = verify_user_otp(email, otp)
+        if not success:
+            code = status.HTTP_404_NOT_FOUND if "No account found" in msg else status.HTTP_400_BAD_REQUEST
             return Response({
                 "success": False,
-                "code": status.HTTP_404_NOT_FOUND,
-                "message": "No account found with this email address.",
+                "code": code,
+                "message": msg,
                 "timestamp": int(time.time()),
                 "data": {}
-            }, status=status.HTTP_404_NOT_FOUND)
+            }, status=code)
 
-        if not user.otp:
-            return Response({
-                "success": False,
-                "code": status.HTTP_400_BAD_REQUEST,
-                "message": "No OTP found. Please request a new OTP.",
-                "timestamp": int(time.time()),
-                "data": {}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if user.otp.strip().upper() != otp.upper():
-            return Response({
-                "success": False,
-                "code": status.HTTP_400_BAD_REQUEST,
-                "message": "The OTP you entered is incorrect.",
-                "timestamp": int(time.time()),
-                "data": {}
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user.is_active = True
-            user.otp = None
-            user.save()
-
-            return Response({
-                "success": True,
-                "code": status.HTTP_200_OK,
-                "message": "Account verification successfully.",
-                "timestamp": int(time.time()),
-                "data": {
-                    "user_id": user.id,
-                    "email": user.email,
-                    "is_active": user.is_active,
-                    "profile_setup_completed": user.profile_setup_completed
-                }
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({
-                "success": False,
-                "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": "Failed to activate account.",
-                "timestamp": int(time.time()),
-                "data": {"detail": [str(e)]}
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "success": True,
+            "code": status.HTTP_200_OK,
+            "message": "Account verification successful.",
+            "timestamp": int(time.time()),
+            "data": {
+                "user_id": user.id,
+                "email": user.email,
+                "is_active": user.is_active,
+                "profile_setup_completed": user.profile_setup_completed
+            }
+        }, status=status.HTTP_200_OK)
 
 
 """ ----------------Resend OTP API view------------------- """
@@ -1066,7 +1036,7 @@ class ReferralStatsView(APIView):
         from account.models import SiteSettings
         reward_amount = float(SiteSettings.get().referral_reward_amount)
 
-        referred_users = user.referrals.all().order_by('-date_joined')
+        referred_users = user.referrals.select_related('subscription').all().order_by('-date_joined')
         referrals_list = []
         successful_referrals_count = 0
 

@@ -15,6 +15,8 @@ from .views import (
     UserSubscriptionStatusView, 
     ProductClickTrackerView,
     ManageSubscriptionView,
+    AppleVerifyReceiptView,
+    AppleServerNotificationsView,
 )
 
 app_name = 'payment'
@@ -37,6 +39,10 @@ urlpatterns = [
     path('subscribe/', CreateSubscriptionCheckoutView.as_view(), name='subscribe'), # প্ল্যান কেনা
     path('subscription/status/', UserSubscriptionStatusView.as_view(), name='sub-status'), 
     path('subscription/manage/', ManageSubscriptionView.as_view(), name='manage-subscription'),
+
+    # --- Apple Direct In-App Purchase endpoints ---
+    path('apple/verify/', AppleVerifyReceiptView.as_view(), name='apple-verify'),
+    path('apple/notifications/', AppleServerNotificationsView.as_view(), name='apple-notifications'),
 
     path('click-tracker/<int:listing_id>/', ProductClickTrackerView.as_view(), name='click-tracker'),
 ]

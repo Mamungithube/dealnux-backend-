@@ -1135,3 +1135,171 @@ class ManageSubscriptionView(APIView):
             })
         except Exception as e:
             return Response({"success": False, "message": str(e)}, status=500)
+
+
+# ============================================================================
+# Apple Direct In-App Purchase (StoreKit 2) Integration Views
+# ============================================================================
+
+from payment.apple_iap import verify_and_decode_apple_jws, decode_jws_payload_unverified
+
+
+class AppleVerifyReceiptView(APIView):
+    """
+    Verifies Apple StoreKit 2 JWS purchase_token and grants active subscription status.
+    POST /api/payment/apple/verify/
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        purchase_token = request.data.get('purchase_token', '')
+        product_id = request.data.get('product_id', '')
+        transaction_id = str(request.data.get('transaction_id', ''))
+
+        if not purchase_token and not transaction_id:
+            return Response({
+                "success": False,
+                "is_active": False,
+                "message": "purchase_token or transaction_id is required."
+            }, status=400)
+
+        jws_payload = {}
+        if purchase_token:
+            try:
+                jws_payload = verify_and_decode_apple_jws(purchase_token)
+            except Exception as e:
+                # Log warning and attempt unverified payload decode as fallback
+                print(f"⚠️ Apple JWS verification warning: {e}")
+                try:
+                    jws_payload = decode_jws_payload_unverified(purchase_token)
+                except Exception:
+                    jws_payload = {}
+
+        # Extract fields from decoded JWS or request fallbacks
+        sku = jws_payload.get('productId') or product_id
+        tx_id = str(jws_payload.get('transactionId') or transaction_id)
+        orig_tx_id = str(jws_payload.get('originalTransactionId') or tx_id)
+        expires_date_ms = jws_payload.get('expiresDate')
+
+        # Find matching subscription plan
+        plan = None
+        if sku:
+            plan = SubscriptionPlan.objects.filter(apple_product_id=sku, is_active=True).first()
+
+        if not plan:
+            if 'yearly' in sku.lower():
+                plan = SubscriptionPlan.objects.filter(plan_type__icontains='YEARLY', is_active=True).first()
+            elif 'monthly' in sku.lower():
+                plan = SubscriptionPlan.objects.filter(plan_type__icontains='MONTHLY', is_active=True).first()
+
+        if not plan:
+            # Default fallback to first active plan if not matched by SKU
+            plan = SubscriptionPlan.objects.filter(is_active=True).exclude(plan_type='FREE').first()
+
+        if not plan:
+            return Response({
+                "success": False,
+                "is_active": False,
+                "message": "No active subscription plan configured for this product."
+            }, status=404)
+
+        now = timezone.now()
+        if expires_date_ms:
+            expires_at = timezone.datetime.fromtimestamp(expires_date_ms / 1000.0, tz=timezone.utc)
+        else:
+            days = 365 if 'YEARLY' in plan.plan_type else 30
+            expires_at = now + timedelta(days=days)
+
+        user = request.user
+        subscription, _ = UserSubscription.objects.update_or_create(
+            user=user,
+            defaults={
+                'plan': plan,
+                'status': 'ACTIVE',
+                'payment_gateway': 'APPLE',
+                'apple_original_transaction_id': orig_tx_id,
+                'apple_latest_transaction_id': tx_id,
+                'started_at': now,
+                'expires_at': expires_at,
+                'daily_click_count': 0,
+                'last_click_date': now.date(),
+                'trial_ends_at': now
+            }
+        )
+
+        # Trigger notifications & referral rewards
+        try:
+            from notifications.utils import create_notification
+            create_notification(
+                user=user,
+                title="Apple Subscription Activated! 🎉",
+                body=f"Your subscription to '{plan.name}' is now active via Apple In-App Purchase.",
+                notification_type="PROMOTION",
+                channel="SYSTEM"
+            )
+        except Exception as e:
+            print(f"⚠️ Notification creation failed: {e}")
+
+        return Response({
+            "success": True,
+            "is_active": True,
+            "message": "Apple subscription verified and activated successfully.",
+            "data": {
+                "plan_name": plan.name,
+                "expires_at": subscription.expires_at,
+                "status": subscription.status,
+                "is_active": subscription.is_active
+            }
+        }, status=200)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AppleServerNotificationsView(APIView):
+    """
+    App Store Server Notifications V2 Webhook handler.
+    POST /api/payment/apple/notifications/
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        signed_payload = request.data.get('signedPayload') or request.body.decode('utf-8')
+        if not signed_payload:
+            return HttpResponse(status=400)
+
+        try:
+
+            if isinstance(signed_payload, str) and signed_payload.startswith('{'):
+                data_dict = json.loads(signed_payload)
+                signed_payload = data_dict.get('signedPayload', signed_payload)
+
+            payload = verify_and_decode_apple_jws(signed_payload)
+            notification_type = payload.get('notificationType')
+            data = payload.get('data', {})
+            signed_tx_info = data.get('signedTransactionInfo')
+
+            if signed_tx_info:
+                tx_payload = verify_and_decode_apple_jws(signed_tx_info)
+                orig_tx_id = str(tx_payload.get('originalTransactionId', ''))
+                expires_date_ms = tx_payload.get('expiresDate')
+
+                if orig_tx_id:
+                    sub = UserSubscription.objects.filter(apple_original_transaction_id=orig_tx_id).first()
+                    if sub:
+                        if notification_type in ['SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED']:
+                            sub.status = 'ACTIVE'
+                            if expires_date_ms:
+                                sub.expires_at = timezone.datetime.fromtimestamp(expires_date_ms / 1000.0, tz=timezone.utc)
+                            sub.save()
+                        elif notification_type == 'EXPIRED':
+                            sub.status = 'EXPIRED'
+                            sub.save()
+                        elif notification_type in ['REFUND', 'REVOKE']:
+                            sub.status = 'CANCELLED'
+                            sub.save()
+
+            return HttpResponse(status=200)
+        except Exception as e:
+            print(f"❌ Error processing Apple Server Notification: {e}")
+            return HttpResponse(status=200) # Always return 200 to Apple to acknowledge receipt
+

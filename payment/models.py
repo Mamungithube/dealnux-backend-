@@ -107,6 +107,7 @@ class SubscriptionPlan(models.Model):
     has_barcode_scanning = models.BooleanField(default=True)
     
     stripe_price_id = models.CharField(max_length=200, blank=True) 
+    apple_product_id = models.CharField(max_length=200, blank=True, help_text="Apple App Store Product ID (e.g. com.dealnux.app.premium.monthly)")
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -130,9 +131,17 @@ class UserSubscription(models.Model):
     started_at       = models.DateTimeField(null=True, blank=True)
     expires_at       = models.DateTimeField(null=True, blank=True)
 
+    # Payment gateway tracking
+    payment_gateway = models.CharField(max_length=20, default='STRIPE', choices=[('STRIPE', 'Stripe'), ('APPLE', 'Apple'), ('FREE', 'Free Trial')])
+
     # Stripe subscription details
     stripe_subscription_id = models.CharField(max_length=200, blank=True)
     stripe_customer_id     = models.CharField(max_length=200, blank=True)
+
+    # Apple IAP subscription details
+    apple_original_transaction_id = models.CharField(max_length=200, blank=True, db_index=True)
+    apple_latest_transaction_id   = models.CharField(max_length=200, blank=True)
+
     
     @property
     def is_active(self):

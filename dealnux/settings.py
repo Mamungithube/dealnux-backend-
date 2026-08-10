@@ -158,14 +158,14 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     # rate limiting to protect endpoints from abuse
-    # 'DEFAULT_THROTTLE_CLASSES': [
-    #     'rest_framework.throttling.UserRateThrottle',
-    #     'rest_framework.throttling.AnonRateThrottle',
-    # ],
-    # 'DEFAULT_THROTTLE_RATES': {
-    #     'user': '1000/day',
-    #     'anon': '100/day',
-    # },
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': '1000/day',
+        'anon': '100/day',
+    },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': None,
@@ -176,9 +176,9 @@ REST_FRAMEWORK = {
 # ==================== JWT & Session Settings ====================
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=90),    # Extended from 10 days to 90 days for maximum session persistence
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
-    'ROTATE_REFRESH_TOKENS': False,
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),   # 30 minutes lifetime for enhanced security
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
+    'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
     'ALGORITHM': 'HS256',
@@ -347,8 +347,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
     }
 }
 
