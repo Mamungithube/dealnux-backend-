@@ -13,10 +13,12 @@ This document provides the exact contract and steps for integrating Apple Direct
 
 ## 1. Product Identifiers (App Store Connect & Backend)
 
-| Subscription Type | Apple Product ID (SKU) | DealNux Plan Type |
-|---|---|---|
-| Monthly Subscription | `com.dealnux.app.premium.monthly` | `PRO_MONTHLY` / `ULTIMATE_MONTHLY` |
-| Yearly Subscription | `com.dealnux.app.premium.yearly` | `PRO_MAX_YEARLY` / `ULTIMANIA_YEARLY` |
+| Subscription Plan | Type | Price | Apple Product ID (SKU) | Backend plan_type |
+|---|---|---|---|---|
+| **Dealnux PRO** | Monthly | $5.99 | `com.dealnux.app.pro.monthly` | `PRO_MONTHLY` |
+| **Dealnux ULTIMATE** | Monthly | $24.99 | `com.dealnux.app.ultimate.monthly` | `ULTIMATE_MONTHLY` |
+| **Dealnux PRO MAX** | Yearly | $69.99 | `com.dealnux.app.promax.yearly` | `PRO_MAX_YEARLY` |
+| **Dealnux ULTIMANIA** | Yearly | $179.99 | `com.dealnux.app.ultimania.yearly` | `ULTIMANIA_YEARLY` |
 
 ---
 

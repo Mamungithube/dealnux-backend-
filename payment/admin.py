@@ -451,7 +451,7 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
         'is_active'
     ]
     list_filter = ['plan_type', 'is_active']
-    search_fields = ['name', 'stripe_price_id']
+    search_fields = ['name', 'stripe_price_id', 'apple_product_id']
     readonly_fields = []
 
     fieldsets = (
@@ -465,9 +465,9 @@ class SubscriptionPlanAdmin(ManagerOnlyMixin, ModelAdmin):
         ('Trial & Limits', {
             'fields': ('trial_days', 'clicks_per_day', 'price_alerts_limit')
         }),
-        ('Stripe Integration', {
-            'fields': ('stripe_price_id',),
-            'description': 'Optional: Leave blank to automatically use the dynamic price set above.'
+        ('Stripe & Apple Integrations', {
+            'fields': ('stripe_price_id', 'apple_product_id'),
+            'description': 'Stripe Price ID for Web/Android, and Apple Product ID (e.g. com.dealnux.app.pro.monthly) for iOS In-App Purchase.'
         }),
     )
 
@@ -508,13 +508,14 @@ class UserSubscriptionAdmin(AdminReadOnlyFinancialMixin, ModelAdmin):
     list_display = [
         'display_user', 
         'display_plan', 
+        'payment_gateway',
         'display_status', 
         'display_time_left', 
         'expires_at'
     ]
-    list_filter = ['status', 'plan']
-    search_fields = ['user__email', 'stripe_subscription_id']
-    readonly_fields = ['trial_started_at', 'expires_at'] 
+    list_filter = ['status', 'payment_gateway', 'plan']
+    search_fields = ['user__email', 'stripe_subscription_id', 'apple_original_transaction_id', 'apple_latest_transaction_id']
+    readonly_fields = ['trial_started_at', 'expires_at', 'apple_original_transaction_id', 'apple_latest_transaction_id'] 
 
     @display(description='User', ordering='user__email')
     def display_user(self, obj):
