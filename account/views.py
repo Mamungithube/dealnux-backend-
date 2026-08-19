@@ -500,6 +500,42 @@ class LoginAPIView(APIView):
 """========================= deleted account/views.py code========================="""
 
 
+class SendDeleteAccountOTPView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        try:
+            send_otp_email(
+                user,
+                user.email,
+                subject="Account Deletion Verification Code - DealNux"
+            )
+            return Response(
+                {
+                    "success": True,
+                    "code": status.HTTP_200_OK,
+                    "message": "Verification code has been sent to your email address.",
+                    "timestamp": int(time.time()),
+                    "data": {
+                        "email": user.email
+                    }
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "success": False,
+                    "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    "message": "Failed to send verification code. Please try again later.",
+                    "timestamp": int(time.time()),
+                    "data": {"error": str(e)}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class DeleteAccountView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -508,19 +544,21 @@ class DeleteAccountView(APIView):
         data = request.data if hasattr(request, 'data') and request.data else {}
         email = data.get('email')
         password = data.get('password')
+        otp = data.get('otp')
 
         errors = {}
         if not email:
             errors['email'] = ["Email address is required."]
-        if not password:
-            errors['password'] = ["Password is required."]
+
+        if not password and not otp:
+            errors['password'] = ["Password or verification code (OTP) is required to confirm account deletion."]
 
         if errors:
             return Response(
                 {
                     "success": False,
                     "code": status.HTTP_400_BAD_REQUEST,
-                    "message": "Email and password are required to confirm account deletion.",
+                    "message": "Email and password or verification code (OTP) are required to confirm account deletion.",
                     "timestamp": int(time.time()),
                     "data": errors
                 },
@@ -539,17 +577,43 @@ class DeleteAccountView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if user.has_usable_password() and not user.check_password(password):
-            return Response(
-                {
-                    "success": False,
-                    "code": status.HTTP_400_BAD_REQUEST,
-                    "message": "Invalid password.",
-                    "timestamp": int(time.time()),
-                    "data": {"password": ["Incorrect password provided."]}
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # 1. Verification via OTP (ideal for Google/Social sign-in and passwordless users)
+        if otp:
+            if not user.otp or str(user.otp).strip() != str(otp).strip():
+                return Response(
+                    {
+                        "success": False,
+                        "code": status.HTTP_400_BAD_REQUEST,
+                        "message": "Invalid or expired verification code.",
+                        "timestamp": int(time.time()),
+                        "data": {"otp": ["Incorrect verification code."]}
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        # 2. Verification via Password
+        else:
+            if not user.has_usable_password():
+                return Response(
+                    {
+                        "success": False,
+                        "code": status.HTTP_400_BAD_REQUEST,
+                        "message": "This account was created via social sign-in. Please request a verification code (OTP) to delete your account.",
+                        "timestamp": int(time.time()),
+                        "data": {"otp": ["Please click 'Send Verification Code' to verify with OTP."]}
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if not user.check_password(password):
+                return Response(
+                    {
+                        "success": False,
+                        "code": status.HTTP_400_BAD_REQUEST,
+                        "message": "Invalid password.",
+                        "timestamp": int(time.time()),
+                        "data": {"password": ["Incorrect password provided."]}
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         refresh_token = data.get('refresh')
         if refresh_token:

@@ -54,13 +54,59 @@ class DeleteAccountViewTest(TestCase):
         self.assertTrue(response.data.get('success'))
         self.assertFalse(User.objects.filter(id=self.user.id).exists())
 
-    def test_delete_account_success_via_post_method(self):
+    def test_send_delete_account_otp(self):
         self.client.force_authenticate(user=self.user)
-        payload = {'email': self.user_email, 'password': self.user_password}
+        url = reverse('delete-account-send-otp')
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data.get('success'))
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.otp)
+        self.assertEqual(len(self.user.otp), 4)
+
+    def test_delete_account_with_otp_success(self):
+        # Create a social user with unusable password
+        social_user = User.objects.create_user(
+            email="googleuser@example.com",
+            name="Google User",
+            is_active=True
+        )
+        social_user.set_unusable_password()
+        social_user.otp = "7890"
+        social_user.save()
+
+        self.client.force_authenticate(user=social_user)
+        payload = {'email': 'googleuser@example.com', 'otp': '7890'}
         response = self.client.post(self.url, payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data.get('success'))
-        self.assertFalse(User.objects.filter(id=self.user.id).exists())
+        self.assertFalse(User.objects.filter(id=social_user.id).exists())
+
+    def test_delete_account_with_invalid_otp(self):
+        self.user.otp = "1234"
+        self.user.save()
+        self.client.force_authenticate(user=self.user)
+        payload = {'email': self.user_email, 'otp': '9999'}
+        response = self.client.post(self.url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data.get('success'))
+        self.assertTrue(User.objects.filter(id=self.user.id).exists())
+
+    def test_social_user_attempt_password_without_usable_password(self):
+        social_user = User.objects.create_user(
+            email="googleuser2@example.com",
+            name="Google User 2",
+            is_active=True
+        )
+        social_user.set_unusable_password()
+        social_user.save()
+
+        self.client.force_authenticate(user=social_user)
+        payload = {'email': 'googleuser2@example.com', 'password': 'RandomPassword'}
+        response = self.client.post(self.url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("social sign-in", response.data.get('message', ''))
+        self.assertTrue(User.objects.filter(id=social_user.id).exists())
 
 
 class ReferralRewardTests(TestCase):

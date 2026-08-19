@@ -148,6 +148,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     balance              = serializers.SerializerMethodField()
     has_claimed_referral = serializers.SerializerMethodField()
     referred_by          = serializers.SerializerMethodField()
+    has_password         = serializers.SerializerMethodField()
 
     class Meta:
         model  = Profile
@@ -157,7 +158,11 @@ class ProfileSerializer(serializers.ModelSerializer):
             'address', 'address_2', 'city', 'state', 'zip_code', 'country',  
             'interests',
             'referral_code', 'refaradal_code', 'balance', 'has_claimed_referral', 'referred_by',
+            'has_password',
         ]
+
+    def get_has_password(self, obj):
+        return obj.user.has_usable_password() if (obj and obj.user) else False
 
     def get_name(self, obj):
         return getattr(obj.user, 'name', '') if obj.user else ''

@@ -10,6 +10,7 @@ from .views import (
     ProfileDetailsView,
     ProfileUpdateView,
     DeleteAccountView,
+    SendDeleteAccountOTPView,
     ProfileSetupView,
      google_login,
      apple_login,
@@ -23,10 +24,10 @@ urlpatterns = [
     # user list
     path('user_all/', UserAPIView.as_view({'get': 'list'}), name='user-list'),
     path('user/<int:pk>/',
-         UserAPIView.as_view({'get': 'list'}), name='user-detail'),
+         UserAPIView.as_view({'get': 'retrieve'}), name='user-detail'),
 
-    # authentication part urls
-    path('register/', RegisterApiView.as_view(), name='user-register'),
+    # auth and reg part urls
+    path('register/', RegisterApiView.as_view(), name='register'),
     path('login/', LoginAPIView.as_view(), name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('resend_otp/', ResendOTPApiView.as_view(), name='resend-otp'),
@@ -34,6 +35,7 @@ urlpatterns = [
     path('forget-pass/', ForgotPasswordAPIView.as_view(), name='forget-password'),
     path('change-pass/',
          ChangePasswordViewSet.as_view({'post': 'create'}), name='password-change'),
+    path('delete-account/send-otp/', SendDeleteAccountOTPView.as_view(), name='delete-account-send-otp'),
     path('delete-account/', DeleteAccountView.as_view(), name='delete-account'),
 
     # profile part urls

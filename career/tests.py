@@ -47,7 +47,7 @@ class CareerApplicationTests(TestCase):
                 "why_join": "Passionate about DealNux.",
             }
             response = self.client.post(self.apply_url, data, format='json')
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, f"Failed for {role}: {response.data}")
             self.assertTrue(
                 CareerApplication.objects.filter(email=f"applicant{idx}@example.com", role=role).exists()
             )
