@@ -105,6 +105,5 @@ from .models import ContactMessage
 class ContactMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactMessage
-        fields = ['id', 'full_name', 'email', 'subject', 'message', 'is_read', 'created_at']
-        read_only_fields = ['ticket_id', 'is_read',  'created_at']
-        read_only_fields = ['created_at']
+        fields = ['id', 'ticket_id', 'full_name', 'email', 'subject', 'message', 'is_read', 'created_at']
+        read_only_fields = ['id', 'ticket_id', 'is_read', 'created_at']

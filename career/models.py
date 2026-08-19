@@ -3,6 +3,18 @@ from django.db import models
 
 class CareerApplication(models.Model):
     ROLE_CHOICES = [
+        ('Product Manager', 'Product Manager'),
+        ('Data Analyst', 'Data Analyst'),
+        ('Digital Marketing Specialist', 'Digital Marketing Specialist'),
+        ('Customer Support Specialist', 'Customer Support Specialist'),
+        ('Sales Executive', 'Sales Executive'),
+        ('Other', 'Other'),
+        ('product_manager', 'Product Manager'),
+        ('data_analyst', 'Data Analyst'),
+        ('digital_marketing_specialist', 'Digital Marketing Specialist'),
+        ('customer_support_specialist', 'Customer Support Specialist'),
+        ('sales_executive', 'Sales Executive'),
+        ('other', 'Other'),
         ('admin', 'Admin'),
         ('staff', 'Staff'),
         ('moderator', 'Moderator'),

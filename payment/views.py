@@ -634,7 +634,7 @@ class StripeWebhookView(APIView):
         """
         Award the referral bonus once, only after both the referred user and the referrer
         have active paid subscriptions and the referred user has completed a first DEALNUX purchase.
-        Both the referrer and the referred user receive the same reward amount.
+        Only the referrer user receives the reward amount (the referred friend does not earn points).
         """
         from .utils import process_referral_reward_for_user
         process_referral_reward_for_user(user)

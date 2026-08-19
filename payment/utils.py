@@ -1,4 +1,7 @@
+import logging
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 def validate_and_increment_click(user, product_id=None):
@@ -80,49 +83,45 @@ def process_referral_reward_for_user(user):
         if not referrer_active:
             return False
 
-        # All criteria met! Award reward atomically
+        # All criteria met! Award reward atomically to the referrer only
         try:
             with transaction.atomic():
                 amount = SiteSettings.get().referral_reward_amount
 
+                # 1. Credit balance ONLY to the referrer (the friend does not earn points/balance)
                 referrer.refresh_from_db()
                 referrer.balance += amount
                 referrer.save(update_fields=['balance'])
 
+                # 2. Mark reward as awarded on referred friend to prevent duplicate processing
                 referred_user.refresh_from_db()
-                referred_user.balance += amount
                 referred_user.has_referral_reward_awarded = True
-                referred_user.save(update_fields=['balance', 'has_referral_reward_awarded'])
+                referred_user.save(update_fields=['has_referral_reward_awarded'])
 
                 reward_count += 1
-                print(f"✅ Referral reward awarded: {referrer.email} & {referred_user.email} received ${amount}")
+                logger.info(f"Referral reward awarded: {referrer.email} received ${amount} for referring {referred_user.email}")
 
+                # 3. Notification ONLY to referrer
                 try:
                     from notifications.utils import send_referral_reward_notification
                     send_referral_reward_notification(referrer, amount)
-                    send_referral_reward_notification(referred_user, amount)
                 except Exception as e:
-                    print(f"Notification warning: {e}")
+                    logger.warning(f"Notification warning: {e}")
 
+                # 4. Email notification ONLY to referrer
                 try:
                     from custom_ads.utils import send_dealnux_email
                     send_dealnux_email(
                         "You've earned a referral reward! - DealNux",
                         referrer.email,
-                        "emails/referral_bonus.html",
-                        {"referrer": referrer, "referred_user": referred_user, "amount": amount}
-                    )
-                    send_dealnux_email(
-                        "You've earned a referral reward! - DealNux",
-                        referred_user.email,
-                        "emails/referral_bonus.html",
+                        "emails/referrer_reward.html",
                         {"referrer": referrer, "referred_user": referred_user, "amount": amount}
                     )
                 except Exception as e:
-                    print(f"Email warning: {e}")
+                    logger.warning(f"Email warning: {e}")
             return True
         except Exception as e:
-            print(f"❌ Error awarding referral bonus: {e}")
+            logger.error(f"Error awarding referral bonus: {e}", exc_info=True)
             return False
 
     try:
@@ -136,7 +135,7 @@ def process_referral_reward_for_user(user):
 
         return reward_count > 0
     except Exception as e:
-        print(f"❌ Error in process_referral_reward_for_user: {e}")
+        logger.error(f"Error in process_referral_reward_for_user: {e}", exc_info=True)
         return False
 
 

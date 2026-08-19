@@ -49,27 +49,27 @@ def handle_order_notification(sender, instance, created, **kwargs):
             "emails/order_buyer.html",
             {"order": instance}
         )
-        send_dealnux_email(
-            "New Order Received - DealNux",
-            instance.seller.user.email,
-            "emails/order_seller.html",
-            {"order": instance}
-        )
+        if instance.seller and getattr(instance.seller, 'user', None):
+            send_dealnux_email(
+                "New Order Received - DealNux",
+                instance.seller.user.email,
+                "emails/order_seller.html",
+                {"order": instance}
+            )
+            try:
+                from notifications.utils import create_notification
+                prod_title = instance.seller_product.product.title if (instance.seller_product and instance.seller_product.product) else "item"
+                create_notification(
+                    user=instance.seller.user,
+                    title="New Order Received! 📦",
+                    body=f"You have received a new order #{instance.order_number} for '{prod_title}'.",
+                    notification_type="ORDER_UPDATE",
+                    channel="SYSTEM"
+                )
+            except Exception:
+                pass
         # Send push/in-app notification on placed order
         send_order_notification(instance.buyer, instance, 'Placed')
-        
-        # Send push/in-app notification to the seller
-        try:
-            from notifications.utils import create_notification
-            create_notification(
-                user=instance.seller.user,
-                title="New Order Received! 📦",
-                body=f"You have received a new order #{instance.order_number} for '{instance.seller_product.product.title}'.",
-                notification_type="ORDER_UPDATE",
-                channel="SYSTEM"
-            )
-        except Exception:
-            pass
     else:
         old_status = getattr(instance, '_old_status', None)
         new_status = instance.status

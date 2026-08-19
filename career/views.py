@@ -18,7 +18,7 @@ class CareerApplicationCreateView(generics.CreateAPIView):
         # Client-এর email-এ notification পাঠাও
         try:
             send_mail(
-                subject=f"[Dealnux] New Career Application - {application.get_role_display()}",
+                subject=f"[DealNux] New Career Application - {application.get_role_display()}",
                 message=f"""
 New application received!
 
@@ -38,10 +38,10 @@ LinkedIn  : {application.linkedin_url or 'N/A'}
 
 Applied At: {application.applied_at}
 
-Login to admin panel to review: {settings.SITE_URL}/admin/career/careerapplication/
+Login to admin panel to review: {getattr(settings, 'SITE_URL', '')}/admin/career/careerapplication/
                 """,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[settings.ADMIN_EMAIL],
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@dealnux.shop',
+                recipient_list=[getattr(settings, 'ADMIN_EMAIL', None) or 'admin@dealnux.com'],
                 fail_silently=True,
             )
         except Exception:
@@ -57,3 +57,18 @@ class CareerApplicationListView(generics.ListAPIView):
     serializer_class = CareerApplicationSerializer
     permission_classes = [permissions.IsAdminUser]
     queryset = CareerApplication.objects.all()
+
+
+class CareerRoleListView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        roles = [
+            {"value": "Product Manager", "label": "Product Manager"},
+            {"value": "Data Analyst", "label": "Data Analyst"},
+            {"value": "Digital Marketing Specialist", "label": "Digital Marketing Specialist"},
+            {"value": "Customer Support Specialist", "label": "Customer Support Specialist"},
+            {"value": "Sales Executive", "label": "Sales Executive"},
+            {"value": "Other", "label": "Other"},
+        ]
+        return Response({"roles": roles}, status=status.HTTP_200_OK)

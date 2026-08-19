@@ -162,7 +162,7 @@
   </div>
 
   <div class="email-body">
-    <p class="greeting">Hello {{ referrer.Fullname }},</p>
+    <p class="greeting">Hello {{ referrer.name|default:referrer.email }},</p>
     <p class="sub-text">Your referral just paid off! A reward has been credited to your DealNux wallet balance.</p>
 
     <div class="hero-box">
@@ -172,7 +172,7 @@
     </div>
 
     <table class="details-table">
-      <tr><td class="dt-label">Referred User</td><td class="dt-value">{{ referred_user.Fullname }}</td></tr>
+      <tr><td class="dt-label">Referred User</td><td class="dt-value">{{ referred_user.name|default:referred_user.email }}</td></tr>
       <tr><td class="dt-label">Referred Email</td><td class="dt-value">{{ referred_user.email }}</td></tr>
       <tr><td class="dt-label">Reward Amount</td><td class="dt-value"><span class="badge-gold">${{ amount }} Credited</span></td></tr>
       <tr><td class="dt-label">Credited On</td><td class="dt-value">{% now "N j, Y" %}</td></tr>
