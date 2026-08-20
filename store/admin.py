@@ -227,15 +227,8 @@ class SellerProfileAdmin(ModelAdmin):
     def reinstate_seller(self, request, object_id):
         seller = SellerProfile.objects.get(pk=object_id)
         seller.is_active = True
-        seller.save()
-        self.message_user(request, _("Seller reinstated successfully."))
-        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
-
-    @action(description=_("Delete Marketplace (Sell No, Buy Yes)"), url_path="deactivate-shop", variant=ActionVariant.DANGER)
-    def delete_seller_marketplace(self, request, object_id):
-        seller = SellerProfile.objects.get(pk=object_id)
-        seller.is_active = False
-        seller.shop_name = f"CLOSED - {seller.shop_name}"
+        if seller.shop_name.startswith("CLOSED - "):
+            seller.shop_name = seller.shop_name.replace("CLOSED - ", "", 1)
         seller.save()
 
         try:
@@ -248,6 +241,26 @@ class SellerProfileAdmin(ModelAdmin):
         except Exception as e:
             print(f"Reinstate email error: {e}")
         self.message_user(request, _("Seller reinstated and notified via email."))
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+    @action(description=_("Delete Marketplace (Sell No, Buy Yes)"), url_path="deactivate-shop", variant=ActionVariant.DANGER)
+    def delete_seller_marketplace(self, request, object_id):
+        seller = SellerProfile.objects.get(pk=object_id)
+        seller.is_active = False
+        if not seller.shop_name.startswith("CLOSED - "):
+            seller.shop_name = f"CLOSED - {seller.shop_name}"
+        seller.save()
+
+        try:
+            send_dealnux_email(
+                "Marketplace Account Closed - DealNux",
+                seller.user.email,
+                "emails/seller_deactivated.html",
+                {"seller": seller}
+            )
+        except Exception as e:
+            print(f"Deactivate email error: {e}")
+        self.message_user(request, _("Seller marketplace deleted and notified via email."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 
     @action(description=_("Pause Payout"), url_path="pause", variant=ActionVariant.WARNING)

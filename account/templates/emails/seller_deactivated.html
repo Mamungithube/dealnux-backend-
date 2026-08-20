@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><title>Seller Account Suspended – DealNux</title>
+<meta charset="UTF-8"><title>Marketplace Closed – DealNux</title>
 <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 40px 20px; color: #333; line-height: 1.6; }
@@ -26,8 +26,6 @@
         .details-table td { padding: 12px 16px; border-bottom: 1px solid #e8ecf0; }
         .details-table .dt-label { color: #888; width: 42%; }
         .details-table .dt-value { color: #0D1B3E; font-weight: 600; }
-        .reason-box { background: #fde8ea; border-radius: 8px; padding: 16px 20px; margin: 0 0 28px; font-size: 14px; color: #7b1a1a; }
-        .reason-box .reason-label { font-weight: 700; color: #c62828; margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
         .info-note { background: #fff5f5; border-left: 4px solid #c62828; padding: 18px 20px; border-radius: 0 8px 8px 0; margin: 0 0 28px; font-size: 14px; color: #444; }
         .info-note strong { color: #c62828; }
         .badge-danger { display: inline-block; background: #fde8ea; color: #c62828; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; }
@@ -47,34 +45,27 @@
         <div class="logo-tagline">Compare Faster · Save Smarter</div>
       </div>
     </div>
-    <div class="header-badge">Account Suspended</div>
+    <div class="header-badge">Marketplace Closed</div>
   </div>
 
   <div class="email-body">
     <p class="greeting">Hello {{ seller.shop_name }},</p>
-    <p class="sub-text">We are writing to inform you that your seller account on DealNux has been suspended.</p>
+    <p class="sub-text">Your seller marketplace on DealNux has been closed. Your selling privileges have been deactivated, but you can continue to use your account for purchasing.</p>
 
     <div class="hero-box">
-      <div class="box-label">Account Status</div>
-      <div class="box-value">Suspended</div>
-      <div class="box-sub">Your seller marketplace privileges are currently paused</div>
+      <div class="box-label">Marketplace Status</div>
+      <div class="box-value">Closed</div>
+      <div class="box-sub">Selling access deactivated · Buyer access remains active</div>
     </div>
 
     <table class="details-table">
       <tr><td class="dt-label">Shop Name</td><td class="dt-value">{{ seller.shop_name }}</td></tr>
-      <tr><td class="dt-label">Status</td><td class="dt-value"><span class="badge-danger">SUSPENDED</span></td></tr>
-      <tr><td class="dt-label">Suspended On</td><td class="dt-value">{% now "N j, Y · g:i A" %}</td></tr>
+      <tr><td class="dt-label">Status</td><td class="dt-value"><span class="badge-danger">CLOSED</span></td></tr>
+      <tr><td class="dt-label">Closed On</td><td class="dt-value">{% now "N j, Y · g:i A" %}</td></tr>
     </table>
 
-    {% if reason %}
-    <div class="reason-box">
-      <div class="reason-label">Suspension Reason</div>
-      {{ reason }}
-    </div>
-    {% endif %}
-
     <div class="info-note">
-      <strong>Need help or wish to appeal?</strong> If you believe this suspension was made in error or if you have resolved the issue, please contact our support team.
+      <strong>Important:</strong> If you have any pending payouts or questions regarding your seller account, please reach out to DealNux support.
     </div>
   </div>
 
