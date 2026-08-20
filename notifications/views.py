@@ -16,6 +16,7 @@ from .utils import create_notification
 User = get_user_model()
 
 
+# -------------------------- Device Token Registration (Push Notifications) --------------------------
 class DeviceTokenView(APIView):
     """Save a user device token for FCM push notifications."""
     permission_classes = [IsAuthenticated]
@@ -29,6 +30,7 @@ class DeviceTokenView(APIView):
         return Response({'success': True, 'message': 'FCM token saved.'}, status=200)
 
 
+# -------------------------- User Notification List & Unread Count View --------------------------
 class NotificationListView(generics.ListAPIView):
     """Show notification history for the authenticated user."""
     permission_classes = [IsAuthenticated]
@@ -63,6 +65,7 @@ class NotificationListView(generics.ListAPIView):
         }, status=200)
 
 
+# -------------------------- Mark All Notifications As Read View --------------------------
 class MarkNotificationsReadView(APIView):
     """Mark all notifications as read for the authenticated user."""
     permission_classes = [IsAuthenticated]
@@ -72,6 +75,7 @@ class MarkNotificationsReadView(APIView):
         return Response({'success': True, 'message': 'Notifications marked as read.'})
 
 
+# -------------------------- Delete All User Notifications View --------------------------
 class DeleteAllNotificationsView(APIView):
     """Delete all notifications for the authenticated user."""
     permission_classes = [IsAuthenticated]
@@ -81,7 +85,7 @@ class DeleteAllNotificationsView(APIView):
         return Response({'success': True, 'message': 'All notifications deleted successfully.'})
 
 
-
+# -------------------------- Notification Preferences View (Get & Update) --------------------------
 class NotificationPreferenceView(APIView):
     """Allow users to manage their notification preferences."""
     permission_classes = [IsAuthenticated]
@@ -100,6 +104,7 @@ class NotificationPreferenceView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# -------------------------- Admin Notification Broadcast View (Staff Only) --------------------------
 class AdminNotificationBroadcastView(APIView):
     """Create a manual notification broadcast for admins."""
     permission_classes = [IsAuthenticated]

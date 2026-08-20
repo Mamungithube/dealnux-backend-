@@ -380,6 +380,7 @@ def sync_all_platforms(query, limit, category_slug=None):
 
 
 
+# -------------------------- Multi-Platform Search and Live Sync API View --------------------------
 @api_view(['GET'])
 def search_and_sync(request):
     query = request.GET.get('q', '')
@@ -405,6 +406,7 @@ def search_and_sync(request):
     return sync_func(platform, query, limit, category_slug=category_slug)
 
 
+# -------------------------- Smart Search & Real-Time Product Query View --------------------------
 @api_view(['GET'])
 def smart_search(request):
     query = request.GET.get('q', '')
@@ -575,6 +577,7 @@ def get_pagination_meta(results: list, page: int, page_size: int) -> dict:
     }
 
 
+# -------------------------- Celery Asynchronous Sync Task Status Checker View --------------------------
 @api_view(['GET'])
 def task_status(request, task_id):
     from celery.result import AsyncResult
@@ -607,6 +610,7 @@ def task_status(request, task_id):
 
 
 
+# -------------------------- Bulk Product Ingestion & Platform Synchronizer API View --------------------------
 @api_view(['POST'])
 def bulk_sync_products(request):
     platform_code = request.data.get('platform')
@@ -684,6 +688,7 @@ def bulk_sync_products(request):
     return success_response(result, message="Bulk sync completed")
 
 
+# -------------------------- Retailer Platform External Product ID Extractor View --------------------------
 @api_view(['GET'])
 def get_external_ids(request):
     query = request.GET.get('q', '')

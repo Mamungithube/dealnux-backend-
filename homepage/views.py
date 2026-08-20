@@ -7,8 +7,7 @@ from .models import MainSliderBanner, SideBanner
 from .serializers import MainSliderBannerSerializer, SideBannerSerializer, HomepageBannerSerializer
 
 
-# ─── API Views (DRF) ──────────────────────────────────────────
-
+# -------------------------- All Active Homepage Banners API View (Main + Side) --------------------------
 class HomepageBannerAPIView(APIView):
     """GET /api/banners/ — all active banners (public endpoint)"""
     permission_classes = [AllowAny]
@@ -24,6 +23,7 @@ class HomepageBannerAPIView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+# -------------------------- Main Slider Banners API View (Public) --------------------------
 class MainSliderBannerAPIView(APIView):
     """GET /api/banners/main/ — main slider banners only (public endpoint)"""
     permission_classes = [AllowAny]
@@ -34,6 +34,7 @@ class MainSliderBannerAPIView(APIView):
         return Response(serializer.data)
 
 
+# -------------------------- Side Banners API View (Public) --------------------------
 class SideBannerAPIView(APIView):
     """GET /api/banners/side/ — side banners only (public endpoint)"""
     permission_classes = [AllowAny]
@@ -44,8 +45,7 @@ class SideBannerAPIView(APIView):
         return Response(serializer.data)
 
 
-# ─── Template View ────────────────────────────────────────────
-
+# -------------------------- Homepage Web Template View (SSR HTML) --------------------------
 def homepage_view(request):
     """Homepage template view"""
     main_banners = MainSliderBanner.objects.filter(is_active=True).order_by('order')[:5]

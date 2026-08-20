@@ -82,10 +82,7 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
     }
 
 
-# ============================================================================
-# 1. Checkout — Create Embedded Checkout Session (returns client_secret)
-# ============================================================================
-
+# -------------------------- Create Stripe Embedded Checkout Session View (Product Cart Checkout) --------------------------
 class CreateCheckoutSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -304,11 +301,7 @@ class CreateCheckoutSessionView(APIView):
                 payment.delete()
                 return Response({'error': str(e)}, status=500)
 
-# ============================================================================
-# Session Status —> Frontend will call and confirm this after payment is complete.
-# ============================================================================
-
-
+# -------------------------- Checkout Session Status & Order Confirmation API View --------------------------
 class CheckoutSessionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -330,11 +323,7 @@ class CheckoutSessionStatusView(APIView):
             'order_id':       payment.order.id if payment.order else None,
         })
 
-# ============================================================================
-# 3. Stripe Webhook — Order will be created upon payment (no changes)
-# ============================================================================
-
-
+# -------------------------- Stripe Webhook Event Listener (Checkout, Invoices, Subscriptions) --------------------------
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(APIView):
     permission_classes = [AllowAny]
@@ -631,10 +620,7 @@ class StripeWebhookView(APIView):
                 id=payment_id, status='PENDING').update(status='CANCELLED')
 
 
-# ============================================================================
-# 4. Stripe Connect — Create a Seller's Stripe account (no changes)
-# ============================================================================
-
+# -------------------------- Seller Stripe Connect Onboarding Account Link Generation View --------------------------
 class SellerStripeConnectView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -672,6 +658,7 @@ class SellerStripeConnectView(APIView):
         })
 
 
+# -------------------------- Seller Payout / Withdrawal Request API View --------------------------
 class RequestPayoutView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -723,6 +710,7 @@ class RequestPayoutView(APIView):
             return Response({"success": False, "message": str(e)}, status=500)
 
 
+# -------------------------- Seller Stripe Connect Verification & Account Status View --------------------------
 class SellerStripeStatusView(APIView):
     """
     The seller's Stripe account status will be checked.
@@ -766,10 +754,7 @@ class SellerStripeStatusView(APIView):
             return Response({"success": False, "message": f"Stripe Error: {str(e)}"}, status=400)
 
 
-# ============================================================================
-# 5. Payment History
-# ============================================================================
-
+# -------------------------- Buyer Payment History & Order Transaction List View --------------------------
 class PaymentHistoryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -799,6 +784,7 @@ class PaymentHistoryView(APIView):
         return paginator.get_paginated_response(data)
 
 
+# -------------------------- Seller Payout & Withdrawal History API View --------------------------
 class SellerPayoutHistoryView(APIView):
     """
     Seller payout history
@@ -831,6 +817,7 @@ class SellerPayoutHistoryView(APIView):
         return Response(data)
 
 
+# -------------------------- Stripe Session Return & Verification Status Check View --------------------------
 class CheckSessionStatusView(APIView):
     """When the user returns to the return_url, Friendend will call it."""
     permission_classes = [IsAuthenticated]
@@ -867,8 +854,7 @@ class CheckSessionStatusView(APIView):
             return Response({"success": False, "error": "An unexpected error occurred."}, status=500)
 
 
-# payment/views.py
-
+# -------------------------- Seller Stripe Express Dashboard Login Link Generator View --------------------------
 class SellerStripeLoginLinkView(APIView):
 
     permission_classes = [IsAuthenticated]
@@ -913,6 +899,7 @@ class SellerStripeLoginLinkView(APIView):
             }, status=500)
 
 
+# -------------------------- External Product Listing Click Tracker & Redirection View --------------------------
 class ProductClickTrackerView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -929,6 +916,7 @@ class ProductClickTrackerView(APIView):
         return Response({"redirect_url": listing.external_url})
 
 
+# -------------------------- Subscription Plan List API View (Public Membership Plans) --------------------------
 class SubscriptionPlanListView(APIView):
     permission_classes = [AllowAny]
 
@@ -944,6 +932,7 @@ class SubscriptionPlanListView(APIView):
         })
 
 
+# -------------------------- Create Subscription Checkout Session & Free Trial Activation View --------------------------
 class CreateSubscriptionCheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1044,6 +1033,7 @@ class CreateSubscriptionCheckoutView(APIView):
             return Response({"success": False, "message": str(e)}, status=200)
 
 
+# -------------------------- Auth User Active Subscription Status & Limits View --------------------------
 class UserSubscriptionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1084,6 +1074,7 @@ class UserSubscriptionStatusView(APIView):
         })
 
 
+# -------------------------- Stripe Customer Billing Portal Session Management View --------------------------
 class ManageSubscriptionView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1118,6 +1109,7 @@ class ManageSubscriptionView(APIView):
 from payment.apple_iap import verify_and_decode_apple_jws, decode_jws_payload_unverified
 
 
+# -------------------------- Apple In-App Purchase (StoreKit 2) Receipt Verification View --------------------------
 class AppleVerifyReceiptView(APIView):
     """
     Verifies Apple StoreKit 2 JWS purchase_token and grants active subscription status.
@@ -1228,6 +1220,7 @@ class AppleVerifyReceiptView(APIView):
         }, status=200)
 
 
+# -------------------------- Apple App Store Server Notifications V2 Webhook Handler View --------------------------
 @method_decorator(csrf_exempt, name='dispatch')
 class AppleServerNotificationsView(APIView):
     """

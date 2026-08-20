@@ -162,6 +162,7 @@ def get_title_from_barcode_safely(barcode):
 
 
 
+# -------------------------- Barcode Scanner Lookup & Price Comparison Pipeline View --------------------------
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def barcode_scanner_pipeline(request):
@@ -216,6 +217,7 @@ def barcode_scanner_pipeline(request):
     return compare_prices_api(request._request, slug=product.slug)
 
 
+# -------------------------- Barcode Decoder & Product Comparison Slug Resolver View --------------------------
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def decode_barcode_to_slug(request):

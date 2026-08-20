@@ -11,6 +11,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from account.utils.auth import basic_auth_required
 
 
+# -------------------------- API Root Discovery & Info View --------------------------
 @basic_auth_required
 def api_root(request):
     """API root endpoint with project and documentation information"""
@@ -150,6 +151,7 @@ document.getElementById('json').innerHTML = syntaxHighlight(document.getElementB
     return response
 
 
+# -------------------------- System Health Check View (Ping / Deep Check) --------------------------
 @extend_schema(
     summary="System Health Check",
     description="Provides lightweight or comprehensive health status for database, cache, celery, and system services.",

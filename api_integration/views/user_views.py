@@ -45,6 +45,7 @@ from dealnux.responses import success_response, error_response
 logger = logging.getLogger(__name__)
 
 
+# -------------------------- User Cart Management ViewSet (Add, List, Checkout Options & Savings) --------------------------
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartItemSerializer
     permission_classes = [IsAuthenticated]
@@ -334,6 +335,7 @@ class CartViewSet(viewsets.ModelViewSet):
         return self._success(data, message="Dashboard data fetched successfully")
 
 
+# -------------------------- User Savings Analytics & 30-Day Dashboard Trend View --------------------------
 class DashboardSavingsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -382,7 +384,7 @@ class DashboardSavingsView(APIView):
         return success_response(data, message="Dashboard data fetched successfully")
 
 
-
+# -------------------------- User Product Favorites / Wishlist Management ViewSet --------------------------
 class FavoriteViewSet(viewsets.ModelViewSet):
     serializer_class = FavoriteSerializer
     permission_classes = [IsAuthenticated]
@@ -544,7 +546,7 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         )
 
 
-
+# -------------------------- Product Price Drop Alerts & Threshold Notification ViewSet --------------------------
 class PriceAlertViewSet(viewsets.ModelViewSet):
     """User can set up to 5 alerts (Free) or Unlimited (Paid)"""
     permission_classes = [IsAuthenticated]

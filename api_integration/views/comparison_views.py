@@ -169,6 +169,7 @@ def product_match_score(title1: str, title2: str) -> float:
 
 
 
+# -------------------------- Multi-Platform Product Price Comparison API View --------------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def compare_prices_api(request, slug):
@@ -373,6 +374,7 @@ def compare_prices_api(request, slug):
         'price_comparison': comparison_list,
         'best_deal': comparison_list[0] if comparison_list else None
     }, message="Price comparison fetched successfully")
+# -------------------------- Category-Wide Multi-Platform Price Comparison & Deals View --------------------------
 @api_view(['GET'])
 def category_compare_prices(request, slug):
     try:

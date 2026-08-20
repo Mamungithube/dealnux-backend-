@@ -6,6 +6,7 @@ from .models import CareerApplication
 from .serializers import CareerApplicationSerializer
 
 
+# -------------------------- Career Application Create View (Public) --------------------------
 class CareerApplicationCreateView(generics.CreateAPIView):
     serializer_class = CareerApplicationSerializer
     permission_classes = [permissions.AllowAny]
@@ -53,12 +54,14 @@ Login to admin panel to review: {getattr(settings, 'SITE_URL', '')}/admin/career
         )
 
 
+# -------------------------- Career Application List View (Admin Only) --------------------------
 class CareerApplicationListView(generics.ListAPIView):
     serializer_class = CareerApplicationSerializer
     permission_classes = [permissions.IsAdminUser]
     queryset = CareerApplication.objects.all()
 
 
+# -------------------------- Career Role Choices List View (Public) --------------------------
 class CareerRoleListView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 

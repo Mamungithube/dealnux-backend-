@@ -18,6 +18,7 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         return request.user and request.user.is_staff
 
 
+# -------------------------- Blog Category ViewSet (Public Read, Admin Write) --------------------------
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -25,6 +26,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
 
 
+# -------------------------- Blog Tag ViewSet (Public Read, Admin Write) --------------------------
 class TagViewSet(viewsets.ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
@@ -32,6 +34,7 @@ class TagViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
 
 
+# -------------------------- Blog Post ViewSet (List, Detail, Likes & Comments) --------------------------
 class PostViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'category__slug', 'is_featured', 'author']
@@ -99,6 +102,7 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+# -------------------------- Blog Comment ViewSet (Public Read, Auth Create, Admin Moderate) --------------------------
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
 

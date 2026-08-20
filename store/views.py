@@ -45,10 +45,7 @@ def is_approved_seller(user):
     return hasattr(user, 'seller_profile') and user.seller_profile.is_active
 
 
-# ============================================================================
-# Seller Request ViewSet
-# ============================================================================
-
+# -------------------------- Seller Application & Approval ViewSet (User Apply, Admin Approve/Reject) --------------------------
 class SellerRequestViewSet(viewsets.ModelViewSet):
     """
     User will apply in 11 steps.
@@ -182,11 +179,8 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
             "data": {"admin_note": note}
         })
 
-# ============================================================================
-# Seller Profile ViewSet
-# ============================================================================
 
-
+# -------------------------- Seller Profile & Storefront Management ViewSet --------------------------
 class SellerProfileViewSet(viewsets.ModelViewSet):
     queryset = SellerProfile.objects.select_related('user').all()
     serializer_class = SellerProfileSerializer
@@ -264,10 +258,7 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
             return error_response(str(e), code=500)
 
 
-# ============================================================================
-# Seller Product ViewSet
-# ============================================================================
-
+# -------------------------- Seller Product Inventory & Catalog ViewSet --------------------------
 class SellerProductViewSet(viewsets.ModelViewSet):
     """
     Seller manages their own products.
@@ -518,11 +509,7 @@ def process_order_refund(order, fault):
     return refund_amount
 
 
-# ============================================================================
-# Order ViewSet
-# ============================================================================
-
-
+# -------------------------- Order Processing & Dispute Management ViewSet --------------------------
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
@@ -878,10 +865,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
 
-# ============================================================================
-# Product Review ViewSet
-# ============================================================================
-
+# -------------------------- Seller Product Reviews & Rating ViewSet --------------------------
 class ProductReviewViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProductReviewSerializer
 
@@ -949,10 +933,7 @@ class ProductReviewViewSet(viewsets.ModelViewSet):
         }, message="Reviews fetched.")
 
 
-# ============================================================================
-# Coupon ViewSet
-# ============================================================================
-
+# -------------------------- Store Discount Coupons & Validation ViewSet --------------------------
 class CouponViewSet(viewsets.ModelViewSet):
     serializer_class = CouponSerializer
     permission_classes = [IsAuthenticated]
@@ -1016,11 +997,7 @@ class CouponViewSet(viewsets.ModelViewSet):
         }, message="Coupon applied successfully!")
 
 
-# ============================================================================
-# Seller Dashboard
-# ============================================================================
-
-
+# -------------------------- Seller Dashboard Metrics & Sales Summary View --------------------------
 class SellerDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 

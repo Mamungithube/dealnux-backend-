@@ -26,9 +26,7 @@ from django.core.cache import cache
 from decimal import Decimal
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-# 1. Advertiser Request Apply
-
-
+# -------------------------- Advertiser Application View (User Apply) --------------------------
 class ApplyForAdvertiserView(generics.CreateAPIView):
     """
     User can apply to become an advertiser
@@ -119,9 +117,7 @@ class ApplyForAdvertiserView(generics.CreateAPIView):
             )
 
 
-"""----------------------Create Ad (Only for approved advertisers)-----------------------"""
-
-
+# -------------------------- Create Ad Campaign View (Approved Advertisers) --------------------------
 class CreateAdView(generics.CreateAPIView):
     serializer_class = AdSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -196,9 +192,7 @@ class CreateAdView(generics.CreateAPIView):
             return Response({'error': str(e)}, status=500)
 
 
-"""--------------------Public Ad List (Weighted Algorithm)-----------------------"""
-
-
+# -------------------------- Public Ad List View (Weighted Rotation Algorithm) --------------------------
 class AdListView(generics.ListAPIView):
     """
     Get weighted ads for display
@@ -268,9 +262,7 @@ class AdListView(generics.ListAPIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-"""--------------------Ad Click Tracker-----------------------"""
-
-
+# -------------------------- Ad Click Tracker View (CPC & Budget Deduction) --------------------------
 class AdClickTrackerView(APIView):
     """
     Track ad clicks and update budget with dynamic CPC
@@ -373,9 +365,7 @@ class AdClickTrackerView(APIView):
             )
 
 
-"""----------------------Advertiser Dashboard (Own Ads)-----------------------"""
-
-
+# -------------------------- Advertiser Dashboard View (Own Ads & Metrics) --------------------------
 class AdvertiserAdDashboardView(generics.ListAPIView):
     """
     Advertiser can view their own ads
@@ -431,9 +421,7 @@ class AdvertiserAdDashboardView(generics.ListAPIView):
             )
 
 
-"""--------------------Ad Details (Public)-----------------------"""
-
-
+# -------------------------- Ad Detail View (Public Ad Details) --------------------------
 class AdDetailView(generics.RetrieveAPIView):
     queryset = CustomAd.objects.all()
     serializer_class = AdPublicSerializer
@@ -477,9 +465,7 @@ class AdDetailView(generics.RetrieveAPIView):
             )
 
 
-"""--------------------Update Ad (Only advertiser's own ad)-----------------------"""
-
-
+# -------------------------- Update Ad Campaign View (Advertiser Own Ad) --------------------------
 class UpdateAdView(generics.UpdateAPIView):
     """
     Update own ad
@@ -545,9 +531,7 @@ class UpdateAdView(generics.UpdateAPIView):
             )
 
 
-"""--------------------Delete Ad (Only advertiser's own ad)-----------------------"""
-
-
+# -------------------------- Delete Ad Campaign View (Advertiser Own Ad) --------------------------
 class DeleteAdView(generics.DestroyAPIView):
     """
     Delete own ad
@@ -591,9 +575,7 @@ class DeleteAdView(generics.DestroyAPIView):
             )
 
 
-"""--------------------Advertiser Request Status Check-----------------------"""
-
-
+# -------------------------- Advertiser Request Status Check View --------------------------
 class CheckAdvertiserStatusView(APIView):
     """
     Check advertiser application status
@@ -662,9 +644,7 @@ class CheckAdvertiserStatusView(APIView):
             )
 
 
-"""--------------------Ad Configuration Options-----------------------"""
-
-
+# -------------------------- Ad Creation Configuration & Pricing View --------------------------
 class AdConfigView(APIView):
     """
     Configuration options for ad creation form
@@ -717,9 +697,7 @@ class AdConfigView(APIView):
             )
 
 
-"""==================== ADMIN - ADVERTISER REQUEST MANAGEMENT ===================="""
-
-
+# -------------------------- Admin Advertiser Request List View (Admin Only) --------------------------
 class AdminAdvertiserRequestListView(generics.ListAPIView):
     """
     Admin can view all advertiser requests
@@ -774,9 +752,7 @@ class AdminAdvertiserRequestListView(generics.ListAPIView):
             )
 
 
-"""--------------------Admin Approve Advertiser Request-----------------------"""
-
-
+# -------------------------- Admin Approve Advertiser Request View (Admin Only) --------------------------
 class AdminApproveAdvertiserView(APIView):
     """
     Admin approves advertiser request
@@ -842,9 +818,7 @@ class AdminApproveAdvertiserView(APIView):
             )
 
 
-"""--------------------Admin Reject Advertiser Request-----------------------"""
-
-
+# -------------------------- Admin Reject Advertiser Request View (Admin Only) --------------------------
 class AdminRejectAdvertiserView(APIView):
     """
     Admin rejects advertiser request
@@ -926,9 +900,7 @@ class AdminRejectAdvertiserView(APIView):
             )
 
 
-"""==================== ADMIN - AD MANAGEMENT ===================="""
-
-
+# -------------------------- Admin Ad List View (Admin Only) --------------------------
 class AdminAdListView(generics.ListAPIView):
     """
     Admin can view all ads
@@ -982,9 +954,7 @@ class AdminAdListView(generics.ListAPIView):
             )
 
 
-"""--------------------Admin Approve Ad-----------------------"""
-
-
+# -------------------------- Admin Approve Ad Campaign View (Admin Only) --------------------------
 class AdminApproveAdView(APIView):
     """
     Admin approves an ad
@@ -1066,9 +1036,7 @@ class AdminApproveAdView(APIView):
             )
 
 
-"""--------------------Admin Reject Ad-----------------------"""
-
-
+# -------------------------- Admin Reject Ad Campaign View (Admin Only) --------------------------
 class AdminRejectAdView(APIView):
     """
     Admin rejects an ad
@@ -1169,9 +1137,7 @@ class AdminRejectAdView(APIView):
             )
 
 
-"""--------------------Admin Pause/Unpause Ad-----------------------"""
-
-
+# -------------------------- Admin Pause / Unpause Ad View (Admin Only) --------------------------
 class AdminPauseAdView(APIView):
     """
     Admin can pause/unpause an approved ad
@@ -1264,9 +1230,7 @@ class AdminPauseAdView(APIView):
             )
 
 
-"""==================== ADMIN - DASHBOARD STATS ===================="""
-
-
+# -------------------------- Admin Ads Dashboard Stats View (Admin Only) --------------------------
 class AdminDashboardStatsView(APIView):
     """
     Admin dashboard statistics
@@ -1338,9 +1302,7 @@ class AdminDashboardStatsView(APIView):
             )
 
 
-"""==================== BULK ACTIONS ===================="""
-
-
+# -------------------------- Admin Bulk Approve Ads View (Admin Only) --------------------------
 class AdminBulkApproveAdsView(APIView):
     """
     Bulk approve multiple ads
@@ -1436,9 +1398,7 @@ class AdminBulkApproveAdsView(APIView):
             )
 
 
-"""--------------------Bulk Reject Ads-----------------------"""
-
-
+# -------------------------- Admin Bulk Reject Ads View (Admin Only) --------------------------
 class AdminBulkRejectAdsView(APIView):
     """
     Bulk reject multiple ads

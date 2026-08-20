@@ -45,6 +45,7 @@ from dealnux.responses import success_response, error_response
 logger = logging.getLogger(__name__)
 
 
+# -------------------------- Unified Product & Seller Listing Detail API View --------------------------
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def product_detail(request, pk):
@@ -214,11 +215,7 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 100
 
 
-# ============================================================================
-# REST ViewSets
-# ============================================================================
-
-
+# -------------------------- Global Product Catalog ViewSet (Filtering, Sorting, Search & Savings) --------------------------
 class ProductViewSet(viewsets.ModelViewSet):
 
     queryset = Product.objects.all().prefetch_related(
@@ -725,6 +722,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 
+# -------------------------- Product Multi-Retailer Listings ReadOnly ViewSet --------------------------
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ProductListing.objects.filter(
         is_available=True).select_related('product', 'platform')
@@ -750,6 +748,7 @@ class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.order_by(self.request.query_params.get('sort', 'price'))
 
 
+# -------------------------- Supported Retail Platforms ReadOnly ViewSet --------------------------
 class PlatformViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PlatformSerializer
     lookup_field = 'code'
@@ -761,6 +760,7 @@ class PlatformViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 
+# -------------------------- Product Historical Price Tracking & Analytics API View --------------------------
 @api_view(['GET'])
 def product_price_history(request, slug):
     try:
@@ -791,6 +791,7 @@ def product_price_history(request, slug):
     }, message="Price history fetched")
 
 
+# -------------------------- Amazon Promo Code Verification & Details API View --------------------------
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def amazon_promo_details(request):

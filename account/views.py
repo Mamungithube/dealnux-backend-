@@ -35,8 +35,7 @@ from datetime import timedelta
 def generate_otp():
     return str(random.randint(1000, 9999))
 
-# Create your views here.
-
+# -------------------------- Admin User CRUD Management ViewSet --------------------------
 class UserAPIView(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'delete']
     permission_classes = [IsAdminUser]
@@ -47,9 +46,7 @@ class UserAPIView(viewsets.ModelViewSet):
         return super().get(request, *args, **kwargs)
 
 
-"""--------------------Register View---------------------"""
-
-
+# -------------------------- User Registration View (Public Signup & OTP Dispatch) --------------------------
 class RegisterApiView(APIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
@@ -108,9 +105,7 @@ class RegisterApiView(APIView):
             )
 
 
-""" ----------------verify OTP API view------------------- """
-
-
+# -------------------------- Account Activation OTP Verification View (Public) --------------------------
 class VerifyOTPApiView(APIView):
     permission_classes = [AllowAny]
 
@@ -161,9 +156,7 @@ class VerifyOTPApiView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-""" ----------------Resend OTP API view------------------- """
-
-
+# -------------------------- Resend Registration OTP View (Public) --------------------------
 class ResendOTPApiView(APIView):
     permission_classes = [AllowAny]
 
@@ -225,9 +218,7 @@ class ResendOTPApiView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-""" ----------------Forgot Password view------------------- """
-
-
+# -------------------------- Forgot Password & Reset View (Public) --------------------------
 class ForgotPasswordAPIView(APIView):
     serializer_class = ResetPasswordSerializer
     permission_classes = [AllowAny]
@@ -279,9 +270,7 @@ class ForgotPasswordAPIView(APIView):
         )
 
 
-""" -------------------Change Password view----------------------- """
-
-
+# -------------------------- Change Password ViewSet (Authenticated User) --------------------------
 class ChangePasswordViewSet(viewsets.GenericViewSet):
     serializer_class = ChangePasswordSerializer
     permission_classes = [IsAuthenticated]
@@ -380,9 +369,7 @@ class ChangePasswordViewSet(viewsets.GenericViewSet):
         )
 
 
-""" ----------------Login view------------------- """
-
-
+# -------------------------- User Login View (Credentials & JWT Token Generation) --------------------------
 class LoginAPIView(APIView):
     serializer_class = LoginSerializer
     permission_classes = [AllowAny]
@@ -497,9 +484,7 @@ class LoginAPIView(APIView):
         )
 
 
-"""========================= deleted account/views.py code========================="""
-
-
+# -------------------------- Send Account Deletion OTP View (Authenticated User) --------------------------
 class SendDeleteAccountOTPView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -536,6 +521,7 @@ class SendDeleteAccountOTPView(APIView):
             )
 
 
+# -------------------------- Permanent Account Deletion View (Password/OTP Confirmed) --------------------------
 class DeleteAccountView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -645,9 +631,7 @@ class DeleteAccountView(APIView):
 
 
 
-"""========================= Profile Setup View ========================="""
-
-
+# -------------------------- Initial Profile Setup View (Post-Signup Onboarding) --------------------------
 class ProfileSetupView(APIView):
     permission_classes = [AllowAny]
 
@@ -802,9 +786,7 @@ class ProfileSetupView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-"""------------------------Profile Detail View-----------------------------------"""
-
-
+# -------------------------- User Profile Details View (Retrieve Auth User Profile & Statuses) --------------------------
 class ProfileDetailsView(generics.RetrieveAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -885,9 +867,7 @@ class ProfileDetailsView(generics.RetrieveAPIView):
         )
 
 
-""" ------------------------Profile UpdateView view--------------------------- """
-
-
+# -------------------------- User Profile Update View (Partial/Full Update) --------------------------
 class ProfileUpdateView(generics.UpdateAPIView):
     serializer_class = ProfileUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -949,15 +929,18 @@ def start_free_trial(user):
         pass
 
 
-
-
 import requests
+import jwt
+import os
+from jwt.algorithms import RSAAlgorithm
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import User, Profile
+from rest_framework.views import APIView
+from .models import User, Profile, SiteSettings
 
+# -------------------------- Google OAuth2 Social Login API View --------------------------
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def google_login(request):
@@ -1010,11 +993,8 @@ def google_login(request):
     except Exception as e:
         return Response({'error': str(e)}, status=400)
 
-import jwt
-import requests
-import os
-from jwt.algorithms import RSAAlgorithm
 
+# -------------------------- Apple Sign-In OAuth Social Login API View --------------------------
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def apple_login(request):
@@ -1067,23 +1047,17 @@ def apple_login(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=400)
-    
 
 
-from account.models import SiteSettings
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-
+# -------------------------- Site Settings & Referral Reward Config API View --------------------------
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def site_settings_view(request):
-    from .models import SiteSettings
     settings_instance = SiteSettings.get()
     
     data = {
-        'referral_reward_amount': settings_instance.referral_reward_amount,
-        'user_referral_amount': ""
+        'referral_reward_amount': float(settings_instance.referral_reward_amount),
+        'user_referral_amount': 0.0
     }
 
     if request.user.is_authenticated:
@@ -1092,12 +1066,12 @@ def site_settings_view(request):
     return Response(data)
 
 
+# -------------------------- User Referral Statistics & Earnings Overview View --------------------------
 class ReferralStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        from account.models import SiteSettings
         reward_amount = float(SiteSettings.get().referral_reward_amount)
 
         referred_users = user.referrals.select_related('subscription').all().order_by('-date_joined')

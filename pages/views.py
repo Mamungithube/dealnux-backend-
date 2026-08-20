@@ -3,6 +3,7 @@ from .models import PressCoverage
 from .serializers import PressCoverageSerializer
 
 
+# -------------------------- Press Coverage List View (Public Featured Press) --------------------------
 class PressCoverageListView(generics.ListAPIView):
     serializer_class = PressCoverageSerializer
     permission_classes = [permissions.AllowAny]
@@ -21,6 +22,7 @@ from rest_framework.response import Response
 from .serializers import PressInquirySerializer
 
 
+# -------------------------- Press Inquiry Create View (Public Media Contact) --------------------------
 class PressInquiryCreateView(generics.CreateAPIView):
     serializer_class = PressInquirySerializer
     permission_classes = [permissions.AllowAny]

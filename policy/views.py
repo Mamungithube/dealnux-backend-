@@ -48,9 +48,7 @@ def api_response(*, success: bool, code: int, message: str, data=None):
     )
 
 
-# ==========================
-# Privacy Policy View
-# ==========================
+# -------------------------- Privacy Policy View (Public Read, Admin Write) --------------------------
 class PrivacyPolicyView(APIView):
     def get_permissions(self):
         # Allow anyone to read (GET); only admins can create/update/delete
@@ -134,9 +132,7 @@ class PrivacyPolicyView(APIView):
         )
 
 
-# ==========================
-# Cookie Policy View
-# ==========================
+# -------------------------- Cookie Policy View (Public Read, Admin Write) --------------------------
 class CookiePolicyView(APIView):
     def get_permissions(self):
         # Allow anyone to read (GET); only admins can create/update/delete
@@ -220,9 +216,7 @@ class CookiePolicyView(APIView):
         )
 
 
-# ==========================
-# Terms Of Service View
-# ==========================
+# -------------------------- Terms Of Service View (Public Read, Admin Write) --------------------------
 class TermsOfServiceView(APIView):
     def get_permissions(self):
         # Allow anyone to read (GET); only admins can create/update/delete
@@ -306,9 +300,7 @@ class TermsOfServiceView(APIView):
         )
 
 
-# ==========================
-# Reusable GET-Only Base View
-# ==========================
+# -------------------------- Reusable Base Policy View (Public GET-Only) --------------------------
 class PolicyGetBaseView(APIView):
     """
     Reusable base view for GET-only policy endpoints.
@@ -338,117 +330,91 @@ class PolicyGetBaseView(APIView):
         )
 
 
-# ==========================
-# EMI & Payment Policy View
-# ==========================
+# -------------------------- EMI & Payment Policy View (Public GET) --------------------------
 class EMIPaymentPolicyView(PolicyGetBaseView):
     model = EMI_Payment_Policy
     serializer_class = EMIPaymentPolicySerializer
     policy_name = "EMI & Payment Policy"
 
 
-# ==========================
-# Warranty Policy View
-# ==========================
+# -------------------------- Warranty Policy View (Public GET) --------------------------
 class WarrantyPolicyView(PolicyGetBaseView):
     model = Warranty_Policy
     serializer_class = WarrantyPolicySerializer
     policy_name = "Warranty Policy"
 
 
-# ==========================
-# Exchange Policy View
-# ==========================
+# -------------------------- Exchange Policy View (Public GET) --------------------------
 class ExchangePolicyView(PolicyGetBaseView):
     model = Exchange_Policy
     serializer_class = ExchangePolicySerializer
     policy_name = "Exchange Policy"
 
 
-# ==========================
-# Delivery Policy View
-# ==========================
+# -------------------------- Delivery Policy View (Public GET) --------------------------
 class DeliveryPolicyView(PolicyGetBaseView):
     model = Delivery_Policy
     serializer_class = DeliveryPolicySerializer
     policy_name = "Delivery Policy"
 
 
-# ==========================
-# Pre-Order Policy View
-# ==========================
+# -------------------------- Pre-Order Policy View (Public GET) --------------------------
 class PreOrderPolicyView(PolicyGetBaseView):
     model = PreOrder_Policy
     serializer_class = PreOrderPolicySerializer
     policy_name = "Pre-Order Policy"
 
 
-# ==========================
-# Refund Policy View
-# ==========================
+# -------------------------- Refund Policy View (Public GET) --------------------------
 class RefundPolicyView(PolicyGetBaseView):
     model = Refund_Policy
     serializer_class = RefundPolicySerializer
     policy_name = "Refund Policy"
 
 
-# ==========================
-# Return Policy View
-# ==========================
+# -------------------------- Return Policy View (Public GET) --------------------------
 class ReturnPolicyView(PolicyGetBaseView):
     model = Return_Policy
     serializer_class = ReturnPolicySerializer
     policy_name = "Return Policy"
 
 
-# ==========================
-# Seller Policy View
-# ==========================
+# -------------------------- Seller Policy View (Public GET) --------------------------
 class SellerPolicyView(PolicyGetBaseView):
     model = Seller_Policy
     serializer_class = SellerPolicySerializer
     policy_name = "Seller Policy"
 
 
-# ==========================
-# Buyer Protection Policy View
-# ==========================
+# -------------------------- Buyer Protection Policy View (Public GET) --------------------------
 class BuyerProtectionPolicyView(PolicyGetBaseView):
     model = Buyer_Protection_Policy
     serializer_class = BuyerProtectionPolicySerializer
     policy_name = "Buyer Protection Policy"
 
 
-# ==========================
-# Prohibited Products Policy View
-# ==========================
+# -------------------------- Prohibited Products Policy View (Public GET) --------------------------
 class ProhibitedProductsPolicyView(PolicyGetBaseView):
     model = Prohibited_Products_Policy
     serializer_class = ProhibitedProductsPolicySerializer
     policy_name = "Prohibited Products Policy"
 
 
-# ==========================
-# Intellectual Property Policy View
-# ==========================
+# -------------------------- Intellectual Property Policy View (Public GET) --------------------------
 class IntellectualPropertyPolicyView(PolicyGetBaseView):
     model = Intellectual_Property_Policy
     serializer_class = IntellectualPropertyPolicySerializer
     policy_name = "Intellectual Property Policy"
 
 
-# ==========================
-# Community Guidelines View
-# ==========================
+# -------------------------- Community Guidelines View (Public GET) --------------------------
 class CommunityGuidelinesView(PolicyGetBaseView):
     model = Community_Guidelines
     serializer_class = CommunityGuidelinesSerializer
     policy_name = "Community Guidelines"
 
 
-# ==========================
-# About Us View
-# ==========================
+# -------------------------- About Us Policy View (Public GET) --------------------------
 class AboutUsView(PolicyGetBaseView):
     model = About_Us
     serializer_class = AboutUsSerializer
@@ -460,6 +426,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# -------------------------- Platform Review View (Authenticated Submit & Public List) --------------------------
 class ReviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -532,6 +499,8 @@ class ReviewView(APIView):
                 data=None
             )
 
+
+# -------------------------- Contact Message Create View (Public Contact Form) --------------------------
 class ContactMessageCreateView(generics.CreateAPIView):
     serializer_class = ContactMessageSerializer
     permission_classes = [permissions.AllowAny]
@@ -607,6 +576,7 @@ www.dealnux.shop""",
 
 
 
+# -------------------------- Contact Message List View (Admin Only) --------------------------
 class ContactMessageListView(generics.ListAPIView):
     serializer_class = ContactMessageSerializer
     permission_classes = [permissions.IsAdminUser]
@@ -619,6 +589,7 @@ from rest_framework.permissions import AllowAny
 from django.utils import timezone
 import time
 
+# -------------------------- User Cookie Consent View (Public / Authenticated) --------------------------
 class CookieConsentView(APIView):
     permission_classes = [AllowAny]
 

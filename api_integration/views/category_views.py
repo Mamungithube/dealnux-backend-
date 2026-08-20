@@ -45,6 +45,7 @@ from dealnux.responses import success_response, error_response
 logger = logging.getLogger(__name__)
 
 
+# -------------------------- Category ReadOnly ViewSet (Category List & Tree Detail) --------------------------
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -63,6 +64,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         })
 
 
+# -------------------------- Category Hierarchical Tree Structure API View --------------------------
 class CategoryTreeView(APIView):
     permission_classes = [drf_permissions.AllowAny]
 
@@ -78,6 +80,7 @@ class CategoryTreeView(APIView):
         })
 
 
+# -------------------------- Top-Level Parent Categories List API View --------------------------
 class CategoryParentListView(APIView):
     """Only parent categories"""
 
@@ -93,6 +96,7 @@ class CategoryParentListView(APIView):
         })
 
 
+# -------------------------- Subcategories / Child Categories of Parent Category View --------------------------
 class CategoryChildrenView(APIView):
     """Children of a parent"""
 
