@@ -1,3 +1,4 @@
+import logging
 from custom_ads.utils import send_dealnux_email
 import json
 from datetime import timedelta
@@ -10,6 +11,8 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.http import HttpResponse
+
+logger = logging.getLogger(__name__)
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -33,37 +36,8 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 PLATFORM_FEE_PERCENT = Decimal('10')
 
 
-class CustomPagination(PageNumberPagination):
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+from dealnux.pagination import CustomPagination
 
-    def get_paginated_response(self, data):
-        next_page_number = None
-        if self.page.has_next():
-            next_page_number = self.page.next_page_number()
-
-        prev_page_number = None
-        if self.page.has_previous():
-            prev_page_number = self.page.previous_page_number()
-
-        return Response({
-            "success": True,
-            "code": 200,
-            "message": "Success",
-            "timestamp": int(time.time()),
-            "data": data,
-            "pagination": {
-                "total_count": self.page.paginator.count,
-                "total_pages": self.page.paginator.num_pages,
-                "current_page": self.page.number,
-                "page_size": self.get_page_size(self.request),
-                "has_next": self.page.has_next(),
-                "has_previous": self.page.has_previous(),
-                "next_page": next_page_number,
-                "prev_page": prev_page_number,
-            }
-        })
 
 
 def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
@@ -86,9 +60,9 @@ def _calculate_order_amounts(seller_product, quantity, coupon_code=''):
                 discount = (subtotal * Decimal(str(coupon.discount_value))) / Decimal('100')
             else:
                 discount = min(Decimal(str(coupon.discount_value)), subtotal)
-            print(f"✅ Discount Applied: {discount} for coupon {c_code}")
+            logger.info(f"Discount Applied: {discount} for coupon {c_code}")
         else:
-            print(f"⚠️ Coupon '{c_code}' invalid, expired, or min order amount not met.")
+            logger.info(f"Coupon '{c_code}' invalid, expired, or min order amount not met.")
 
     item_total = subtotal - discount
     shipping = seller_product.shipping_cost if not seller_product.free_shipping else Decimal(
@@ -407,7 +381,7 @@ class StripeWebhookView(APIView):
         ).update(status='CANCELLED')
 
         # Optional: Log the event
-        print(f"Subscription {stripe_sub_id} has been cancelled.")
+        logger.info(f"Subscription {stripe_sub_id} has been cancelled.")
 
     def _handle_checkout_completed(self, session):
         metadata = session.get('metadata', {})
@@ -424,7 +398,7 @@ class StripeWebhookView(APIView):
                 from .models import Payment
                 payment = Payment.objects.get(id=payment_id)
                 if payment.status == 'PAID':
-                    print(f"✅ Payment ID {payment_id} already marked as PAID. Skipping duplicate processing in checkout.session.completed.")
+                    logger.info(f"Payment ID {payment_id} already marked as PAID. Skipping duplicate processing in checkout.session.completed.")
                     return
 
                 payment.status = 'PAID'
@@ -448,7 +422,7 @@ class StripeWebhookView(APIView):
                             {"ad": ad, "user": ad.advertiser}
                         )
             except Payment.DoesNotExist:
-                print(f"Error: Payment ID {payment_id} not found in database.")
+                logger.error(f"Error: Payment ID {payment_id} not found in database.")
 
     def _handle_subscription_success(self, session):
         """Activates the paid subscription plan for the user in the database."""
@@ -489,8 +463,8 @@ class StripeWebhookView(APIView):
                     'trial_ends_at': now
                 }
             )
-            print(
-                f"✅ Payment success! Subscription activated for: {user.email}")
+            logger.info(
+                f"Payment success! Subscription activated for: {user.email}")
 
             self._process_referral_reward(user)
 
@@ -515,7 +489,7 @@ class StripeWebhookView(APIView):
             )
 
         except Exception as e:
-            print(f"❌ Error in _handle_subscription_success: {str(e)}")
+            logger.error(f"Error in _handle_subscription_success: {str(e)}")
 
 
     def _handle_subscription_success_intent(self, payment_intent):
@@ -556,7 +530,7 @@ class StripeWebhookView(APIView):
                     'trial_ends_at': now
                 }
             )
-            print(f"✅ Subscription activated via PaymentIntent for: {user.email}")
+            logger.info(f"Subscription activated via PaymentIntent for: {user.email}")
 
             self._process_referral_reward(user)
 
@@ -580,7 +554,7 @@ class StripeWebhookView(APIView):
                 }
             )
         except Exception as e:
-            print(f"❌ Error in _handle_subscription_success_intent: {str(e)}")
+            logger.error(f"Error in _handle_subscription_success_intent: {str(e)}")
 
     def _handle_payment_intent_succeeded(self, payment_intent):
         metadata = payment_intent.get('metadata', {})
@@ -626,9 +600,9 @@ class StripeWebhookView(APIView):
                     )
 
         except Payment.DoesNotExist:
-            print(f"❌ PaymentIntent: Payment ID {payment_id} not found.")
+            logger.error(f"PaymentIntent: Payment ID {payment_id} not found.")
         except Exception as e:
-            print(f"❌ Error in _handle_payment_intent_succeeded: {str(e)}")
+            logger.error(f"Error in _handle_payment_intent_succeeded: {str(e)}")
 
     def _process_referral_reward(self, user):
         """
@@ -1239,7 +1213,7 @@ class AppleVerifyReceiptView(APIView):
                 channel="SYSTEM"
             )
         except Exception as e:
-            print(f"⚠️ Notification creation failed: {e}")
+            logger.warning(f"Notification creation failed: {e}")
 
         return Response({
             "success": True,
@@ -1300,6 +1274,6 @@ class AppleServerNotificationsView(APIView):
 
             return HttpResponse(status=200)
         except Exception as e:
-            print(f"❌ Error processing Apple Server Notification: {e}")
+            logger.error(f"Error processing Apple Server Notification: {e}")
             return HttpResponse(status=200) # Always return 200 to Apple to acknowledge receipt
 

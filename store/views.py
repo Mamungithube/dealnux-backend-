@@ -35,66 +35,9 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-class CustomPagination(PageNumberPagination):
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+from dealnux.responses import success_response, error_response
+from dealnux.pagination import CustomPagination, StandardPagination
 
-    def get_paginated_response(self, data):
-        next_page_number = None
-        if self.page.has_next():
-            next_page_number = self.page.next_page_number()
-
-        prev_page_number = None
-        if self.page.has_previous():
-            prev_page_number = self.page.previous_page_number()
-
-        paginated_data = {
-            "count": len(data),
-            "results": data,
-            "pagination": {
-                "total_count": self.page.paginator.count,
-                "total_pages": self.page.paginator.num_pages,
-                "current_page": self.page.number,
-                "page_size": self.get_page_size(self.request),
-                "next_page": next_page_number,
-                "prev_page": prev_page_number,
-            },
-        }
-        return success_response(paginated_data)
-# ============================================================================
-# Helpers
-# ============================================================================
-
-
-def success_response(data=None, message="Success", code=200):
-    response = {
-        "success": True,
-        "code": code,
-        "message": message,
-        "timestamp": int(time.time()),
-        "data": data or {},
-    }
-    if isinstance(data, dict) and 'pagination' in data:
-        response['pagination'] = data.pop('pagination')
-    return Response(response, status=code)
-
-
-def error_response(message="Error", code=400, data=None):
-    response = {
-        "success": False,
-        "code": code,
-        "message": message,
-        "timestamp": int(time.time()),
-        "data": data or {},
-    }
-    return Response(response, status=code)
-
-
-class StandardPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = 'page_size'
-    max_page_size = 100
 
 
 def is_approved_seller(user):
@@ -245,48 +188,21 @@ class SellerRequestViewSet(viewsets.ModelViewSet):
 
 
 class SellerProfileViewSet(viewsets.ModelViewSet):
-    queryset = SellerProfile.objects.all()
+    queryset = SellerProfile.objects.select_related('user').all()
     serializer_class = SellerProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         if self.request.user.is_staff:
-            return SellerProfile.objects.all()
-        return SellerProfile.objects.filter(user=self.request.user)
+            return SellerProfile.objects.select_related('user').all()
+        return SellerProfile.objects.select_related('user').filter(user=self.request.user)
 
     # --- Dashboard Overview Page ---
     @action(detail=False, methods=['get'], url_path='dashboard/overview')
     def dashboard_overview(self, request):
         seller = request.user.seller_profile
-        today = timezone.now()
-
-        this_month_earned = Order.objects.filter(
-            seller=seller, status='ACCEPTED',
-            created_at__month=today.month, created_at__year=today.year
-        ).aggregate(total=Sum('item_total'))['total'] or 0
-
-        total_units = SellerProduct.objects.filter(
-            seller=seller, status='APPROVED'
-        ).aggregate(total=Sum('quantity'))['total'] or 0
-
-        review_stats = ProductReview.objects.filter(product__seller=seller).aggregate(
-            average_rating=Avg('rating'),
-            total_reviews=Count('id')
-        )
-
-        data = {
-            "shop_name": seller.shop_name,
-            "stats": {
-                "total_products": SellerProduct.objects.filter(seller=seller).count(),
-                "total_units_in_stock": total_units,
-                "active_orders": Order.objects.filter(seller=seller, status__in=['PENDING', 'CONFIRMED', 'SHIPPED']).count(),
-                "needs_action": Order.objects.filter(seller=seller, status='PENDING').count(),
-                "this_month_earnings": float(this_month_earned),
-                "total_earned": float(seller.total_earnings),
-                "total_reviews": review_stats['total_reviews'],
-                "average_rating": round(review_stats['average_rating'] or 0, 1),
-            }
-        }
+        from .services import get_seller_dashboard_overview_data
+        data = get_seller_dashboard_overview_data(seller)
         return success_response(data)
 
     # --- Detailed Shipping Page (GET & PATCH) ---
@@ -297,79 +213,15 @@ class SellerProfileViewSet(viewsets.ModelViewSet):
         except SellerProfile.DoesNotExist:
             return error_response("Seller profile not found.", code=404)
 
+        from .services import get_seller_shipping_settings, update_seller_shipping_settings
+
         # --- ১. Update Logic (PATCH) ---
         if request.method == 'PATCH':
-            data = request.data
-
-            # Local Pickup Section
-            pickup_data = data.get('local_pickup', {})
-            if pickup_data:
-                seller.local_pickup_active = pickup_data.get(
-                    'active', seller.local_pickup_active)
-                seller.pickup_address_street = pickup_data.get(
-                    'address_street', seller.pickup_address_street)
-                seller.pickup_address_city = pickup_data.get(
-                    'address_city', seller.pickup_address_city)
-                seller.pickup_address_state = pickup_data.get(
-                    'address_state', seller.pickup_address_state)
-                seller.pickup_address_zip = pickup_data.get(
-                    'address_zip', seller.pickup_address_zip)
-                seller.pickup_hours_start = pickup_data.get(
-                    'hours_start', seller.pickup_hours_start)
-                seller.pickup_hours_end = pickup_data.get(
-                    'hours_end', seller.pickup_hours_end)
-                seller.pickup_available_days = pickup_data.get(
-                    'available_days', seller.pickup_available_days)
-
-            # Local Delivery Section
-            delivery_data = data.get('local_delivery', {})
-            if delivery_data:
-                seller.local_delivery_active = delivery_data.get(
-                    'active', seller.local_delivery_active)
-                seller.delivery_radius = delivery_data.get(
-                    'radius', seller.delivery_radius)
-                seller.delivery_fee = delivery_data.get(
-                    'fee', seller.delivery_fee)
-                seller.delivery_timeframe = delivery_data.get(
-                    'timeframe', seller.delivery_timeframe)
-
-            # Standard Shipping Section
-            standard_data = data.get('standard_shipping', {})
-            if standard_data:
-                seller.standard_shipping_active = standard_data.get(
-                    'active', seller.standard_shipping_active)
-                seller.order_processing_time = standard_data.get(
-                    'processing_time', seller.order_processing_time)
-                seller.preferred_couriers = standard_data.get(
-                    'preferred_couriers', seller.preferred_couriers)
-
-            seller.save()
+            update_seller_shipping_settings(seller, request.data)
             return success_response(None, message="Shipping settings updated successfully.")
 
         # --- ২. Response Data (GET) ---
-        response_data = {
-            "local_pickup": {
-                "active": seller.local_pickup_active,
-                "address_street": seller.pickup_address_street,
-                "address_city": seller.pickup_address_city,
-                "address_state": seller.pickup_address_state,
-                "address_zip": seller.pickup_address_zip,
-                "hours_start": seller.pickup_hours_start.strftime("%H:%M:%S") if seller.pickup_hours_start else None,
-                "hours_end": seller.pickup_hours_end.strftime("%H:%M:%S") if seller.pickup_hours_end else None,
-                "available_days": seller.pickup_available_days
-            },
-            "local_delivery": {
-                "active": seller.local_delivery_active,
-                "radius": seller.delivery_radius,
-                "fee": float(seller.delivery_fee),
-                "timeframe": seller.delivery_timeframe
-            },
-            "standard_shipping": {
-                "active": seller.standard_shipping_active,
-                "processing_time": seller.order_processing_time,
-                "preferred_couriers": seller.preferred_couriers
-            }
-        }
+        response_data = get_seller_shipping_settings(seller)
         return success_response(response_data, message="Detailed shipping settings fetched.")
 
     # --- Payouts/Wallet Page ---
@@ -442,7 +294,8 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         # Admin:
         if user.is_authenticated and user.is_staff:
             qs = SellerProduct.objects.select_related(
-                'seller', 'category').all()
+                'seller', 'seller__user', 'category', 'linked_product'
+            ).prefetch_related('images').all()
             status_filter = self.request.query_params.get('status')
             if status_filter:
                 qs = qs.filter(status=status_filter.upper())
@@ -450,11 +303,13 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 
         if user.is_authenticated and is_approved_seller(user):
             if self.action in ['update', 'partial_update', 'destroy', 'my_products']:
-            
-                return SellerProduct.objects.filter(seller=user.seller_profile, is_active=True).order_by('-created_at')
+                return SellerProduct.objects.select_related(
+                    'seller', 'seller__user', 'category', 'linked_product'
+                ).prefetch_related('images').filter(seller=user.seller_profile, is_active=True).order_by('-created_at')
 
         qs = SellerProduct.objects.filter(
-            status='APPROVED', is_active=True).select_related('seller', 'category')
+            status='APPROVED', is_active=True
+        ).select_related('seller', 'seller__user', 'category', 'linked_product').prefetch_related('images')
 
         search = self.request.query_params.get('search')
         if search:
@@ -680,11 +535,11 @@ class OrderViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_staff:
-            return Order.objects.all().order_by('-created_at')
+            return Order.objects.select_related('buyer', 'seller', 'seller__user', 'seller_product').all().order_by('-created_at')
 
         return Order.objects.filter(
             Q(buyer=user) | Q(seller__user=user)
-        ).select_related('buyer', 'seller', 'seller_product').distinct()
+        ).select_related('buyer', 'seller', 'seller__user', 'seller_product').distinct().order_by('-created_at')
 
     def create(self, request, *args, **kwargs):
         """The money will go to your pending balance (it's better to do it in the webhook, but you can put it here)"""

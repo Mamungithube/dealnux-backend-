@@ -1,3 +1,4 @@
+import logging
 from rest_framework import serializers
 from account.models import Profile, User
 from django.contrib.auth import get_user_model, password_validation
@@ -7,6 +8,9 @@ from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 import json
 import random
+from custom_ads.utils import send_dealnux_email
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -67,20 +71,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         # Send email with OTP
         subject = 'Your OTP Code - Email Verification Your Account'
-        html_content = render_to_string(
-            'send_code.html', {'otp': otp, 'user': user}
+        send_dealnux_email(
+            subject,
+            user.email,
+            'send_code.html',
+            {'otp': otp, 'user': user}
         )
-        try:
-            msg = EmailMessage(
-                subject=subject,
-                body=html_content,
-                from_email=settings.EMAIL_HOST_USER,
-                to=[user.email],
-            )
-            msg.content_subtype = 'html'
-            msg.send()
-        except Exception as e:
-            print(f"Failed to send email to {user.email}: {str(e)}")
 
         return user
 

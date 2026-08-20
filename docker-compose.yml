@@ -42,7 +42,7 @@ services:
     image: dealnux-backend
     container_name: dealnux_celery_worker
     restart: always
-    command: celery -A dealnux worker -l info --concurrency=1 --max-tasks-per-child=10 -Q celery --time-limit=60 --soft-time-limit=45
+    command: celery -A dealnux worker -l info --concurrency=4 --max-tasks-per-child=100 -Q celery --time-limit=300 --soft-time-limit=240
     volumes:
       - .:/app
       - ./secrets:/app/secrets

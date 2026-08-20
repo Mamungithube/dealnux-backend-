@@ -1,3 +1,4 @@
+import logging
 from django.core.cache import cache
 from django.contrib import admin, messages
 from django.db import transaction
@@ -14,6 +15,9 @@ from .models import (
     Order, Coupon, Dispute, ProductReview,
 )
 from custom_ads.utils import send_dealnux_email
+
+logger = logging.getLogger(__name__)
+
 # ============================================================================
 # Inline
 # ============================================================================
@@ -219,7 +223,7 @@ class SellerProfileAdmin(ModelAdmin):
                 {"seller": seller, "reason": "Violation of DealNux seller policies."}
             )
         except Exception as e:
-            print(f"Suspend email error: {e}")
+            logger.error(f"Suspend email error: {e}")
         self.message_user(request, _("Seller suspended and notified via email."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 
@@ -239,7 +243,7 @@ class SellerProfileAdmin(ModelAdmin):
                 {"seller": seller}
             )
         except Exception as e:
-            print(f"Reinstate email error: {e}")
+            logger.error(f"Reinstate email error: {e}")
         self.message_user(request, _("Seller reinstated and notified via email."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 
@@ -259,7 +263,7 @@ class SellerProfileAdmin(ModelAdmin):
                 {"seller": seller}
             )
         except Exception as e:
-            print(f"Deactivate email error: {e}")
+            logger.error(f"Deactivate email error: {e}")
         self.message_user(request, _("Seller marketplace deleted and notified via email."))
         return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 

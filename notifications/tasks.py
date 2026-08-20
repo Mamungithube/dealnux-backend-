@@ -190,3 +190,28 @@ def send_policy_update_emails_task(policy_name, cta_link=None):
                 logger.error(f"Failed to send policy update email to {recipient}: {e}")
 
     return f"Sent policy update email for {policy_name} to {sent_count} users."
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_email_async_task(self, subject, recipient_email, html_content):
+    """
+    Asynchronous email sending task via Celery.
+    Retries up to 3 times on temporary network/SMTP failures.
+    """
+    from django.core.mail import EmailMessage
+    from django.conf import settings
+
+    try:
+        msg = EmailMessage(
+            subject=subject,
+            body=html_content,
+            from_email=settings.EMAIL_HOST_USER,
+            to=[recipient_email],
+        )
+        msg.content_subtype = "html"
+        msg.send()
+        return True
+    except Exception as exc:
+        logger.error(f"Async email sending failed to {recipient_email}: {exc}")
+        raise self.retry(exc=exc)
+
