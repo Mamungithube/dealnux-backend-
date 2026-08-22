@@ -1,9 +1,13 @@
+import logging
+
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from django.core.mail import send_mail
 from django.conf import settings
 from .models import CareerApplication
 from .serializers import CareerApplicationSerializer
+
+logger = logging.getLogger(__name__)
 
 
 # -------------------------- Career Application Create View (Public) --------------------------
@@ -41,12 +45,20 @@ Applied At: {application.applied_at}
 
 Login to admin panel to review: {getattr(settings, 'SITE_URL', '')}/admin/career/careerapplication/
                 """,
-                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'noreply@dealnux.shop',
+                # from_email must match EMAIL_HOST_USER — Gmail rejects mismatches silently
+                from_email=getattr(settings, 'EMAIL_HOST_USER', None) or getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@dealnux.shop'),
                 recipient_list=[getattr(settings, 'ADMIN_EMAIL', None) or 'admin@dealnux.com'],
-                fail_silently=True,
+                fail_silently=False,
             )
-        except Exception:
-            pass
+            logger.info(
+                f"[Career] Notification email sent for application: {application.full_name} ({application.email})"
+            )
+        except Exception as e:
+            logger.error(
+                f"[Career] Failed to send notification email for application "
+                f"'{application.full_name}' (id={application.pk}): {e}",
+                exc_info=True,
+            )
 
         return Response(
             {"detail": "Application submitted successfully. We will contact you soon."},
