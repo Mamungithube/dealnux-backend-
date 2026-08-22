@@ -779,6 +779,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
             from notifications.utils import send_back_in_stock_notification, send_flash_sale_notification, create_notification, send_price_drop_notification
             from .models import Favorite
             
+            product_link = f"/product/{product.slug}" if product.slug else f"/product/{product.id}"
             is_now_available = bool(product_data.get('is_available', True))
             has_now_coupon = bool(product_data.get('has_coupon', False)) or bool(product_data.get('coupon_text', ''))
             
@@ -788,7 +789,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                     send_back_in_stock_notification(
                         fav.user,
                         product.title,
-                        f"/product/{product.id}"
+                        product_link
                     )
             
             has_discount = product_data.get('discount_percentage') or (
@@ -804,7 +805,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                         notification_type="WISHLIST_SALE",
                         channel="SYSTEM",
                         cta_text="View Product",
-                        cta_link=f"/product/{product.id}"
+                        cta_link=product_link
                     )
             
             if not was_coupon and has_now_coupon:
@@ -814,7 +815,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                         fav.user,
                         title="Special Coupon Available! 🎟️",
                         body=f"A coupon is now available for '{product.title}': {product_data.get('coupon_text') or 'Discount applied'}",
-                        product_url=f"/product/{product.id}"
+                        product_url=product_link
                     )
             
             if platform.code.startswith('local-seller-') and is_now_available:
@@ -833,7 +834,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                             notification_type="LOCAL_DEAL",
                             channel="SYSTEM",
                             cta_text="View Product",
-                            cta_link=f"/product/{product.id}"
+                            cta_link=product_link
                         )
             
             # General Price Drop alert for Wishlist/Favorite users
@@ -843,7 +844,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                     send_price_drop_notification(
                         fav.user,
                         product.title,
-                        f"/product/{product.id}"
+                        product_link
                     )
 
             # New lowest price found check
@@ -860,7 +861,7 @@ def save_generic_product_to_db(product_data, platform, query=None, category_slug
                             notification_type="PRICE_DROP",
                             channel="SYSTEM",
                             cta_text="View Product",
-                            cta_link=f"/product/{product.id}"
+                            cta_link=product_link
                         )
             except Exception as eh:
                 logger.error(f"Error checking new lowest price: {eh}")

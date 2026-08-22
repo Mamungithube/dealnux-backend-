@@ -115,11 +115,12 @@ def send_daily_ai_recommendations():
             if hot_deals:
                 deal = random.choice(hot_deals)
                 product = deal.product
+                product_link = f"/product/{product.slug}" if product.slug else f"/product/{product.id}"
                 send_ai_recommendation_notification(
                     user=user,
                     title="DEALNUX AI Recommendation ✨",
                     body=f"Based on your interests, we recommend checking out '{product.title}' now available on {deal.platform.name} for ${deal.price}!",
-                    product_url=f"/product/{product.id}"
+                    product_url=product_link
                 )
                 sent_count += 1
         except Exception as e:

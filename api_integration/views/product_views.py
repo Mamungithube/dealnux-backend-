@@ -217,6 +217,7 @@ class StandardResultsSetPagination(PageNumberPagination):
 
 # -------------------------- Global Product Catalog ViewSet (Filtering, Sorting, Search & Savings) --------------------------
 class ProductViewSet(viewsets.ModelViewSet):
+    permission_classes = [AllowAny]
 
     queryset = Product.objects.all().prefetch_related(
         'listings',
@@ -229,12 +230,33 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_object(self):
         slug = self.kwargs.get('slug')
+        if not slug:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("No Product identifier provided.")
 
+        # 1. Try direct ID lookup if parameter is a number / digits (e.g. from notifications /product/123)
+        if str(slug).isdigit():
+            try:
+                obj = Product.objects.get(id=int(slug), is_active=True)
+                self.check_object_permissions(self.request, obj)
+                return obj
+            except Product.DoesNotExist:
+                pass
+
+        # 2. Try exact slug lookup
         try:
             obj = Product.objects.get(slug=slug, is_active=True)
             self.check_object_permissions(self.request, obj)
             return obj
         except Product.DoesNotExist:
+            pass
+
+        # 3. Try case-insensitive slug lookup
+        try:
+            obj = Product.objects.get(slug__iexact=slug, is_active=True)
+            self.check_object_permissions(self.request, obj)
+            return obj
+        except (Product.DoesNotExist, Product.MultipleObjectsReturned):
             pass
 
         slug_as_title = slug.replace('-', ' ').lower()
@@ -724,6 +746,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 # -------------------------- Product Multi-Retailer Listings ReadOnly ViewSet --------------------------
 class ProductListingViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [AllowAny]
     queryset = ProductListing.objects.filter(
         is_available=True).select_related('product', 'platform')
     serializer_class = ProductListingSerializer
