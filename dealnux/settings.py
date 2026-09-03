@@ -68,7 +68,7 @@ CSRF_COOKIE_HTTPONLY = True
 # redirect HTTP to HTTPS when enabled
 SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False') == 'True'
 # HSTS settings
-SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS') or 0)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv(
     'SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
 SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False') == 'True'
@@ -130,8 +130,8 @@ AUTHENTICATION_BACKENDS = [
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
-            'client_id': os.environ.get('GOOGLE_CLIENT_ID'),
-            'secret': os.environ.get('GOOGLE_CLIENT_SECRET'),
+            'client_id': os.environ.get('GOOGLE_CLIENT_ID') or os.getenv('GOOGLE_OAUTH2_CLIENT_ID', ''),
+            'secret': os.environ.get('GOOGLE_CLIENT_SECRET') or os.getenv('GOOGLE_OAUTH2_CLIENT_SECRET', ''),
             'key': ''
         },
         'SCOPE': ['profile', 'email'],
@@ -171,6 +171,42 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': None,
     "DATETIME_FORMAT": "%Y-%m-%d %H:%M:%S",
+}
+
+
+# ==================== Swagger / OpenAPI Documentation Settings ====================
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Dealnux API Engine',
+    'DESCRIPTION': 'Multi-platform Price Aggregator & Secure Marketplace Architecture API Documentation',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    # Strips '/api/v1' so endpoints group cleanly into separate modules (account, store, payment, ads, etc.)
+    'SCHEMA_PATH_PREFIX': r'/api/v[0-9]',
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': False,
+        'filter': True,                 # Search/filter bar to easily search endpoints
+        'docExpansion': 'none',          # Neatly collapses sections by default instead of one giant open list
+        'defaultModelsExpandDepth': -1,  # Hides models section by default to keep documentation clean
+        'tagsSorter': 'alpha',           # Sorts modules alphabetically
+        'operationsSorter': 'alpha',     # Sorts routes inside each module alphabetically
+    },
+    'COMPONENT_SPLIT_REQUEST': True,
+    'TAGS': [
+        {'name': 'account', 'description': 'Authentication, Profiles, KYC & Seller Onboarding'},
+        {'name': 'store', 'description': 'Marketplace Products, Categories, Deals & Inventory'},
+        {'name': 'payment', 'description': 'Stripe Checkout, Escrow Mechanism & Seller Payouts'},
+        {'name': 'ads', 'description': 'CPC Advertising Engine, Campaigns & Budgets'},
+        {'name': 'fetch-products', 'description': 'Multi-platform External Sync (Amazon, eBay, Walmart, etc.)'},
+        {'name': 'notifications', 'description': 'Real-time & System Notifications'},
+        {'name': 'banners', 'description': 'Homepage & Promotional Banners'},
+        {'name': 'blog', 'description': 'Blog Articles & News'},
+        {'name': 'career', 'description': 'Job Openings & Career Applications'},
+        {'name': 'pages', 'description': 'Dynamic Static & Info Pages'},
+        {'name': 'policy', 'description': 'Terms of Service, Privacy & Return Policies'},
+        {'name': 'Health', 'description': 'System Liveness, DB, Redis & Celery Health Checks'},
+    ],
 }
 
 
@@ -265,7 +301,7 @@ else:
             'PASSWORD': os.getenv('DB_PASSWORD'),
             'HOST': os.getenv('DB_HOST'),
             'PORT': os.getenv('DB_PORT'),
-            'CONN_MAX_AGE': int(os.getenv('CONN_MAX_AGE', '600')),
+            'CONN_MAX_AGE': int(os.getenv('CONN_MAX_AGE') or 600),
             'CONN_HEALTH_CHECKS': True,
         }
     }
@@ -372,7 +408,7 @@ else:
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
 EMAIL_HOST = os.getenv('EMAIL_HOST')
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS') == 'True'
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))  # must be int, not string
+EMAIL_PORT = int(os.getenv('EMAIL_PORT') or 587)  # must be int, not string
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
