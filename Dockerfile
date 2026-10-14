@@ -19,4 +19,4 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY . /app/
 
-CMD ["gunicorn", "dealnux.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]

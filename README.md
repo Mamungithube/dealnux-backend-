@@ -114,3 +114,39 @@ The system operates across 3 core layers:
 ---
 
 
+
+## 📁 Project Directory Structure
+
+The project follows the standard enterprise modular Django structure separating core configuration from domain apps:
+
+```text
+dealnux-backend/
+├── apps/                        # Modular Django domain apps
+│   ├── account/                 # User authentication, profiles & roles
+│   ├── api_integration/         # Multi-platform product scrapers & sync
+│   ├── blog/                    # Articles & announcements
+│   ├── career/                  # Job postings & applicants
+│   ├── custom_ads/              # CPC advertiser engine & campaigns
+│   ├── homepage/                # Sliders & promotional banners
+│   ├── notifications/           # Push/email notification engine
+│   ├── pages/                   # Static/dynamic policy & info pages
+│   ├── payment/                 # Subscriptions, Stripe checkout & escrow
+│   ├── policy/                  # Terms, return & legal policies
+│   └── store/                   # Marketplace seller profiles, orders & products
+├── config/                      # Project root configuration
+│   ├── settings.py              # Central Django settings
+│   ├── urls.py                  # Root URL routing
+│   ├── wsgi.py                  # WSGI entrypoint for web servers
+│   ├── asgi.py                  # ASGI entrypoint for async & channels
+│   ├── celery.py                # Celery worker & beat configuration
+│   ├── api_root_view.py         # System health & API root discovery
+│   ├── unfold_conf.py           # Unfold Admin theme configuration
+│   └── admin_logic.py           # KPI dashboard metrics callback
+├── dealnux/                     # Backward-compatibility alias shim
+├── media/                       # User-uploaded files
+├── static/                      # Collected static assets
+├── templates/                   # HTML email & system templates
+├── Dockerfile                   # Production container definition
+├── docker-compose.yml           # Multi-service stack (web, db, redis, celery)
+└── manage.py                    # Django management CLI (apps on sys.path)
+```

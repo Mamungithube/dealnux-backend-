@@ -6,7 +6,7 @@ services:
         - dealnux-backend
     image: dealnux-backend
     container_name: dealnux_web
-    command: gunicorn dealnux.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 30
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 30
     volumes:
       - .:/app
       - ./secrets:/app/secrets
@@ -42,7 +42,7 @@ services:
     image: dealnux-backend
     container_name: dealnux_celery_worker
     restart: always
-    command: celery -A dealnux worker -l info --concurrency=4 --max-tasks-per-child=100 -Q celery --time-limit=300 --soft-time-limit=240
+    command: celery -A config worker -l info --concurrency=4 --max-tasks-per-child=100 -Q celery --time-limit=300 --soft-time-limit=240
     volumes:
       - .:/app
       - ./secrets:/app/secrets
@@ -56,7 +56,7 @@ services:
     image: dealnux-backend
     container_name: dealnux_celery_beat
     restart: always
-    command: celery -A dealnux beat -l info
+    command: celery -A config beat -l info
     volumes:
       - .:/app
       - ./secrets:/app/secrets
